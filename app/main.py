@@ -10,6 +10,7 @@ import uuid
 import os
 from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
 from openai import OpenAI
+import logging
 
 app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent
@@ -19,6 +20,21 @@ TITLE = "JBG nyckeltalsanalys för a-kassorna"
 SUBTITLE = "Obs! För .PDF (eller .ZIP av .PDF)"
 INVALID_FILETYPE_FOR = "Ogiltig filtyp för"
 FILES_ALLOWED = "Endast pdf eller zip av pdf tillåtes"
+
+# Loggning
+LOG_DIR = BASE_DIR / "log"
+LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / "app.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -72,7 +88,6 @@ async def upload_file(
                 message=f"{INVALID_FILETYPE_FOR}: {filename}. {FILES_ALLOWED}."
             )
 
-        # Kör analys
         os.environ["OPENAI_API_KEY"] = apikey
         analys = JBGAnnualReportAnalyzer(
             upload_dir=UPLOAD_DIR,
@@ -82,7 +97,7 @@ async def upload_file(
         analys.openai_client = OpenAI(api_key=apikey)
 
         output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat.json"
-        analys_result_path = analys.do_analysis(saved_path, output_path)
+        analys_result_path = analys.do_analysis(saved_path, output_path, the_model=model)
         resultat_json = json.loads(analys_result_path.read_text(encoding="utf-8"))
 
         return templates.TemplateResponse("index.html", {
@@ -94,6 +109,7 @@ async def upload_file(
         })
 
     except FileTypeException as ex:
+        logger.warning(f"Fel filtyp: {ex.message}")
         return templates.TemplateResponse("index.html", {
             "request": request,
             "title": TITLE,
@@ -102,6 +118,7 @@ async def upload_file(
         })
 
     except Exception as e:
+        logger.error(f"Fel vid analys: {str(e)}")
         return templates.TemplateResponse("index.html", {
             "request": request,
             "title": TITLE,
