@@ -1,0 +1,97 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f8f9fa;
+    color: #333;
+    margin: 0;
+    padding: 2rem;
+}
+
+#wrapper {
+    background-color: #fff;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 0 6px rgba(0,0,0,0.1);
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+h1 {
+    color: #2979be;
+    margin-bottom: 1rem;
+}
+
+h3 {
+    color: #555;
+    font-weight: normal;
+    font-size: 1.1rem;
+    margin-top: 0;
+    margin-bottom: 1rem;
+    font-style: italic;
+}
+
+form {
+    background: #fff;
+    padding: 1rem;
+    border-radius: 5px;
+    box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+}
+
+input[type="file"],
+input[type="password"],
+select {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+button {
+    padding: 0.6rem 1.2rem;
+    border: none;
+    background-color: #2979be;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #1e5f94;
+}
+
+pre {
+    background-color: #f4f4f4;
+    padding: 1rem;
+    border-radius: 4px;
+    font-family: Consolas, monospace;
+    font-size: 0.95rem;
+    max-height: 600px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Hourglass Spinner */
+.spinner {
+    border: 8px solid #f3f3f3;
+    border-top: 8px solid green;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: auto;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Center Spinner */
+#spinner-container {
+    display: none;
+    text-align: center;
+    margin-top: 20px;
+}

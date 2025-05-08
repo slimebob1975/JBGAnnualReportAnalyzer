@@ -1,0 +1,97 @@
+[
+  {
+    "Nyckeltal": "Soliditet",
+    "Beskrivning": "Andel eget kapital av totala tillgångar",
+    "Formel": "Eget kapital / Balansomslutning"
+  },
+  {
+    "Nyckeltal": "Balansomslutning",
+    "Beskrivning": "Summa tillgångar",
+    "Formel": "Anläggningstillgångar + Omsättningstillgångar"
+  },
+  {
+    "Nyckeltal": "Eget kapital",
+    "Beskrivning": "Skillnaden mellan tillgångar och skulder",
+    "Formel": "Från balansräkning"
+  },
+  {
+    "Nyckeltal": "Resultat efter finansiella poster",
+    "Beskrivning": "Resultat före arbetslöshetsförsäkringsposter",
+    "Formel": "Resultat före finansiella poster + Finansiella poster"
+  },
+  {
+    "Nyckeltal": "Räntabilitet på eget kapital",
+    "Beskrivning": "Avkastning på det egna kapitalet",
+    "Formel": "Årets resultat / Eget kapital"
+  },
+  {
+    "Nyckeltal": "Utbetald arbetslöshetsersättning",
+    "Beskrivning": "Totalt utbetald ersättning",
+    "Formel": "Inkomstrelaterad + Grundbelopp"
+  },
+  {
+    "Nyckeltal": "Genomsnittlig dagpenning",
+    "Beskrivning": "Snittutbetalning per ersättningsdag",
+    "Formel": "Utbetald ersättning / Ersättningsdagar"
+  },
+  {
+    "Nyckeltal": "Antal ersättningsdagar per person",
+    "Beskrivning": "Mått på ersättningens längd",
+    "Formel": "Totalt antal ersättningsdagar / Totalt antal arbetslösa"
+  },
+  {
+    "Nyckeltal": "Administrationskostnad per medlem",
+    "Beskrivning": "Hur mycket administration kostar per medlem",
+    "Formel": "Administrationskostnader / Antal medlemmar"
+  },
+  {
+    "Nyckeltal": "Kostnad per utbetald ersättningskrona",
+    "Beskrivning": "Hur mycket administration kostar i förhållande till ersättning",
+    "Formel": "Administrationskostnader / Utbetald ersättning"
+  },
+  {
+    "Nyckeltal": "Omsättning",
+    "Beskrivning": "Totala intäkter från verksamheten",
+    "Formel": "Medlemsavgifter + Övriga intäkter"
+  },
+  {
+    "Nyckeltal": "Likvida medel",
+    "Beskrivning": "Kassa och bank",
+    "Formel": "Från balansräkning"
+  },
+  {
+    "Nyckeltal": "Skuldsättningsgrad",
+    "Beskrivning": "Mått på hur stor del av tillgångarna som är finansierade med skulder",
+    "Formel": "Skulder / Eget kapital"
+  },
+  {
+    "Nyckeltal": "Balansomslutning",
+    "Beskrivning": "Balansomslutningen visar summan av respektive sida i balansräkningen och fungerar som en kontrollpunkt för att bokföringen är korrekt",
+    "Formel": "Summa tillgångar eller summa eget kapital och skulder"
+  },
+  {
+    "Nyckeltal": "Fordringar statligt bidrag till arbetslöshetsersättning",
+    "Beskrivning": "Belopp som a-kassan har rätt att få från staten för utbetald arbetslöshetsersättning",
+    "Formel": ""
+  },
+  {
+    "Nyckeltal": "Fordringar felaktig arbetslöshetsersättning",
+    "Beskrivning": "Tillgång som uppstår när a-kassan har ett krav på återbetalning från medlemmar som fått för mycket ersättning",
+    "Formel": ""
+  },
+  {
+    "Nyckeltal": "Fordran källskatt arbetslöshetsersättning (not 16)",
+    "Beskrivning": "Tillgång som avser innehållen källskatt på utbetald arbetslöshetsersättning",
+    "Formel": ""
+  },
+  {
+    "Nyckeltal": "Justerad balansomslutning att registrera i statistikdatabasen",
+    "Beskrivning": "Ett justerat mått på balansomslutning där vissa fordringar (t.ex. källskatt, återkrav) exkluderas",
+    "Formel": "Balansomslutning - fordringar statligt bidrag - felaktig ersättning - källskatt"
+  },
+  {
+    "Nyckeltal": "Omsättningstillgångar",
+    "Beskrivning": "Tillgångar som är avsedda att omsättas inom ett år, exempelvis kassa, kundfordringar och kortfristiga placeringar",
+    "Formel": ""
+  }
+]

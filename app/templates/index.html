@@ -3,10 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <title>{{ title }}</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/javascript/script.js" defer></script>
+    <link rel="icon" href="/static/favicon/favicon.ico" type="image/x-icon">
 </head>
 <body>
-    <h1>{{ title }}</h1>
-    <p>Välkommen till prototypen för nyckeltalsanalys av årsredovisningar.</p>
+    <div id="wrapper">
+        <h1>{{ title }}</h1>
+        <h3><em>{{subtitle}}</em></h3>
+
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <label for="fileloader">Välj fil att ladda upp:</label><br>
+            <input type="file" name="file" id="fileloader" accept=".pdf,.zip" required><br><br>
+
+            <label for="apikey">Ange din OpenAI API-nyckel:</label><br>
+            <input type="password" name="apikey" id="apikey" placeholder="sk-..." required><br>
+            <small style="display:block; margin-bottom:1rem; color:#666;">
+                Din API-nyckel sparas endast i din webbläsare (lokalt) för bekvämlighet.
+            </small><br>
+              
+            <label for="model">Välj GPT-modell:</label><br>
+            <select name="model" required>
+                <option value="gpt-4o">gpt-4o -- snabbast, billigast, mest kapabel i textförståelse</option>
+                <option value="gpt-4-turbo">gpt-4-turbo -- bra fallback</option>
+                <option value="gpt-3.5-turbo">gpt-3.5-turbo -- bra för tester, men presterar sämre</option>
+            </select><br>
+
+            <button type="submit">Ladda upp och analysera</button>
+        </form>
+    
+        {% if message %}
+            <p style="color: green;">{{ message }}</p>
+        {% endif %}
+
+         <!-- A spinner that spins while executing -->
+         <div id="spinner-container">
+            <div class="spinner"></div>
+            <p>Bearbetar filen...</p>
+        </div>
+    </div> <!-- Wrapper -->
 </body>
 </html>
