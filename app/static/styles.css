@@ -74,6 +74,24 @@ pre {
     word-wrap: break-word;
 }
 
+#download-options {
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    background-color: #f1f1f1;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+#download-options label {
+    margin-right: 1rem;
+    font-weight: normal;
+    cursor: pointer;
+}
+
+#download-options input[type="radio"] {
+    margin-right: 0.3rem;
+}
+
 /* Hourglass Spinner */
 .spinner {
     border: 8px solid #f3f3f3;

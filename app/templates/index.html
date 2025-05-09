@@ -29,11 +29,22 @@
                 <option value="gpt-3.5-turbo">gpt-3.5-turbo -- bra för tester, men presterar sämre</option>
             </select><br>
 
+            <label for="download-options">Svarsformat:</label><br>
+            <div id="download-options">
+                <label><input type="radio" name="format" value="json" checked> JSON</label>
+                <label><input type="radio" name="format" value="csv"> CSV</label>
+                <label><input type="radio" name="format" value="xlsx"> Excel</label>
+            </div>
+
             <button type="submit">Ladda upp och analysera</button>
         </form>
     
         {% if message %}
             <p style="color: green;">{{ message }}</p>
+        {% endif %}
+
+        {% if download_filename %}
+            <p><a href="/download/{{ download_filename }}" download>Ladda ner resultatfil ({{ download_filename }})</a></p>
         {% endif %}
 
          <!-- A spinner that spins while executing -->

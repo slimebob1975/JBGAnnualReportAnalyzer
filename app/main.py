@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, UploadFile, File, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
@@ -9,6 +9,7 @@ import json
 import uuid
 import os
 from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
+from app.src.JBGJSONConverter import JsonConverter
 from openai import OpenAI
 import logging
 
@@ -58,7 +59,8 @@ async def upload_file(
     request: Request,
     file: UploadFile = File(...),
     model: str = Form(...),
-    apikey: str = Form(...)
+    apikey: str = Form(...),
+    format: str = Form(...)
 ):
     filename = file.filename
     file_ext = filename.lower().split(".")[-1]
@@ -96,16 +98,36 @@ async def upload_file(
         )
         analys.openai_client = OpenAI(api_key=apikey)
 
-        output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat.json"
-        analys_result_path = analys.do_analysis(saved_path, output_path, model=model)
+        json_output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat.json"
+        analys_result_path = analys.do_analysis(saved_path, json_output_path, model=model)
         resultat_json = json.loads(analys_result_path.read_text(encoding="utf-8"))
+        
+        converter = JsonConverter(json_output_path)
+
+        if format == "csv":
+            output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat.csv"
+            converter.to_csv(output_path)
+
+        elif format == "xlsx":
+            output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat_by_fund.xlsx"
+            converter.to_excel(output_path, by="fund")
+
+        elif format == "json":
+            # Already written by `do_analysis` → no action needed
+            output_path = json_output_path
+
+        else:
+            raise ValueError("Ogiltigt format valt.")
+        
+        download_filename = output_path.name
 
         return templates.TemplateResponse("index.html", {
             "request": request,
             "title": TITLE,
             "subtitle": SUBTITLE,
             "message": f"{len(extracted_files)} fil(er) analyserade.",
-            "resultat": json.dumps(resultat_json, indent=2, ensure_ascii=False)
+            "resultat": json.dumps(resultat_json, indent=2, ensure_ascii=False),
+            "download_filename": download_filename
         })
 
     except FileTypeException as ex:
@@ -119,9 +141,17 @@ async def upload_file(
 
     except Exception as e:
         logger.error(f"Fel vid analys: {str(e)}")
+        raise(e)
         return templates.TemplateResponse("index.html", {
             "request": request,
             "title": TITLE,
             "subtitle": SUBTITLE,
             "message": f"Fel vid analys: {str(e)}"
         })
+
+@app.get("/download/{filename}", response_class=FileResponse)
+async def download_file(filename: str):
+    file_path = UPLOAD_DIR / filename
+    if file_path.exists():
+        return FileResponse(path=file_path, filename=filename, media_type='application/octet-stream')
+    return {"error": "Filen finns inte"}

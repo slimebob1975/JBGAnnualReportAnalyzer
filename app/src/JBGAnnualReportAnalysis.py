@@ -7,19 +7,24 @@ import shutil
 import logging
 import fitz
 import tiktoken
-
-MAX_TOKENS = 4000
+import time
 
 DEBUG = False
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 class JBGAnnualReportAnalyzer:
     FIELD_VALUE = "värde"
     FIELD_SOURCE = "källa"
     SOURCE_PREFIX = "sid."
     STANDARD_ENCODING = "utf-8"
+    PAGE_OFFSET = 0
+    OFFSET_LIMIT = 99
+    MAX_TOKENS = 4000
+    DEFAULT_MODEL = "gpt-4o"
+    DEFAULT_SHORT_SLEEP_TIME = 1
+    DEFAULT_LONG_SLEEP_TIME = 5
     
     def __init__(self, upload_dir: Union[str, Path], instruction_path: Union[str, Path], metrics_path: Union[str, Path]):
         self.upload_dir = Path(upload_dir)
@@ -32,11 +37,42 @@ class JBGAnnualReportAnalyzer:
             zip_ref.extractall(self.upload_dir)
         return [f for f in self.upload_dir.glob("*.pdf")]
 
-    def _extract_text_from_pdf(self, pdf_path: Path) -> str:
+    def _find_page_number_offset(self, pdf_path: Path) -> int:
         try:
             doc = fitz.open(pdf_path)
-            #return "\n\n".join([f"[Sida {i+1}]\n" + page.get_text() for i, page in enumerate(doc)])
-            return "\n\n".join([f"[Sida {page.number + 1}]\n" + page.get_text() for page in doc])
+            i = 0
+            page_offset = -1
+            offsets = {}
+            first_openai_call = True
+            for page in doc:
+                i += 1
+                if first_openai_call:
+                    prompt = self._prompt_instructions_pdf_page_offset()
+                    first_openai_call = False
+                else:
+                    time.sleep(self.DEFAULT_SHORT_SLEEP_TIME)
+                response = self._make_openai_api_call(prompt, f"[Sida {i}]:\n" + page.get_text())
+                if DEBUG: logger.debug(f"GPT-rådata:\n{response}")
+                try:
+                    new_offset = int(response.strip())
+                    if abs(new_offset) > self.OFFSET_LIMIT:
+                        continue
+                    offsets[new_offset] = offsets.get(new_offset, 0) + 1
+                    page_offset = max(offsets, key=offsets.get)
+                except Exception as ex:
+                    logger.warning(f"Could not extract page_offset from response: {response} on page {i}")
+            return page_offset
+        except Exception as e:
+            logger.warning(f"Could not extract pdf page number offset from {pdf_path.name}: {e}. Using standard value.")
+            return self.PAGE_OFFSET
+    
+    def _extract_text_from_pdf(self, pdf_path: Path) -> str:
+        
+        try:
+            doc = fitz.open(pdf_path)
+            page_offset =  max(self._find_page_number_offset(pdf_path), 0)
+            logger.info(f"Using page offset as: {page_offset}")
+            return "\n\n".join([f"[Sida {page.number - page_offset}]\n" + page.get_text() for page in doc])
         except Exception as e:
             logger.warning(f"Kunde inte extrahera text från {pdf_path.name}: {e}")
             return ""
@@ -91,14 +127,14 @@ class JBGAnnualReportAnalyzer:
         """
         return system_prompt
     
-    def _make_openai_api_call(self, system_prompt, request_text: str, model: str) -> dict:
+    def _make_openai_api_call(self, system_prompt, request_text: str, model: str = "") -> dict:
         
-        logger.info(f"Aktuell system-prompt är {self._count_tokens(system_prompt)} tokens")
-        logger.info(f"Aktuell request_text är {self._count_tokens(request_text)} tokens")
+        logger.debug(f"Aktuell system-prompt är {self._count_tokens(system_prompt)} tokens")
+        logger.debug(f"Aktuell request_text är {self._count_tokens(request_text)} tokens")
         
         try:
             response = self.openai_client.chat.completions.create(
-                model=model,
+                model=model if model else self.DEFAULT_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": request_text}
@@ -222,6 +258,22 @@ class JBGAnnualReportAnalyzer:
                 return False
         return False
 
+    def _prompt_instructions_pdf_page_offset(self):
+        
+        system_prompt = """
+        Du får ett textutdrag från en PDF-sida. Försök analysera skillnaden mellan den faktiska sidpositionen 
+        i dokumentet (PDF-sidnummer) och det tryckta sidnumret som står i dokumentets innehåll. 
+        Svaret ska vara:
+        - En **ensam siffra**: skillnaden mellan PDF-sidnummer och tryckt nummer
+        - Om det inte finns något tryckt nummer i utdraget, skriv siffran 0
+
+        **Exempel:**
+        Om du läser text från PDF-sida 3, och det står "2" som tryckt sidnummer, ska svaret vara: 1
+
+        Svara alltid enbart med en siffra.
+        """
+        return system_prompt
+
     def do_analysis(self, fil: Path, output_path: Path, model: str = "gpt-4o") -> Path:
         logger.info(f"Startar analys av fil: {fil.name}")
 
@@ -240,16 +292,21 @@ class JBGAnnualReportAnalyzer:
 
         total_result = []
 
+        first_openai_call = True
         for pdf_path in pdf_files:
             logger.info(f"Extraherar text från: {pdf_path.name}")
             full_text = self._extract_text_from_pdf(pdf_path)
-            chunks = self._chunk_text(full_text, max_tokens=MAX_TOKENS, model=model)
+            chunks = self._chunk_text(full_text, max_tokens=self.MAX_TOKENS, model=model)
             logger.info(f"{len(chunks)} chunk(s) genererade för {pdf_path.name}")
             partial_result = []
             for i, chunk in enumerate(chunks):
                 prompt = self._build_system_prompt()
                 request = self._build_request_text(chunk)
                 try:
+                    if first_openai_call:
+                        first_openai_call = False
+                    else:
+                        time.sleep(self.DEFAULT_LONG_SLEEP_TIME)
                     logger.info(f"Skickar chunk {i+1}/{len(chunks)} till GPT...")
                     response = self._make_openai_api_call(prompt, request, model)
                     if DEBUG: logger.debug(f"GPT-rådata:\n{response}")
