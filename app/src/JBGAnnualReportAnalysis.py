@@ -6,10 +6,21 @@ from openai import OpenAI
 import shutil
 import logging
 import fitz
+import tiktoken
+
+MAX_TOKENS = 4000
+
+DEBUG = False
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 class JBGAnnualReportAnalyzer:
+    FIELD_VALUE = "värde"
+    FIELD_SOURCE = "källa"
+    SOURCE_PREFIX = "sid."
+    STANDARD_ENCODING = "utf-8"
+    
     def __init__(self, upload_dir: Union[str, Path], instruction_path: Union[str, Path], metrics_path: Union[str, Path]):
         self.upload_dir = Path(upload_dir)
         self.instruction_path = Path(instruction_path)
@@ -21,50 +32,198 @@ class JBGAnnualReportAnalyzer:
             zip_ref.extractall(self.upload_dir)
         return [f for f in self.upload_dir.glob("*.pdf")]
 
-    def _load_instruction(self) -> str:
-        return self.instruction_path.read_text(encoding="utf-8")
-
-    def _load_metrics(self) -> str:
-        metrics = json.loads(self.metrics_path.read_text(encoding="utf-8"))
-        return json.dumps(metrics, ensure_ascii=False, indent=2)
-
     def _extract_text_from_pdf(self, pdf_path: Path) -> str:
         try:
             doc = fitz.open(pdf_path)
-            return "\n\n".join([f"[Sida {i+1}]\n" + page.get_text() for i, page in enumerate(doc)])
+            #return "\n\n".join([f"[Sida {i+1}]\n" + page.get_text() for i, page in enumerate(doc)])
+            return "\n\n".join([f"[Sida {page.number + 1}]\n" + page.get_text() for page in doc])
         except Exception as e:
             logger.warning(f"Kunde inte extrahera text från {pdf_path.name}: {e}")
             return ""
-    
-    def _build_prompt(self, pdf_filenames: List[str]) -> str:
+
+    def _count_tokens(self, text: str, model: str = "gpt-4o") -> int:
+        enc = tiktoken.encoding_for_model(model)
+        return len(enc.encode(text))
+
+    def _chunk_text(self, text: str, max_tokens: int, model: str) -> List[str]:
+        words = text.split()
+        chunks, current_chunk = [], []
+        token_count = 0
+        for word in words:
+            token_count += self._count_tokens(word + " ", model)
+            current_chunk.append(word)
+            if token_count >= max_tokens:
+                chunks.append(" ".join(current_chunk))
+                current_chunk = []
+                token_count = 0
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+        return chunks
+
+    def _load_instruction(self) -> str:
+        return self.instruction_path.read_text(encoding=self.STANDARD_ENCODING)
+
+    def _load_metrics(self) -> str:
+        metrics = json.loads(self.metrics_path.read_text(encoding=self.STANDARD_ENCODING))
+        return json.dumps(metrics, ensure_ascii=False, indent=2)
+
+    def _build_request_text(self, extracted_text: str) -> str:
+       
+        request_text = f"""
+            Analysera följande årsredovisningsutdrag:
+            ----------------
+            {extracted_text}
+            ----------------
+            Returnera endast en giltig JSON-struktur enligt instruktionerna – ingen annan text.
+        """
+        return request_text
+
+    def _build_system_prompt(self):
+        
         instruction = self._load_instruction()
         metrics_json = self._load_metrics()
-
-        # Extrahera text för varje PDF
-        extracted_texts = []
-        for filename in pdf_filenames:
-            path = self.upload_dir / filename
-            extracted = self._extract_text_from_pdf(path)
-            if extracted:
-                extracted_texts.append(f"---\nInnehåll från {filename}:\n{extracted}")
-
-        dokumenttext = "\n\n".join(extracted_texts)
-
-        prompt = f"""{instruction}
-            Följande nyckeltal ska extraheras:
+        system_prompt = f"""
+            {instruction}
+            -------------
+            Följande key_numbers ska extraheras:
+            -------------
             {metrics_json}
-
-            Analysera följande årsredovisningar:
-
-            {dokumenttext}
-
-            Returnera svaret som en JSON-struktur enligt instruktionerna.
         """
-        return prompt
+        return system_prompt
+    
+    def _make_openai_api_call(self, system_prompt, request_text: str, model: str) -> dict:
+        
+        logger.info(f"Aktuell system-prompt är {self._count_tokens(system_prompt)} tokens")
+        logger.info(f"Aktuell request_text är {self._count_tokens(request_text)} tokens")
+        
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": request_text}
+                ],
+                temperature=0.5
+            )
+        except Exception as ex:
+            logger.error(f"Fel i anrop till OpenAI. GPT-response:\n{response}")
+            return ""
+        else:
+            if DEBUG: logger.debug(f"GPT-response:\n{response}")
+            return response.choices[0].message.content.strip()
 
-    def do_analysis(self, fil: Path, output_path: Path, the_model: str = "gtp-4o") -> Path:
+    def _clean_presumed_prefixed_json(self, presumed_prefixed_json):
+        if presumed_prefixed_json.startswith("```json"):
+            presumed_prefixed_json = presumed_prefixed_json.removeprefix("```json").strip()
+        if presumed_prefixed_json.endswith("```"):
+            presumed_prefixed_json = presumed_prefixed_json.removesuffix("```").strip()
+        return presumed_prefixed_json
+    
+    def _merge_json_objects(self, json_list: List[dict]) -> dict:
+        
+        result = {}
+        for obj in json_list:
+            for key, value in obj.items():
+                if key not in result:
+                    result[key] = value
+                else:
+                    result[key].update(value if isinstance(value, dict) else {f"extra_{key}": value})
+        
+        return result
+    
+    def _merge_json_fund_data(self, data):
+        
+        # Choose the longest name assuming it's the most descriptive
+        preferred_name = max(data.keys(), key=len)
+        
+        # Build a new JSON structure with only one name
+        merged = {preferred_name: {}}
+        
+        conflicts = []
+
+        for fund_name, year_data in data.items():
+            for year, indicators in year_data.items():
+                if year not in merged[preferred_name]:
+                    merged[preferred_name][year] = {}
+
+                for key, value in indicators.items():
+                    if key not in merged[preferred_name][year]:
+                        merged[preferred_name][year][key] = value
+                    else:
+                        # Conflict detected
+                        existing = merged[preferred_name][year][key]
+                        if existing != value:
+                            # Store as list if conflict
+                            if not isinstance(existing, list):
+                                merged[preferred_name][year][key] = [existing]
+                            merged[preferred_name][year][key].append(value)
+                            conflicts.append((year, key, existing, value))
+        
+        return merged, conflicts
+    
+    def _merge_equal_values_json_objects(self, json_obj: dict) -> tuple[dict, int]:
+        
+        num_consolidated = 0
+        for fund, year_data in json_obj.items():
+            for year, metrics in year_data.items():
+                consolidated = {}
+                for key, value in metrics.items():
+                    if key in consolidated:
+                        continue
+                    # Nytt: Hantera listor med dictar
+                    if isinstance(value, list) and all(isinstance(v, dict) for v in value):
+                        grouped = {}
+                        for v in value:
+                            val = v.get(self.FIELD_VALUE)
+                            src = v.get(self.FIELD_SOURCE, "")
+                            if val not in grouped:
+                                grouped[val] = set()
+                            grouped[val].update(s.strip() for s in src.replace(self.SOURCE_PREFIX, "").split(",") if s.strip())
+                        for val, srcs in grouped.items():
+                            consolidated[key] = {
+                                self.FIELD_VALUE: val,
+                                self.FIELD_SOURCE: f"{self.SOURCE_PREFIX} {', '.join(sorted(srcs))}"
+                            }
+                            if len(srcs) > 1:
+                                num_consolidated += len(srcs) - 1
+                    else:
+                        similar_entries = [
+                            (alt_key, alt_value)
+                            for alt_key, alt_value in metrics.items()
+                            if alt_key != key and alt_key.startswith(key)
+                        ]
+                        main_value = value.get(self.FIELD_VALUE) if isinstance(value, dict) else None
+                        sources = set()
+                        all_entries = [(key, value)] + similar_entries
+                        for alt_key, alt_val in all_entries:
+                            if isinstance(alt_val, dict) and alt_val.get(self.FIELD_VALUE) == main_value:
+                                source = alt_val.get(self.FIELD_SOURCE, "")
+                                sources.update(s.strip() for s in source.replace(self.SOURCE_PREFIX, "").split(","))
+                        if sources and main_value is not None:
+                            consolidated[key] = {
+                                self.FIELD_VALUE: main_value,
+                                self.FIELD_SOURCE: f"{self.SOURCE_PREFIX} {', '.join(sorted(sources))}"
+                            }
+                            num_consolidated += len(sources) - 1
+                        else:
+                            consolidated[key] = value
+                json_obj[fund][year] = consolidated
+        
+        return json_obj, num_consolidated
+    
+    def _is_valid_numeric(self, val) -> bool:
+        if isinstance(val, (int, float)):
+            return True
+        if isinstance(val, str):
+            try:
+                float(val.replace(" ", "").replace("kr", "").replace(",", "."))
+                return True
+            except ValueError:
+                return False
+        return False
+
+    def do_analysis(self, fil: Path, output_path: Path, model: str = "gpt-4o") -> Path:
         logger.info(f"Startar analys av fil: {fil.name}")
-        logger.info(f"Modell som används: {the_model}")
 
         if fil.suffix.lower() == ".zip":
             logger.info("Extraherar ZIP...")
@@ -75,30 +234,50 @@ class JBGAnnualReportAnalyzer:
             if fil.resolve() != target_path.resolve():
                 shutil.copy(fil, target_path)
             pdf_files = [target_path]
-            logger.info("PDF klar för analys.")
         else:
             logger.error("Ogiltig filtyp.")
             raise ValueError("Endast .pdf eller .zip accepteras")
 
-        logger.info(f"Bygger prompt för {len(pdf_files)} fil(er)...")
-        prompt = self._build_prompt([f.name for f in pdf_files])
-        logger.info("Skickar prompt till OpenAI...")
+        total_result = []
 
-        try:
-            response = self.openai_client.chat.completions.create(
-                model = the_model,
-                messages = [
-                    {"role": "system", "content": "Du är en expert på ekonomisk rapportanalys."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature = 0.5
-            )
-            logger.info("Svar mottaget från GPT.")
-        except Exception as e:
-            logger.error(f"Fel vid GPT-anrop: {e}")
-            raise
+        for pdf_path in pdf_files:
+            logger.info(f"Extraherar text från: {pdf_path.name}")
+            full_text = self._extract_text_from_pdf(pdf_path)
+            chunks = self._chunk_text(full_text, max_tokens=MAX_TOKENS, model=model)
+            logger.info(f"{len(chunks)} chunk(s) genererade för {pdf_path.name}")
+            partial_result = []
+            for i, chunk in enumerate(chunks):
+                prompt = self._build_system_prompt()
+                request = self._build_request_text(chunk)
+                try:
+                    logger.info(f"Skickar chunk {i+1}/{len(chunks)} till GPT...")
+                    response = self._make_openai_api_call(prompt, request, model)
+                    if DEBUG: logger.debug(f"GPT-rådata:\n{response}")
+                    response = self._clean_presumed_prefixed_json(response)
+                    if not response.strip().startswith("{"):
+                        logger.warning("GPT-svar är inte giltig JSON – hoppar över.")
+                        continue
+                    try:
+                        parsed = json.loads(response)
+                        partial_result.append(parsed)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Misslyckades ladda JSON: {e}")
+                        continue
+                except Exception as e:
+                    logger.error(f"Fel vid GPT-anrop chunk {i+1}: {e}")
+                    continue
+            appended_result = self._merge_json_objects(partial_result)
+            appended_result, conflicts = self._merge_json_fund_data(appended_result)
+            if conflicts:
+                logger.warning(f"Last merge of JSON data resulted in {len(conflicts)} conflicts: {conflicts}")
+                appended_result, num_merged_values = self._merge_equal_values_json_objects(appended_result)
+                if num_merged_values > 0:
+                     logger.info(f"Merged {num_merged_values} duplicate values in appended JSON structure")
+                else:
+                    logger.warning(f"No conclicts were merged.")
+            total_result.append(appended_result)
 
-        result_json = response.choices[0].message.content.strip()
-        output_path.write_text(result_json, encoding="utf-8")
+        final_result = self._merge_json_objects(total_result)
+        output_path.write_text(json.dumps(final_result, ensure_ascii=False, indent=2), encoding=self.STANDARD_ENCODING)
         logger.info(f"Analysresultat sparat till: {output_path}")
         return output_path

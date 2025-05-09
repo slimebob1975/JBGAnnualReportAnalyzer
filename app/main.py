@@ -97,7 +97,7 @@ async def upload_file(
         analys.openai_client = OpenAI(api_key=apikey)
 
         output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat.json"
-        analys_result_path = analys.do_analysis(saved_path, output_path, the_model=model)
+        analys_result_path = analys.do_analysis(saved_path, output_path, model=model)
         resultat_json = json.loads(analys_result_path.read_text(encoding="utf-8"))
 
         return templates.TemplateResponse("index.html", {
