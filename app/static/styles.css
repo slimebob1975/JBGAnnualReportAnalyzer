@@ -113,3 +113,26 @@ pre {
     text-align: center;
     margin-top: 20px;
 }
+
+/* Download link, back button */
+#download-panel {
+    background-color: #e9f7ef;
+    border: 1px solid #c3e6cb;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-top: 1rem;
+}
+
+.back-button {
+    display: inline-block;
+    margin-top: 0.5rem;
+    padding: 0.4rem 0.8rem;
+    background-color: #ddd;
+    border-radius: 4px;
+    text-decoration: none;
+    color: #333;
+}
+
+.back-button:hover {
+    background-color: #ccc;
+}

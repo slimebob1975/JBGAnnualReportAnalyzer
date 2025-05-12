@@ -43,8 +43,11 @@
             <p style="color: green;">{{ message }}</p>
         {% endif %}
 
-        {% if download_filename %}
-            <p><a href="/download/{{ download_filename }}" download>Ladda ner resultatfil ({{ download_filename }})</a></p>
+       {% if download_filename %}
+            <div id="download-panel">
+                <p><a href="/download/{{ download_filename }}" download>Ladda ner resultatfil ({{ download_filename }})</a></p>
+                <p><a href="/" class="back-button">⬅️ Tillbaka till start</a></p>
+            </div>
         {% endif %}
 
          <!-- A spinner that spins while executing -->

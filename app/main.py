@@ -17,7 +17,7 @@ app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
-TITLE = "JBG nyckeltalsanalys för a-kassorna"
+TITLE = "JBG nyckeltalsanalys"
 SUBTITLE = "Obs! För .PDF (eller .ZIP av .PDF)"
 INVALID_FILETYPE_FOR = "Ogiltig filtyp för"
 FILES_ALLOWED = "Endast pdf eller zip av pdf tillåtes"
@@ -110,7 +110,10 @@ async def upload_file(
 
         elif format == "xlsx":
             output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat_by_fund.xlsx"
-            converter.to_excel(output_path, by="fund")
+            converter.to_excel_by_year(
+                output_path, 
+                key_def_path=BASE_DIR / "prompt" / "json" / "nyckeltalsdefinitioner.json"
+            )
 
         elif format == "json":
             # Already written by `do_analysis` → no action needed

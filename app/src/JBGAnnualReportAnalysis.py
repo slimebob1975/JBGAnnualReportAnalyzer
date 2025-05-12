@@ -9,8 +9,6 @@ import fitz
 import tiktoken
 import time
 
-DEBUG = False
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -21,6 +19,8 @@ class JBGAnnualReportAnalyzer:
     STANDARD_ENCODING = "utf-8"
     PAGE_OFFSET = 0
     OFFSET_LIMIT = 99
+    MIN_CHECK_OFFSETS = 5
+    MIN_OFFSET_AGREEMENT_RATE = 0.8
     MAX_TOKENS = 4000
     DEFAULT_MODEL = "gpt-4o"
     DEFAULT_SHORT_SLEEP_TIME = 1
@@ -52,15 +52,22 @@ class JBGAnnualReportAnalyzer:
                 else:
                     time.sleep(self.DEFAULT_SHORT_SLEEP_TIME)
                 response = self._make_openai_api_call(prompt, f"[Sida {i}]:\n" + page.get_text())
-                if DEBUG: logger.debug(f"GPT-rådata:\n{response}")
+                logger.debug(f"GPT-rådata:\n{response}")
                 try:
                     new_offset = int(response.strip())
+                except Exception as ex:
+                    logger.warning(f"Could not extract page_offset from response: {response} on page {i}")
+                    continue
+                else:
                     if abs(new_offset) > self.OFFSET_LIMIT:
                         continue
                     offsets[new_offset] = offsets.get(new_offset, 0) + 1
+                    logger.debug(f"Calculated offsets: {offsets}")
                     page_offset = max(offsets, key=offsets.get)
-                except Exception as ex:
-                    logger.warning(f"Could not extract page_offset from response: {response} on page {i}")
+                    page_offset_rate = float(max(offsets.values())) / float(sum(offsets.values())) 
+                    logger.debug(f"Current offset: {page_offset} with agreement rate: {page_offset_rate}")
+                    if page_offset_rate >= self.MIN_OFFSET_AGREEMENT_RATE and i >= self.MIN_CHECK_OFFSETS:
+                        logger.info(f"Breaking offset calculation loop at {i}th iteration with {round(page_offset_rate,2)} rate")
             return page_offset
         except Exception as e:
             logger.warning(f"Could not extract pdf page number offset from {pdf_path.name}: {e}. Using standard value.")
@@ -145,7 +152,7 @@ class JBGAnnualReportAnalyzer:
             logger.error(f"Fel i anrop till OpenAI. GPT-response:\n{response}")
             return ""
         else:
-            if DEBUG: logger.debug(f"GPT-response:\n{response}")
+            logger.debug(f"GPT-response:\n{response}")
             return response.choices[0].message.content.strip()
 
     def _clean_presumed_prefixed_json(self, presumed_prefixed_json):
@@ -168,7 +175,7 @@ class JBGAnnualReportAnalyzer:
         return result
     
     def _merge_json_fund_data(self, data):
-        
+                
         # Choose the longest name assuming it's the most descriptive
         preferred_name = max(data.keys(), key=len)
         
@@ -184,11 +191,15 @@ class JBGAnnualReportAnalyzer:
 
                 for key, value in indicators.items():
                     if key not in merged[preferred_name][year]:
-                        merged[preferred_name][year][key] = value
+                        if value is None:
+                            continue
+                        else:
+                            merged[preferred_name][year][key] = value
                     else:
                         # Conflict detected
                         existing = merged[preferred_name][year][key]
                         if existing != value:
+                            
                             # Store as list if conflict
                             if not isinstance(existing, list):
                                 merged[preferred_name][year][key] = [existing]
@@ -197,7 +208,7 @@ class JBGAnnualReportAnalyzer:
         
         return merged, conflicts
     
-    def _merge_equal_values_json_objects(self, json_obj: dict) -> tuple[dict, int]:
+    def _merge_conflicted_values_json_objects(self, json_obj: dict) -> tuple[dict, int]:
         
         num_consolidated = 0
         for fund, year_data in json_obj.items():
@@ -210,8 +221,8 @@ class JBGAnnualReportAnalyzer:
                     if isinstance(value, list) and all(isinstance(v, dict) for v in value):
                         grouped = {}
                         for v in value:
-                            val = v.get(self.FIELD_VALUE)
-                            src = v.get(self.FIELD_SOURCE, "")
+                            val = v.get(self.FIELD_VALUE, "")
+                            src = v.get(self.FIELD_SOURCE, "") 
                             if val not in grouped:
                                 grouped[val] = set()
                             grouped[val].update(s.strip() for s in src.replace(self.SOURCE_PREFIX, "").split(",") if s.strip())
@@ -309,7 +320,7 @@ class JBGAnnualReportAnalyzer:
                         time.sleep(self.DEFAULT_LONG_SLEEP_TIME)
                     logger.info(f"Skickar chunk {i+1}/{len(chunks)} till GPT...")
                     response = self._make_openai_api_call(prompt, request, model)
-                    if DEBUG: logger.debug(f"GPT-rådata:\n{response}")
+                    logger.debug(f"GPT-rådata:\n{response}")
                     response = self._clean_presumed_prefixed_json(response)
                     if not response.strip().startswith("{"):
                         logger.warning("GPT-svar är inte giltig JSON – hoppar över.")
@@ -327,7 +338,7 @@ class JBGAnnualReportAnalyzer:
             appended_result, conflicts = self._merge_json_fund_data(appended_result)
             if conflicts:
                 logger.warning(f"Last merge of JSON data resulted in {len(conflicts)} conflicts: {conflicts}")
-                appended_result, num_merged_values = self._merge_equal_values_json_objects(appended_result)
+                appended_result, num_merged_values = self._merge_conflicted_values_json_objects(appended_result)
                 if num_merged_values > 0:
                      logger.info(f"Merged {num_merged_values} duplicate values in appended JSON structure")
                 else:
