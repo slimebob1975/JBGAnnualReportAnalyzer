@@ -24,20 +24,8 @@
     "Grupp": "📊 Balansposter"
   },
   {
-    "Nyckeltal": "Justerad balansomslutning att registrera i statistikdatabasen",
-    "Beskrivning": "Ett justerat mått på balansomslutning där vissa fordringar (t.ex. källskatt, återkrav) exkluderas",
-    "Formel": "Balansomslutning - fordringar statligt bidrag - felaktig ersättning - källskatt",
-    "Grupp": "📊 Balansposter"
-  },
-  {
     "Nyckeltal": "Omsättningstillgångar",
     "Beskrivning": "Tillgångar som är avsedda att omsättas inom ett år, exempelvis kassa, kundfordringar och kortfristiga placeringar",
-    "Formel": "",
-    "Grupp": "📊 Balansposter"
-  },
-  {
-    "Nyckeltal": "Justerade omsättningstillgångar att registrera i statistikdatabasen",
-    "Beskrivning": "Omsättningstillgångar exklusive vissa poster som ej ingår i statistikdatabasen",
     "Formel": "",
     "Grupp": "📊 Balansposter"
   },
@@ -60,34 +48,10 @@
     "Grupp": "📉 Skulder och åtaganden"
   },
   {
-    "Nyckeltal": "Justerade kortfristiga skulder att registrera i statistikdatabasen",
-    "Beskrivning": "Kortfristiga skulder efter justering för poster som ej ingår i statistikdatabasen",
-    "Formel": "",
-    "Grupp": "📉 Skulder och åtaganden"
-  },
-  {
     "Nyckeltal": "Eget kapital",
     "Beskrivning": "Skillnaden mellan tillgångar och skulder",
     "Formel": "Från balansräkning",
     "Grupp": "📊 Balansposter"
-  },
-  {
-    "Nyckeltal": "Justerad kassalikviditet",
-    "Beskrivning": "Likviditetsmått efter justeringar för relevanta poster",
-    "Formel": "Justerade omsättningstillgångar / Justerade kortfristiga skulder",
-    "Grupp": "💼 Likviditet och intäkter"
-  },
-  {
-    "Nyckeltal": "Justerad soliditet",
-    "Beskrivning": "Soliditet efter justeringar för poster som ej ska räknas med",
-    "Formel": "Eget kapital / Justerad balansomslutning",
-    "Grupp": "📐Finansiella nyckeltal"
-  },
-  {
-    "Nyckeltal": "Beräkning kostnadstäckning eget kapital",
-    "Beskrivning": "Relation mellan eget kapital och administrationskostnader",
-    "Formel": "Eget kapital / Administrationskostnader",
-    "Grupp": "📐Finansiella nyckeltal"
   },
   {
     "Nyckeltal": "Finansieringsavgift",
@@ -102,18 +66,6 @@
     "Grupp": "💸 Kostnader"
   },
   {
-    "Nyckeltal": "Justerad kostnadstäckning eget kapital",
-    "Beskrivning": "Kostnadstäckning justerad för poster som ej ska räknas med",
-    "Formel": "",
-    "Grupp": "📐Finansiella nyckeltal"
-  },
-  {
-    "Nyckeltal": "Beräkning kostnadstäckning likvida medel",
-    "Beskrivning": "Mäter hur väl likvida medel täcker administrationskostnader",
-    "Formel": "Likvida medel / Administrationskostnader",
-    "Grupp": "📐Finansiella nyckeltal"
-  },
-  {
     "Nyckeltal": "Kassa och bank",
     "Beskrivning": "Kassa och bank",
     "Formel": "Från balansräkning",
@@ -126,9 +78,33 @@
     "Grupp": "💼 Likviditet och intäkter"
   },
   {
-    "Nyckeltal": "Justerad kostnadstäckning likvida medel",
-    "Beskrivning": "Kostnadstäckning justerat med faktiska likvida medel",
+    "Nyckeltal": "Utgående avsättningar",
+    "Beskrivning": "Skulder av osäker storlek eller förfallotidpunkt, t.ex. för framtida kostnader",
     "Formel": "",
-    "Grupp": "📐Finansiella nyckeltal"
+    "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
+  },
+  {
+    "Nyckeltal": "Eftergift",
+    "Beskrivning": "Avstående från krav på återbetalning, vanligtvis kopplat till tidigare felaktigt utbetald ersättning",
+    "Formel": "",
+    "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
+  },
+  {
+    "Nyckeltal": "Osäkra fordringar",
+    "Beskrivning": "Fordringar där det finns tveksamhet kring om de kommer att bli betalda",
+    "Formel": "",
+    "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
+  },
+  {
+    "Nyckeltal": "Medlemsavgiftsintäkter",
+    "Beskrivning": "Intäkter från medlemmars avgifter till a-kassan",
+    "Formel": "",
+    "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
+  },
+   {
+    "Nyckeltal": "Summa finansiella poster",
+    "Beskrivning": "Netto av ränteintäkter, räntekostnader och andra finansiella intäkter/kostnader",
+    "Formel": "",
+    "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
   }
 ]
