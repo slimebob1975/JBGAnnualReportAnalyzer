@@ -26,11 +26,26 @@ class JBGAnnualReportAnalyzer:
     DEFAULT_SHORT_SLEEP_TIME = 1
     DEFAULT_LONG_SLEEP_TIME = 5
     
-    def __init__(self, upload_dir: Union[str, Path], instruction_path: Union[str, Path], metrics_path: Union[str, Path]):
-        self.upload_dir = Path(upload_dir)
+    def __init__(
+        self,
+        upload_dir: Union[str, Path, List[Union[str, Path]]],
+        instruction_path: Union[str, Path],
+        metrics_path: Union[str, Path]
+    ):
+        # Accept list of paths or a folder
+        if isinstance(upload_dir, (list, tuple)):
+            self.upload_files = [Path(f) for f in upload_dir]
+        else:
+            upload_path = Path(upload_dir)
+            if not upload_path.exists():
+                raise FileNotFoundError(f"Path does not exist: {upload_path}")
+            
+            # Search recursively for PDFs
+            self.upload_files = list(upload_path.rglob("*.pdf"))
+
         self.instruction_path = Path(instruction_path)
         self.metrics_path = Path(metrics_path)
-        self.openai_client = OpenAI()  # requires OPENAI_API_KEY
+        self.openai_client = OpenAI()
 
     def _extract_zip(self, zip_path: Path) -> List[Path]:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
@@ -290,23 +305,14 @@ class JBGAnnualReportAnalyzer:
     def do_analysis(self, fil: Path, output_path: Path, model: str = "gpt-4o") -> Path:
         logger.info(f"Startar analys av fil: {fil.name}")
 
-        if fil.suffix.lower() == ".zip":
-            logger.info("Extraherar ZIP...")
-            pdf_files = self._extract_zip(fil)
-            logger.info(f"{len(pdf_files)} PDF-filer extraherade.")
-        elif fil.suffix.lower() == ".pdf":
-            target_path = self.upload_dir / fil.name
-            if fil.resolve() != target_path.resolve():
-                shutil.copy(fil, target_path)
-            pdf_files = [target_path]
-        else:
-            logger.error("Ogiltig filtyp.")
-            raise ValueError("Endast .pdf eller .zip accepteras")
+        if not self.upload_files:
+            logger.error("No PDF files found for analysis.")
+            raise ValueError("No valid PDF files found.")
 
         total_result = []
 
         first_openai_call = True
-        for pdf_path in pdf_files:
+        for pdf_path in self.upload_files:
             logger.info(f"Extraherar text från: {pdf_path.name}")
             full_text = self._extract_text_from_pdf(pdf_path)
             chunks = self._chunk_text(full_text, max_tokens=self.MAX_TOKENS, model=model)

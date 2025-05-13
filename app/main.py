@@ -82,17 +82,29 @@ async def upload_file(
 
     try:
         extracted_files = []
+        
+        # If a zip file, examine the directory structure (if any) such that only PDF:s are found
         if file_ext == "zip":
             with zipfile.ZipFile(saved_path, 'r') as zip_ref:
-                zip_ref.extractall(UPLOAD_DIR)
-                extracted_files = list(zip_ref.namelist())
-                for extracted_filename in extracted_files:
-                    if extracted_filename.lower().split(".")[-1] != "pdf":
+                # List all files in the archive, including paths
+                zip_members = [info for info in zip_ref.infolist() if not info.is_dir()]
+                
+                # Validate all files are PDFs
+                for member in zip_members:
+                    if not member.filename.lower().endswith(".pdf"):
                         raise FileTypeException(
-                            message=f"{INVALID_FILETYPE_FOR}: {extracted_filename}. {FILES_ALLOWED}."
+                            message=f"{INVALID_FILETYPE_FOR}: {member.filename}. {FILES_ALLOWED}."
                         )
+                
+                # Extract all valid files
+                zip_ref.extractall(UPLOAD_DIR)
+                extracted_files = [member.filename for member in zip_members]
+        
+        # Single PDF
         elif file_ext == "pdf":
             extracted_files = [filename]
+            
+        # all other cases
         else:
             raise FileTypeException(
                 message=f"{INVALID_FILETYPE_FOR}: {filename}. {FILES_ALLOWED}."
