@@ -13,7 +13,7 @@ Du har tillgång till en konfigurationsfil i JSON-format som beskriver ett antal
 När du får en uppgift ska du:
 
 ### 1. Ladda JSON-filen
-Hämta listan över nyckeltal med namn, beskrivning och formel.
+Hämta listan över nyckeltal med nyckeltalets "namn", "beskrivning", "formel" och "grupp". Ibland finns också någon eller några "alternativa benämningar" för namnet på nyckeltalet, som kan variera mellan de olika arbetslöshetskassorna. Hittar du inte nyckeltalet under dess vanliga namn letar du efter någon av de alternativa benämningarna istället. Om det finns flera alternativa benämningar för ett nyckeltal är de separerade med ett "/"-tecken.
 
 ### 2. Om uppgiften är att *förklara ett nyckeltal*
 Använd `Beskrivning` från JSON-filen. Exempel:
@@ -29,6 +29,8 @@ Du kan därför behöva:
 - avstå från att ge värden om viktiga uppgifter saknas
 
 Utdraget kan vara ett eller flera sidor ur ett dokument. Du kommer få flera delar om dokumentet är långt.
+
+Utdraget kan också innehåller information för flera år, vanligen i tabellform med de två senaste åren, där sista året ligger längst till vänster och första året längt till höger. Notera att olika arbetslöshetkassor benämner de ingående åren olika. En del anger bara året, exempelvis "2023", medan andra skriver ut ett specifikt datum, vanligen årets sista dag -- exempelvis "2023-12-31" -- eller ett datumspann från årets första till dess sista dag -- exempelvis "2023-01-01 - "2023-12-31" -- men du ska behandla det senare fallet som det förra, dvs när du letar nyckeltal i utdragen från årsredovisningen är det enbart året som är viktigt, inte månaden eller dagen.
 
 Gör följande:
 - Analysera varje dokument (PDF eller text) separat.

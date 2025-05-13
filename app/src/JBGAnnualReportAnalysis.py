@@ -68,6 +68,8 @@ class JBGAnnualReportAnalyzer:
                     logger.debug(f"Current offset: {page_offset} with agreement rate: {page_offset_rate}")
                     if page_offset_rate >= self.MIN_OFFSET_AGREEMENT_RATE and i >= self.MIN_CHECK_OFFSETS:
                         logger.info(f"Breaking offset calculation loop at {i}th iteration with {round(page_offset_rate,2)} rate")
+                        logger.info(f"Final page numbering offset is {page_offset}")
+                        break
             return page_offset
         except Exception as e:
             logger.warning(f"Could not extract pdf page number offset from {pdf_path.name}: {e}. Using standard value.")

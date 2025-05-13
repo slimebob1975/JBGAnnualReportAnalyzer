@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import zipfile
 import json
-import uuid
+from typing import Optional
 import os
 from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
 from app.src.JBGJSONConverter import JsonConverter
@@ -60,8 +60,16 @@ async def upload_file(
     file: UploadFile = File(...),
     model: str = Form(...),
     apikey: str = Form(...),
-    format: str = Form(...)
+    format: str = Form(...),
+    sources: str = Form(...)
 ):
+    if sources == "yes":
+        logger.info("Will include sources in final output!")
+    elif sources == "no":
+        logger.info("Souces will be excluded from final output!")
+    else:
+        raise Exception(f"Illegal value of checkbox sources: {str(sources)}. Reason: {str(ex)}")
+    
     filename = file.filename
     file_ext = filename.lower().split(".")[-1]
 
@@ -102,7 +110,7 @@ async def upload_file(
         analys_result_path = analys.do_analysis(saved_path, json_output_path, model=model)
         resultat_json = json.loads(analys_result_path.read_text(encoding="utf-8"))
         
-        converter = JsonConverter(json_output_path)
+        converter = JsonConverter(json_output_path, include_sources=(sources == "yes"))
 
         if format == "csv":
             output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat.csv"
@@ -112,7 +120,8 @@ async def upload_file(
             output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat_by_fund.xlsx"
             converter.to_excel_by_year(
                 output_path, 
-                key_def_path=BASE_DIR / "prompt" / "json" / "nyckeltalsdefinitioner.json"
+                key_def_path=BASE_DIR / "prompt" / "json" / "nyckeltalsdefinitioner.json",
+                fund_names=BASE_DIR / "src" / "json" / "kassor.json"
             )
 
         elif format == "json":

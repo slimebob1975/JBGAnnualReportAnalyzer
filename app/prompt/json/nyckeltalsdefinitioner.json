@@ -1,108 +1,126 @@
 [
   {
     "Nyckeltal": "Balansomslutning",
+    "Alternativa benämningar": "",
     "Beskrivning": "Balansomslutningen visar summan av respektive sida i balansräkningen och fungerar som en kontrollpunkt för att bokföringen är korrekt",
     "Formel": "Summa tillgångar eller summa eget kapital och skulder",
     "Grupp": "📊 Balansposter"
   },
   {
     "Nyckeltal": "Fordringar statligt bidrag till arbetslöshetsersättning",
+    "Alternativa benämningar": "",
     "Beskrivning": "Belopp som a-kassan har rätt att få från staten för utbetald arbetslöshetsersättning",
     "Formel": "",
     "Grupp": "📊 Balansposter"
   },
   {
     "Nyckeltal": "Fordringar felaktig arbetslöshetsersättning",
+    "Alternativa benämningar": "",
     "Beskrivning": "Tillgång som uppstår när a-kassan har ett krav på återbetalning från medlemmar som fått för mycket ersättning",
     "Formel": "",
     "Grupp": "📊 Balansposter"
   },
   {
     "Nyckeltal": "Fordran källskatt arbetslöshetsersättning",
+    "Alternativa benämningar": "Källskatt, arbetslöshetsersättning",
     "Beskrivning": "Tillgång som avser innehållen källskatt på utbetald arbetslöshetsersättning",
     "Formel": "",
     "Grupp": "📊 Balansposter"
   },
   {
     "Nyckeltal": "Omsättningstillgångar",
+    "Alternativa benämningar": "Summa omsättningstillgångar",
     "Beskrivning": "Tillgångar som är avsedda att omsättas inom ett år, exempelvis kassa, kundfordringar och kortfristiga placeringar",
     "Formel": "",
     "Grupp": "📊 Balansposter"
   },
   {
     "Nyckeltal": "Skulder",
+    "Alternativa benämningar": "Summa skulder",
     "Beskrivning": "Summan av föreningens förpliktelser",
     "Formel": "",
     "Grupp": "📉 Skulder och åtaganden"
   },
   {
     "Nyckeltal": "Skulder arbetslöshetsersättning",
+    "Alternativa benämningar": "",
     "Beskrivning": "Skulder kopplade till utbetalningar av arbetslöshetsersättning",
     "Formel": "",
     "Grupp": "📉 Skulder och åtaganden"
   },
   {
     "Nyckeltal": "Skuld källskatt arbetslöshetsersättning",
+    "Alternativa benämningar": "Källskatt arbetslöshetsersättning",
     "Beskrivning": "Skuld avseende källskatt som ska vidarebefordras till Skatteverket",
     "Formel": "",
     "Grupp": "📉 Skulder och åtaganden"
   },
   {
     "Nyckeltal": "Eget kapital",
+    "Alternativa benämningar": "",
     "Beskrivning": "Skillnaden mellan tillgångar och skulder",
     "Formel": "Från balansräkning",
     "Grupp": "📊 Balansposter"
   },
   {
     "Nyckeltal": "Finansieringsavgift",
+    "Alternativa benämningar": "Summa avgifter till staten",
     "Beskrivning": "Avgift för finansiering av arbetslöshetsersättning",
     "Formel": "",
     "Grupp": "💸 Kostnader"
   },
   {
     "Nyckeltal": "Administrationskostnader",
+    "Alternativa benämningar": "Summa administrationskostnader",
     "Beskrivning": "Kostnader för administration",
     "Formel": "",
     "Grupp": "💸 Kostnader"
   },
   {
     "Nyckeltal": "Kassa och bank",
+    "Alternativa benämningar": "",
     "Beskrivning": "Kassa och bank",
     "Formel": "Från balansräkning",
     "Grupp": "💼 Likviditet och intäkter"
   },
   {
     "Nyckeltal": "Kortfristiga placeringar",
+    "Alternativa benämningar": "",
     "Beskrivning": "Placeringar som förfaller inom ett år",
     "Formel": "",
     "Grupp": "💼 Likviditet och intäkter"
   },
   {
     "Nyckeltal": "Utgående avsättningar",
+    "Alternativa benämningar": "",
     "Beskrivning": "Skulder av osäker storlek eller förfallotidpunkt, t.ex. för framtida kostnader",
     "Formel": "",
     "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
   },
   {
     "Nyckeltal": "Eftergift",
+    "Alternativa benämningar": "Årets eftergiftsbeslut",
     "Beskrivning": "Avstående från krav på återbetalning, vanligtvis kopplat till tidigare felaktigt utbetald ersättning",
     "Formel": "",
     "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
   },
   {
     "Nyckeltal": "Osäkra fordringar",
+    "Alternativa benämningar": "",
     "Beskrivning": "Fordringar där det finns tveksamhet kring om de kommer att bli betalda",
     "Formel": "",
     "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
   },
   {
     "Nyckeltal": "Medlemsavgiftsintäkter",
+    "Alternativa benämningar": "Medlemsavgifter",
     "Beskrivning": "Intäkter från medlemmars avgifter till a-kassan",
     "Formel": "",
     "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
   },
    {
     "Nyckeltal": "Summa finansiella poster",
+    "Alternativa benämningar": "",
     "Beskrivning": "Netto av ränteintäkter, räntekostnader och andra finansiella intäkter/kostnader",
     "Formel": "",
     "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
