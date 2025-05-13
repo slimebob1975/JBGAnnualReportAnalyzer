@@ -3,11 +3,12 @@ import zipfile
 import json
 from typing import List, Union
 from openai import OpenAI
-import shutil
+from app.src.JBGFileTypeException import FileTypeException 
 import logging
 import fitz
 import tiktoken
 import time
+import ocrmypdf
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -25,6 +26,7 @@ class JBGAnnualReportAnalyzer:
     DEFAULT_MODEL = "gpt-4o"
     DEFAULT_SHORT_SLEEP_TIME = 1
     DEFAULT_LONG_SLEEP_TIME = 5
+    TEXT_GAIN_FOR_OCR_CONVERSION = 1.5
     
     def __init__(
         self,
@@ -89,18 +91,53 @@ class JBGAnnualReportAnalyzer:
         except Exception as e:
             logger.warning(f"Could not extract pdf page number offset from {pdf_path.name}: {e}. Using standard value.")
             return self.PAGE_OFFSET
-    
-    def _extract_text_from_pdf(self, pdf_path: Path) -> str:
-        
+
+    def _extract_text_from_pdf_from_pdf(self, pdf_path: Path) -> str:
+
         try:
-            doc = fitz.open(pdf_path)
-            page_offset =  max(self._find_page_number_offset(pdf_path), 0)
-            logger.info(f"Using page offset as: {page_offset}")
-            return "\n\n".join([f"[Sida {page.number - page_offset}]\n" + page.get_text() for page in doc])
+            original_doc = fitz.open(pdf_path)
+            original_text = self._extract_text_from_pdf(original_doc, max(self._find_page_number_offset(pdf_path), 0)).strip()
+            original_len = len(original_text)
+
+            logger.info(f"Original text length: {original_len}")
+
+            # Run OCR unconditionally
+            ocr_path = pdf_path.with_name(f"{pdf_path.stem}_ocr.pdf")
+            try:
+                ocrmypdf.ocr(
+                    input_file=str(pdf_path),
+                    output_file=str(ocr_path),
+                    language='swe',
+                    deskew=True
+                )
+                ocr_doc = fitz.open(ocr_path)
+                ocr_text = self._extract_text_from_pdf(ocr_doc, max(self._find_page_number_offset(ocr_path), 0)).strip()
+                ocr_len = len(ocr_text)
+                logger.info(f"OCR text length: {ocr_len}")
+
+                # Use OCR if text gain is significant (e.g. 50% more)
+                if ocr_len > original_len * self.TEXT_GAIN_FOR_OCR_CONVERSION:
+                    logger.info(f"Using OCR-enhanced version of {pdf_path.name}")
+                    return ocr_text
+                else:
+                    logger.info(f"OCR did not significantly improve content. Using original.")
+                    return original_text
+            except Exception as ocr_err:
+                logger.warning(f"OCR failed for {pdf_path.name}: {ocr_err}")
+                return original_text
         except Exception as e:
-            logger.warning(f"Kunde inte extrahera text från {pdf_path.name}: {e}")
+            logger.warning(f"Text extraction failed for {pdf_path.name}: {e}")
             return ""
 
+    def _document_contains_retreivable_text(self, doc) -> bool:
+        for page in doc:
+            if page.get_text().strip():  # strip whitespace to be safe
+                return True
+        return False
+
+    def _extract_text_from_pdf(self, doc, offset):
+            return "\n\n".join([f"[Sida {page.number - offset}]\n" + page.get_text() for page in doc])
+    
     def _count_tokens(self, text: str, model: str = "gpt-4o") -> int:
         enc = tiktoken.encoding_for_model(model)
         return len(enc.encode(text))
@@ -193,6 +230,10 @@ class JBGAnnualReportAnalyzer:
     
     def _merge_json_fund_data(self, data):
                 
+        # Check if what we get is really is a non-empty dictionary
+        if not (isinstance(data, dict) and bool(data)):
+            return None, None
+        
         # Choose the longest name assuming it's the most descriptive
         preferred_name = max(data.keys(), key=len)
         
@@ -314,7 +355,11 @@ class JBGAnnualReportAnalyzer:
         first_openai_call = True
         for pdf_path in self.upload_files:
             logger.info(f"Extraherar text från: {pdf_path.name}")
-            full_text = self._extract_text_from_pdf(pdf_path)
+            try:
+                full_text = self._extract_text_from_pdf_from_pdf(pdf_path)
+            except FileTypeException:
+                logger.warning(f"Skipping file {pdf_path} since I could not extract any text from it (perhaps it was scanned?)")
+                continue
             chunks = self._chunk_text(full_text, max_tokens=self.MAX_TOKENS, model=model)
             logger.info(f"{len(chunks)} chunk(s) genererade för {pdf_path.name}")
             partial_result = []
@@ -343,17 +388,22 @@ class JBGAnnualReportAnalyzer:
                     logger.error(f"Fel vid GPT-anrop chunk {i+1}: {e}")
                     continue
             appended_result = self._merge_json_objects(partial_result)
-            appended_result, conflicts = self._merge_json_fund_data(appended_result)
-            if conflicts:
-                logger.warning(f"Last merge of JSON data resulted in {len(conflicts)} conflicts: {conflicts}")
-                appended_result, num_merged_values = self._merge_conflicted_values_json_objects(appended_result)
-                if num_merged_values > 0:
-                     logger.info(f"Merged {num_merged_values} duplicate values in appended JSON structure")
-                else:
-                    logger.warning(f"No conclicts were merged.")
-            total_result.append(appended_result)
+            if appended_result:
+                appended_result, conflicts = self._merge_json_fund_data(appended_result)
+                if conflicts:
+                    logger.warning(f"Last merge of JSON data resulted in {len(conflicts)} conflicts: {conflicts}")
+                    appended_result, num_merged_values = self._merge_conflicted_values_json_objects(appended_result)
+                    if num_merged_values > 0:
+                        logger.info(f"Merged {num_merged_values} duplicate values in appended JSON structure")
+                    else:
+                        logger.warning(f"No conclicts were merged.")
+                total_result.append(appended_result)
 
-        final_result = self._merge_json_objects(total_result)
-        output_path.write_text(json.dumps(final_result, ensure_ascii=False, indent=2), encoding=self.STANDARD_ENCODING)
-        logger.info(f"Analysresultat sparat till: {output_path}")
-        return output_path
+        if total_result:
+            final_result = self._merge_json_objects(total_result)
+            output_path.write_text(json.dumps(final_result, ensure_ascii=False, indent=2), encoding=self.STANDARD_ENCODING)
+            logger.info(f"Analysresultat sparat till: {output_path}")
+            return output_path
+        else:
+            logger.warning(f"Inga resultat sparades.")
+            return None

@@ -9,6 +9,7 @@ import json
 from typing import Optional
 import os
 from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
+from app.src.JBGFileTypeException import FileTypeException, EmptyOutputException
 from app.src.JBGJSONConverter import JsonConverter
 from openai import OpenAI
 import logging
@@ -40,11 +41,6 @@ logger = logging.getLogger(__name__)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
-class FileTypeException(BaseException):
-    def __init__(self, message="Ogiltig filtyp"):
-        self.message = message
-        super().__init__(self.message)
-
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {
@@ -74,7 +70,10 @@ async def upload_file(
     file_ext = filename.lower().split(".")[-1]
 
     for f in UPLOAD_DIR.glob("*"):
-        f.unlink()
+        if f.is_file():
+            f.unlink()
+        elif f.is_dir():
+            shutil.rmtree(f)
 
     saved_path = UPLOAD_DIR / filename
     with saved_path.open("wb") as buffer:
@@ -120,39 +119,43 @@ async def upload_file(
 
         json_output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat.json"
         analys_result_path = analys.do_analysis(saved_path, json_output_path, model=model)
-        resultat_json = json.loads(analys_result_path.read_text(encoding="utf-8"))
-        
-        converter = JsonConverter(json_output_path, include_sources=(sources == "yes"))
+        if analys_result_path:
+            resultat_json = json.loads(analys_result_path.read_text(encoding="utf-8"))
+            
+            converter = JsonConverter(json_output_path, include_sources=(sources == "yes"))
 
-        if format == "csv":
-            output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat.csv"
-            converter.to_csv(output_path)
+            if format == "csv":
+                output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat.csv"
+                converter.to_csv(output_path)
 
-        elif format == "xlsx":
-            output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat_by_fund.xlsx"
-            converter.to_excel_by_year(
-                output_path, 
-                key_def_path=BASE_DIR / "prompt" / "json" / "nyckeltalsdefinitioner.json",
-                fund_names=BASE_DIR / "src" / "json" / "kassor.json"
-            )
+            elif format == "xlsx":
+                output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat_by_fund.xlsx"
+                converter.to_excel_by_year(
+                    output_path, 
+                    key_def_path=BASE_DIR / "prompt" / "json" / "nyckeltalsdefinitioner.json",
+                    fund_names=BASE_DIR / "src" / "json" / "kassor.json"
+                )
 
-        elif format == "json":
-            # Already written by `do_analysis` → no action needed
-            output_path = json_output_path
+            elif format == "json":
+                # Already written by `do_analysis` → no action needed
+                output_path = json_output_path
 
+            else:
+                raise ValueError("Ogiltigt format valt.")
+            
+            download_filename = output_path.name
+
+            return templates.TemplateResponse("index.html", {
+                "request": request,
+                "title": TITLE,
+                "subtitle": SUBTITLE,
+                "message": f"{len(extracted_files)} fil(er) analyserade.",
+                "resultat": json.dumps(resultat_json, indent=2, ensure_ascii=False),
+                "download_filename": download_filename
+            })
         else:
-            raise ValueError("Ogiltigt format valt.")
-        
-        download_filename = output_path.name
-
-        return templates.TemplateResponse("index.html", {
-            "request": request,
-            "title": TITLE,
-            "subtitle": SUBTITLE,
-            "message": f"{len(extracted_files)} fil(er) analyserade.",
-            "resultat": json.dumps(resultat_json, indent=2, ensure_ascii=False),
-            "download_filename": download_filename
-        })
+            logger.warning(f"Inget resultat")
+            raise EmptyOutputException(message="Ingen fil verkar ha analyserats")
 
     except FileTypeException as ex:
         logger.warning(f"Fel filtyp: {ex.message}")
@@ -163,8 +166,17 @@ async def upload_file(
             "message": f"{ex.message}"
         })
 
+    except EmptyOutputException as e:
+        logger.error(f"Ingen fil verkar ha analyserats: {str(e)}")
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "title": TITLE,
+            "subtitle": SUBTITLE,
+            "message": f"Ett fel uppstod vid nyckeltalsanalysen: {str(e)}"
+        })
+    
     except Exception as e:
-        logger.error(f"Fel vid analys: {str(e)}")
+        logger.error(f"Ett fel uppstod vid nyckeltalsanalysen: {str(e)}")
         raise(e)
         return templates.TemplateResponse("index.html", {
             "request": request,
