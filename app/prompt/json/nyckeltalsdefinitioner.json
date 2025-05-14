@@ -1,128 +1,146 @@
 [
   {
     "Nyckeltal": "Balansomslutning",
-    "Alternativa benämningar": "",
+    "Alternativa benämningar": "Balansräkning/Summa tillgångar/Summa eget kapital och skulder",
     "Beskrivning": "Balansomslutningen visar summan av respektive sida i balansräkningen och fungerar som en kontrollpunkt för att bokföringen är korrekt",
     "Formel": "Summa tillgångar eller summa eget kapital och skulder",
-    "Grupp": "📊 Balansposter"
+    "Grupp": "📊 Balansposter",
+    "Specifika instruktioner": "Identifieras oftast i balansräkningen som 'Summa tillgångar' eller 'Summa eget kapital och skulder'. Ange endast totalsumman från balansräkningens båda sidor."
   },
   {
     "Nyckeltal": "Fordringar statligt bidrag till arbetslöshetsersättning",
     "Alternativa benämningar": "",
     "Beskrivning": "Belopp som a-kassan har rätt att få från staten för utbetald arbetslöshetsersättning",
     "Formel": "",
-    "Grupp": "📊 Balansposter"
+    "Grupp": "📊 Balansposter",
+    "Specifika instruktioner": "Förekommer ibland under not 'Fordringar', eller specificerat med lång rubrik som inkluderar 'statligt bidrag'."
   },
   {
     "Nyckeltal": "Fordringar felaktig arbetslöshetsersättning",
     "Alternativa benämningar": "",
     "Beskrivning": "Tillgång som uppstår när a-kassan har ett krav på återbetalning från medlemmar som fått för mycket ersättning",
     "Formel": "",
-    "Grupp": "📊 Balansposter"
+    "Grupp": "📊 Balansposter",
+    "Specifika instruktioner": "Benämns ibland som 'felaktigt utbetald ersättning'. Leta i tillgångsdelen av balansräkning eller not kring fordringar."
   },
   {
     "Nyckeltal": "Fordran källskatt arbetslöshetsersättning",
-    "Alternativa benämningar": "Källskatt, arbetslöshetsersättning",
+    "Alternativa benämningar": "Källskatt, arbetslöshetsersättning/Källskatt arbetslöshetsersättning",
     "Beskrivning": "Tillgång som avser innehållen källskatt på utbetald arbetslöshetsersättning",
     "Formel": "",
-    "Grupp": "📊 Balansposter"
+    "Grupp": "📊 Balansposter",
+    "Specifika instruktioner": "Kan stå som 'källskatt' och vara placerad under övriga fordringar. Skilj mellan skuld och fordran på källskatt."
   },
   {
     "Nyckeltal": "Omsättningstillgångar",
     "Alternativa benämningar": "Summa omsättningstillgångar",
     "Beskrivning": "Tillgångar som är avsedda att omsättas inom ett år, exempelvis kassa, kundfordringar och kortfristiga placeringar",
     "Formel": "",
-    "Grupp": "📊 Balansposter"
+    "Grupp": "📊 Balansposter",
+    "Specifika instruktioner": "Sammanställning av kortfristiga tillgångar. Leta efter tydligt 'Summa omsättningstillgångar' i balansräkningen."
   },
   {
     "Nyckeltal": "Skulder",
     "Alternativa benämningar": "Summa skulder",
     "Beskrivning": "Summan av föreningens förpliktelser",
     "Formel": "",
-    "Grupp": "📉 Skulder och åtaganden"
+    "Grupp": "📉 Skulder och åtaganden",
+    "Specifika instruktioner": "Ange totalen av skulderna. Blanda inte in avsättningar eller eget kapital. Hittas ofta sist i skuldavsnittet."
   },
   {
     "Nyckeltal": "Skulder arbetslöshetsersättning",
     "Alternativa benämningar": "",
     "Beskrivning": "Skulder kopplade till utbetalningar av arbetslöshetsersättning",
     "Formel": "",
-    "Grupp": "📉 Skulder och åtaganden"
+    "Grupp": "📉 Skulder och åtaganden",
+    "Specifika instruktioner": "Sök i specifika rader där skulder relaterade till arbetslöshetsersättning är uppdelade. Kan ha egen not."
   },
   {
     "Nyckeltal": "Skuld källskatt arbetslöshetsersättning",
     "Alternativa benämningar": "Källskatt arbetslöshetsersättning",
     "Beskrivning": "Skuld avseende källskatt som ska vidarebefordras till Skatteverket",
     "Formel": "",
-    "Grupp": "📉 Skulder och åtaganden"
+    "Grupp": "📉 Skulder och åtaganden",
+    "Specifika instruktioner": "Liknar posten om fordran, men är en skuld. Leta under 'Skulder' eller 'Övriga skulder'."
   },
   {
     "Nyckeltal": "Eget kapital",
     "Alternativa benämningar": "",
     "Beskrivning": "Skillnaden mellan tillgångar och skulder",
     "Formel": "Från balansräkning",
-    "Grupp": "📊 Balansposter"
+    "Grupp": "📊 Balansposter",
+    "Specifika instruktioner": "Hämtas ur balansräkningen, ibland rubricerat som 'Summa eget kapital'. Blanda inte in skulder."
   },
   {
     "Nyckeltal": "Finansieringsavgift",
     "Alternativa benämningar": "Summa avgifter till staten",
     "Beskrivning": "Avgift för finansiering av arbetslöshetsersättning",
     "Formel": "",
-    "Grupp": "💸 Kostnader"
+    "Grupp": "💸 Kostnader",
+    "Specifika instruktioner": "Benämns ofta som 'avgifter till staten' eller 'finansieringsavgifter'. Återfinns i resultaträkningen."
   },
   {
     "Nyckeltal": "Administrationskostnader",
     "Alternativa benämningar": "Summa administrationskostnader",
     "Beskrivning": "Kostnader för administration",
     "Formel": "",
-    "Grupp": "💸 Kostnader"
+    "Grupp": "💸 Kostnader",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Kan vara uppdelad i delposter – summera vid behov."
   },
   {
     "Nyckeltal": "Kassa och bank",
     "Alternativa benämningar": "",
     "Beskrivning": "Kassa och bank",
     "Formel": "Från balansräkning",
-    "Grupp": "💼 Likviditet och intäkter"
+    "Grupp": "💼 Likviditet och intäkter",
+    "Specifika instruktioner": "Om både 'kassa' och 'bank' finns, summera dem. Återfinns bland omsättningstillgångar."
   },
   {
     "Nyckeltal": "Kortfristiga placeringar",
     "Alternativa benämningar": "",
     "Beskrivning": "Placeringar som förfaller inom ett år",
     "Formel": "",
-    "Grupp": "💼 Likviditet och intäkter"
+    "Grupp": "💼 Likviditet och intäkter",
+    "Specifika instruktioner": "Placeringspost i balansräkningen. Kan stå som 'värdepappersinnehav' eller 'finansiella placeringar'."
   },
   {
     "Nyckeltal": "Utgående avsättningar",
-    "Alternativa benämningar": "",
+    "Alternativa benämningar": "Summa avsättningar/Utgående avsättningar felaktig ersättning/Redovisade avsättningar",
     "Beskrivning": "Skulder av osäker storlek eller förfallotidpunkt, t.ex. för framtida kostnader",
     "Formel": "",
-    "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
+    "Grupp": "🗃 Övriga uppgifter från årsredovisningen",
+    "Specifika instruktioner": "Förekommer ofta som separat not. Välj posten som summerar avsättningarna. Skilj från övriga skulder."
   },
   {
     "Nyckeltal": "Eftergift",
     "Alternativa benämningar": "Årets eftergiftsbeslut",
     "Beskrivning": "Avstående från krav på återbetalning, vanligtvis kopplat till tidigare felaktigt utbetald ersättning",
     "Formel": "",
-    "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
+    "Grupp": "🗃 Övriga uppgifter från årsredovisningen",
+    "Specifika instruktioner": "Kan stå som 'Årets eftergiftsbeslut'. Även om beloppet är negativt (t.ex. -1 027), tolkas det som ett positivt eftergivet belopp."
   },
   {
     "Nyckeltal": "Osäkra fordringar",
     "Alternativa benämningar": "",
     "Beskrivning": "Fordringar där det finns tveksamhet kring om de kommer att bli betalda",
     "Formel": "",
-    "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
+    "Grupp": "🗃 Övriga uppgifter från årsredovisningen",
+    "Specifika instruktioner": "Benämns ibland som 'värderegleringar' eller 'osäkra kundfordringar'. Finns ofta som underpost i fordringar."
   },
   {
     "Nyckeltal": "Medlemsavgiftsintäkter",
     "Alternativa benämningar": "Medlemsavgifter",
     "Beskrivning": "Intäkter från medlemmars avgifter till a-kassan",
     "Formel": "",
-    "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
+    "Grupp": "🗃 Övriga uppgifter från årsredovisningen",
+    "Specifika instruktioner": "Benämns ibland bara 'Medlemsavgifter'. Hittas i resultaträkningen bland intäkter."
   },
-   {
+  {
     "Nyckeltal": "Summa finansiella poster",
     "Alternativa benämningar": "",
     "Beskrivning": "Netto av ränteintäkter, räntekostnader och andra finansiella intäkter/kostnader",
     "Formel": "",
-    "Grupp": "🗃 Övriga uppgifter från årsredovisningen"
+    "Grupp": "🗃 Övriga uppgifter från årsredovisningen",
+    "Specifika instruktioner": "Ofta summering av flera ränteintäkter/kostnader. Hittas i slutet av sektionen för finansiella poster i resultaträkningen."
   }
 ]

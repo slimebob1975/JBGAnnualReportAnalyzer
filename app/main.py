@@ -13,6 +13,7 @@ from app.src.JBGFileTypeException import FileTypeException, EmptyOutputException
 from app.src.JBGJSONConverter import JsonConverter
 from openai import OpenAI
 import logging
+from datetime import datetime
 
 app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent
@@ -26,7 +27,8 @@ FILES_ALLOWED = "Endast pdf eller zip av pdf tillåtes"
 # Loggning
 LOG_DIR = BASE_DIR / "log"
 LOG_DIR.mkdir(exist_ok=True)
-LOG_FILE = LOG_DIR / "app.log"
+timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+LOG_FILE = LOG_DIR / f"app_{timestamp}.log"
 
 logging.basicConfig(
     level=logging.INFO,

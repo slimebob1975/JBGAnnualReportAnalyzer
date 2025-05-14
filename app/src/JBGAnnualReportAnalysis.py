@@ -24,6 +24,8 @@ class JBGAnnualReportAnalyzer:
     MIN_OFFSET_AGREEMENT_RATE = 0.8
     MAX_TOKENS = 4000
     DEFAULT_MODEL = "gpt-4o"
+    DEFAULT_OPENAI_TEMPERATURE = 0.3
+    DEFAULT_OPENAI_TOP_P = 1
     DEFAULT_SHORT_SLEEP_TIME = 1
     DEFAULT_LONG_SLEEP_TIME = 5
     TEXT_GAIN_FOR_OCR_CONVERSION = 1.5
@@ -135,8 +137,33 @@ class JBGAnnualReportAnalyzer:
                 return True
         return False
 
-    def _extract_text_from_pdf(self, doc, offset):
-            return "\n\n".join([f"[Sida {page.number - offset}]\n" + page.get_text() for page in doc])
+    def _extract_text_from_pdf(self, doc, offset: int) -> str:
+        
+        def page_label(page_number, page_number_offset):
+            page_label = page_number - page_number_offset
+            if page_label > 0:
+                return page_label
+            else:
+                n = page_label + page_number_offset
+                return to_roman_numeral(n)
+            
+        def to_roman_numeral(n: int) -> str:
+            val_map = [
+                (1000, 'M'), (900, 'CM'), (500, 'D'), (400, 'CD'),
+                (100, 'C'), (90, 'XC'), (50, 'L'), (40, 'XL'),
+                (10, 'X'), (9, 'IX'), (5, 'V'), (4, 'IV'), (1, 'I')
+            ]
+            result = ""
+            for (value, numeral) in val_map:
+                while n >= value:
+                    result += numeral
+                    n -= value
+            return result
+        
+        return "\n\n".join([
+            f"[Sida {page_label(i+1, offset)}]\n{page.get_text()}"
+            for i, page in enumerate(doc)
+        ])
     
     def _count_tokens(self, text: str, model: str = "gpt-4o") -> int:
         enc = tiktoken.encoding_for_model(model)
@@ -182,7 +209,7 @@ class JBGAnnualReportAnalyzer:
         system_prompt = f"""
             {instruction}
             -------------
-            Följande key_numbers ska extraheras:
+            Följande nyckeltal ska extraheras:
             -------------
             {metrics_json}
         """
@@ -200,7 +227,8 @@ class JBGAnnualReportAnalyzer:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": request_text}
                 ],
-                temperature=0.5
+                temperature=self.DEFAULT_OPENAI_TEMPERATURE,
+                top_p=self.DEFAULT_OPENAI_TOP_P
             )
         except Exception as ex:
             logger.error(f"Fel i anrop till OpenAI. GPT-response:\n{response}")
@@ -230,6 +258,8 @@ class JBGAnnualReportAnalyzer:
     
     def _merge_json_fund_data(self, data):
                 
+        logger.debug(f"JSON data to be merged: {data}")
+        
         # Check if what we get is really is a non-empty dictionary
         if not (isinstance(data, dict) and bool(data)):
             return None, None
@@ -264,6 +294,7 @@ class JBGAnnualReportAnalyzer:
                             merged[preferred_name][year][key].append(value)
                             conflicts.append((year, key, existing, value))
         
+        logger.debug(f"JSON data after merge: {merged}")
         return merged, conflicts
     
     def _merge_conflicted_values_json_objects(self, json_obj: dict) -> tuple[dict, int]:
@@ -365,7 +396,9 @@ class JBGAnnualReportAnalyzer:
             partial_result = []
             for i, chunk in enumerate(chunks):
                 prompt = self._build_system_prompt()
+                logger.debug(f"Prompt {i}: {prompt}")
                 request = self._build_request_text(chunk)
+                logger.debug(f"Request {i}: {request}")
                 try:
                     if first_openai_call:
                         first_openai_call = False

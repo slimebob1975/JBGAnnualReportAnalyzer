@@ -168,19 +168,19 @@ class JsonConverter:
                 col_letter = get_column_letter(col)
                 ws.column_dimensions[col_letter].width = 25 if col == 1 else 15
 
-        # Adjust all column widths depening on longest string inside
-        for col in ws.columns:
-            max_length = 0
-            column = col[0].column  # Get numerical index (1-based)
-            column_letter = get_column_letter(column)
-            for cell in col:
-                try:
-                    if cell.value is not None:
-                        max_length = max(max_length, len(str(cell.value)))
-                except:
-                    pass
-            adjusted_width = max(8, min(max_length + 2, 40)) # Add padding but avoid extremes
-            ws.column_dimensions[column_letter].width = adjusted_width
+            # Adjust all column widths depening on longest string inside
+            for col in ws.columns:
+                max_length = 0
+                column = col[0].column  # Get numerical index (1-based)
+                column_letter = get_column_letter(column)
+                for cell in col:
+                    try:
+                        if cell.value is not None:
+                            max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+                adjusted_width = max(8, min(max_length + 2, 40)) # Add padding but avoid extremes
+                ws.column_dimensions[column_letter].width = adjusted_width
         
         # Save book and finish up
         wb.save(output_path)
