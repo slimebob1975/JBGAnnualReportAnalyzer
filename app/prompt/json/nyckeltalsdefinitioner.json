@@ -5,7 +5,7 @@
     "Beskrivning": "Balansomslutningen visar summan av respektive sida i balansräkningen och fungerar som en kontrollpunkt för att bokföringen är korrekt",
     "Formel": "Summa tillgångar eller summa eget kapital och skulder",
     "Grupp": "📊 Balansposter",
-    "Specifika instruktioner": "Identifieras oftast i balansräkningen som 'Summa tillgångar' eller 'Summa eget kapital och skulder'. Ange endast totalsumman från balansräkningens båda sidor."
+    "Specifika instruktioner": "Identifieras oftast i balansräkningen som 'Summa tillgångar' eller 'Summa eget kapital och skulder'. Ange endast totalsumman från balansräkningens båda sidor. Kan också ligger i en Flerårsöversikt."
   },
   {
     "Nyckeltal": "Fordringar statligt bidrag till arbetslöshetsersättning",
@@ -25,11 +25,11 @@
   },
   {
     "Nyckeltal": "Fordran källskatt arbetslöshetsersättning",
-    "Alternativa benämningar": "Källskatt, arbetslöshetsersättning/Källskatt arbetslöshetsersättning",
+    "Alternativa benämningar": "Källskatt, arbetslöshetsersättning/Källskatt arbetslöshetsersättning/källskatt",
     "Beskrivning": "Tillgång som avser innehållen källskatt på utbetald arbetslöshetsersättning",
     "Formel": "",
     "Grupp": "📊 Balansposter",
-    "Specifika instruktioner": "Kan stå som 'källskatt' och vara placerad under övriga fordringar. Skilj mellan skuld och fordran på källskatt."
+    "Specifika instruktioner": "Kan vara placerad under övriga fordringar. Skilj mellan skuld och fordran på källskatt."
   },
   {
     "Nyckeltal": "Omsättningstillgångar",
@@ -57,11 +57,11 @@
   },
   {
     "Nyckeltal": "Skuld källskatt arbetslöshetsersättning",
-    "Alternativa benämningar": "Källskatt arbetslöshetsersättning",
+    "Alternativa benämningar": "Källskatt arbetslöshetsersättning/källskatt",
     "Beskrivning": "Skuld avseende källskatt som ska vidarebefordras till Skatteverket",
     "Formel": "",
     "Grupp": "📉 Skulder och åtaganden",
-    "Specifika instruktioner": "Liknar posten om fordran, men är en skuld. Leta under 'Skulder' eller 'Övriga skulder'."
+    "Specifika instruktioner": "Liknar posten om fordran källskatt, men är en skuld. Leta under 'Skulder' eller 'Övriga skulder'."
   },
   {
     "Nyckeltal": "Eget kapital",

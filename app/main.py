@@ -9,7 +9,7 @@ import json
 from typing import Optional
 import os
 from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
-from app.src.JBGFileTypeException import FileTypeException, EmptyOutputException
+from app.src.JBGAnnualReportExceptions import FileTypeException, EmptyOutputException
 from app.src.JBGJSONConverter import JsonConverter
 from openai import OpenAI
 import logging

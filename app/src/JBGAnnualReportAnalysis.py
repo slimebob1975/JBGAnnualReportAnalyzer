@@ -3,7 +3,7 @@ import zipfile
 import json
 from typing import List, Union
 from openai import OpenAI
-from app.src.JBGFileTypeException import FileTypeException 
+from app.src.JBGAnnualReportExceptions import FileTypeException 
 import logging
 import fitz
 import tiktoken
@@ -11,7 +11,7 @@ import time
 import ocrmypdf
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 class JBGAnnualReportAnalyzer:
     FIELD_VALUE = "värde"
@@ -22,9 +22,11 @@ class JBGAnnualReportAnalyzer:
     OFFSET_LIMIT = 99
     MIN_CHECK_OFFSETS = 5
     MIN_OFFSET_AGREEMENT_RATE = 0.8
-    MAX_TOKENS = 4000
+    MAX_TOKENS = 3500
+    MAX_TOKEN_OVERLAP = 500
+    USE_TOKEN_OVERLAP = True
     DEFAULT_MODEL = "gpt-4o"
-    DEFAULT_OPENAI_TEMPERATURE = 0.3
+    DEFAULT_OPENAI_TEMPERATURE = 0.5
     DEFAULT_OPENAI_TOP_P = 1
     DEFAULT_SHORT_SLEEP_TIME = 1
     DEFAULT_LONG_SLEEP_TIME = 5
@@ -182,6 +184,52 @@ class JBGAnnualReportAnalyzer:
                 token_count = 0
         if current_chunk:
             chunks.append(" ".join(current_chunk))
+        return chunks
+
+    def _chunk_text_with_overlap(
+        self,
+        text: str,
+        max_tokens: int,
+        max_overlap_tokens: Union[int, float],
+        model: str = "gpt-4o"
+    ) -> List[str]:
+        
+        # Ladda rätt tokenisering beroende på modell
+        enc = tiktoken.encoding_for_model(model)
+        
+        # Tokenisera hela texten
+        tokens = enc.encode(text)
+        total_tokens = len(tokens)
+
+        # Om float: konvertera till int (andel av max_tokens)
+        if isinstance(max_overlap_tokens, float):
+            if not (0 < max_overlap_tokens < 1):
+                raise ValueError("Float-värde för max_overlap_tokens måste vara > 0 och < 1")
+            overlap = int(max_tokens * max_overlap_tokens)
+        elif isinstance(max_overlap_tokens, int):
+            overlap = max_overlap_tokens
+        else:
+            raise TypeError("max_overlap_tokens måste vara int eller float")
+
+        if overlap >= max_tokens:
+            raise ValueError("Överlapp får inte vara större än eller lika med max_tokens")
+
+        chunks = []
+        start = 0
+
+        while start < total_tokens:
+            end = min(start + max_tokens, total_tokens)
+            chunk_tokens = tokens[start:end]
+            chunk_text = enc.decode(chunk_tokens)
+            chunks.append(chunk_text.strip())
+
+            if end == total_tokens:
+                break
+            else:
+                start = end - overlap
+                if start < 0:
+                    start = 0
+
         return chunks
 
     def _load_instruction(self) -> str:
@@ -391,7 +439,12 @@ class JBGAnnualReportAnalyzer:
             except FileTypeException:
                 logger.warning(f"Skipping file {pdf_path} since I could not extract any text from it (perhaps it was scanned?)")
                 continue
-            chunks = self._chunk_text(full_text, max_tokens=self.MAX_TOKENS, model=model)
+            if self.USE_TOKEN_OVERLAP:
+                chunks = self._chunk_text_with_overlap(
+                    text=full_text, max_tokens=self.MAX_TOKENS, max_overlap_tokens=self.MAX_TOKEN_OVERLAP, model=model
+                    )
+            else:
+                chunks = self._chunk_text(full_text, max_tokens=self.MAX_TOKENS, model=model)
             logger.info(f"{len(chunks)} chunk(s) genererade för {pdf_path.name}")
             partial_result = []
             for i, chunk in enumerate(chunks):
