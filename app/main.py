@@ -23,6 +23,7 @@ TITLE = "JBG nyckeltalsanalys"
 SUBTITLE = "Obs! För .PDF (eller .ZIP av .PDF)"
 INVALID_FILETYPE_FOR = "Ogiltig filtyp för"
 FILES_ALLOWED = "Endast pdf eller zip av pdf tillåtes"
+USE_COMPRESSED_GPT = True
 
 # Loggning
 LOG_DIR = BASE_DIR / "log"
@@ -114,7 +115,9 @@ async def upload_file(
         os.environ["OPENAI_API_KEY"] = apikey
         analys = JBGAnnualReportAnalyzer(
             upload_dir=UPLOAD_DIR,
-            instruction_path=BASE_DIR / "prompt" / "GPT-instruktioner.md",
+            instruction_path=\
+                BASE_DIR / "prompt" / "GPT-instruktioner.md" if not USE_COMPRESSED_GPT else \
+                    BASE_DIR / "prompt" / "GPT-instruktioner_komprimerad.md",
             metrics_path=BASE_DIR / "prompt" / "json" / "nyckeltalsdefinitioner.json"
         )
         analys.openai_client = OpenAI(api_key=apikey)

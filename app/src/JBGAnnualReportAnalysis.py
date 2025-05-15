@@ -16,7 +16,9 @@ logger.setLevel(logging.DEBUG)
 class JBGAnnualReportAnalyzer:
     FIELD_VALUE = "värde"
     FIELD_SOURCE = "källa"
-    SOURCE_PREFIX = "sid."
+    FIELD_CERTAINTY = "säkerhet"
+    FIELD_COMMENT = "kommentar"
+    SOURCE_PREFIX = "Sida"
     STANDARD_ENCODING = "utf-8"
     PAGE_OFFSET = 0
     OFFSET_LIMIT = 99
@@ -354,19 +356,24 @@ class JBGAnnualReportAnalyzer:
                 for key, value in metrics.items():
                     if key in consolidated:
                         continue
-                    # Nytt: Hantera listor med dictar
+                    
+                    # Hantera listor med dictar
                     if isinstance(value, list) and all(isinstance(v, dict) for v in value):
                         grouped = {}
                         for v in value:
                             val = v.get(self.FIELD_VALUE, "")
                             src = v.get(self.FIELD_SOURCE, "") 
+                            cert = v.get(self.FIELD_CERTAINTY, "")
+                            comm = v.get(self.FIELD_COMMENT, "")
                             if val not in grouped:
                                 grouped[val] = set()
                             grouped[val].update(s.strip() for s in src.replace(self.SOURCE_PREFIX, "").split(",") if s.strip())
                         for val, srcs in grouped.items():
                             consolidated[key] = {
                                 self.FIELD_VALUE: val,
-                                self.FIELD_SOURCE: f"{self.SOURCE_PREFIX} {', '.join(sorted(srcs))}"
+                                self.FIELD_SOURCE: f"{self.SOURCE_PREFIX} {', '.join(sorted(srcs))}",
+                                self.FIELD_CERTAINTY: cert,
+                                self.FIELD_COMMENT: comm,
                             }
                             if len(srcs) > 1:
                                 num_consolidated += len(srcs) - 1
@@ -378,6 +385,11 @@ class JBGAnnualReportAnalyzer:
                         ]
                         main_value = value.get(self.FIELD_VALUE) if isinstance(value, dict) else None
                         sources = set()
+                        if main_value:
+                            main_cert = value.get(self.FIELD_CERTAINTY)
+                            main_comm = value.get(self.FIELD_COMMENT)
+                        else:
+                            main_cert, main_comm = None, None
                         all_entries = [(key, value)] + similar_entries
                         for alt_key, alt_val in all_entries:
                             if isinstance(alt_val, dict) and alt_val.get(self.FIELD_VALUE) == main_value:
@@ -386,7 +398,9 @@ class JBGAnnualReportAnalyzer:
                         if sources and main_value is not None:
                             consolidated[key] = {
                                 self.FIELD_VALUE: main_value,
-                                self.FIELD_SOURCE: f"{self.SOURCE_PREFIX} {', '.join(sorted(sources))}"
+                                self.FIELD_SOURCE: f"{self.SOURCE_PREFIX} {', '.join(sorted(sources))}",
+                                self.FIELD_CERTAINTY: main_cert,
+                                self.FIELD_COMMENT: main_comm
                             }
                             num_consolidated += len(sources) - 1
                         else:
