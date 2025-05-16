@@ -24,8 +24,9 @@ class JBGAnnualReportAnalyzer:
     OFFSET_LIMIT = 99
     MIN_CHECK_OFFSETS = 5
     MIN_OFFSET_AGREEMENT_RATE = 0.8
-    MAX_TOKENS = 3500
-    MAX_TOKEN_OVERLAP = 500
+    MAX_TOKENS = 10000
+    MAX_TOKEN_OVERLAP = 1000
+    MAX_TOKEN_OVERLAP_REDUCTION = 200
     USE_TOKEN_OVERLAP = True
     DEFAULT_MODEL = "gpt-4o"
     DEFAULT_OPENAI_TEMPERATURE = 0.3
@@ -231,6 +232,36 @@ class JBGAnnualReportAnalyzer:
                 start = end - overlap
                 if start < 0:
                     start = 0
+                    
+        return self._adjust_chunks_borders_for_safe_breaks(chunks)
+    
+    def _adjust_chunks_borders_for_safe_breaks(self, chunks: List[str]) -> List[str]:
+        break_patterns = ["\n\n", "\nSida ", "\nNot ", ":\n", "\n\n[A-Z]", r"\. [A-ZÅÄÖ]"]
+
+        def find_last_good_break_index(text: str) -> int:
+            for pattern in break_patterns:
+                idx = text.rfind(pattern)
+                if idx != -1 and len(text) - idx <= self.MAX_TOKEN_OVERLAP_REDUCTION:
+                    return idx + len(pattern)
+            return len(text)
+
+        def find_first_good_break_index(text: str) -> int:
+            for pattern in break_patterns:
+                idx = text.find(pattern)
+                if idx != -1 and idx <= self.MAX_TOKEN_OVERLAP_REDUCTION:
+                    return idx + len(pattern)
+            return 0  # börja från start om inget bra hittas
+
+        for i in range(1, len(chunks)):
+            # Trimma slutet på föregående chunk
+            end = find_last_good_break_index(chunks[i - 1])
+            if end < len(chunks[i - 1]):
+                chunks[i - 1] = chunks[i - 1][:end]
+
+            # Trimma början på aktuell chunk
+            start = find_first_good_break_index(chunks[i])
+            if start > 0:
+                chunks[i] = chunks[i][start:]
 
         return chunks
 
