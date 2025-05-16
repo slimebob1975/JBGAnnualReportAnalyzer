@@ -2,7 +2,7 @@ from pathlib import Path
 import zipfile
 import json
 from typing import List, Union
-from openai import OpenAI
+from openai import OpenAI, RateLimitError, Timeout, APIError
 from app.src.JBGAnnualReportExceptions import FileTypeException 
 import logging
 import fitz
@@ -28,7 +28,7 @@ class JBGAnnualReportAnalyzer:
     MAX_TOKEN_OVERLAP = 500
     USE_TOKEN_OVERLAP = True
     DEFAULT_MODEL = "gpt-4o"
-    DEFAULT_OPENAI_TEMPERATURE = 0.5
+    DEFAULT_OPENAI_TEMPERATURE = 0.3
     DEFAULT_OPENAI_TOP_P = 1
     DEFAULT_SHORT_SLEEP_TIME = 1
     DEFAULT_LONG_SLEEP_TIME = 5
@@ -264,28 +264,65 @@ class JBGAnnualReportAnalyzer:
             {metrics_json}
         """
         return system_prompt
-    
-    def _make_openai_api_call(self, system_prompt, request_text: str, model: str = "") -> dict:
-        
-        logger.debug(f"Aktuell system-prompt är {self._count_tokens(system_prompt)} tokens")
-        logger.debug(f"Aktuell request_text är {self._count_tokens(request_text)} tokens")
-        
-        try:
-            response = self.openai_client.chat.completions.create(
-                model=model if model else self.DEFAULT_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": request_text}
-                ],
-                temperature=self.DEFAULT_OPENAI_TEMPERATURE,
-                top_p=self.DEFAULT_OPENAI_TOP_P
-            )
-        except Exception as ex:
-            logger.error(f"Fel i anrop till OpenAI. GPT-response:\n{response}")
-            return ""
-        else:
-            logger.debug(f"GPT-response:\n{response}")
-            return response.choices[0].message.content.strip()
+
+    def _make_openai_api_call(self, system_prompt, request_text: str, model: str = "") -> str:
+        MODEL_TOKEN_LIMITS = {
+            "gpt-4": 8192,
+            "gpt-4-0613": 8192,
+            "gpt-4-1106-preview": 128000,
+            "gpt-4o": 128000,
+            "gpt-3.5-turbo": 4096,
+            "gpt-3.5-turbo-16k": 16384,
+        }
+
+        model_used = model if model else self.DEFAULT_MODEL
+        max_retries = 5
+        initial_delay = 1.5
+        backoff_factor = 2.0
+        attempt = 0
+
+        while attempt < max_retries:
+            try:
+                response = self.openai_client.chat.completions.create(
+                    model=model_used,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": request_text}
+                    ],
+                    temperature=self.DEFAULT_OPENAI_TEMPERATURE,
+                    top_p=self.DEFAULT_OPENAI_TOP_P
+                )
+
+                # Tokenkontroll
+                usage = getattr(response, "usage", None)
+                if usage:
+                    total_tokens = usage.total_tokens or 0
+                    token_limit = MODEL_TOKEN_LIMITS.get(model_used, 8192)
+                    if total_tokens >= token_limit:
+                        logging.warning(
+                            f"[GPT-tokenvarning] Modellen '{model_used}' använde {total_tokens} tokens av max {token_limit}."
+                        )
+
+                # Finish reason-koll
+                finish_reason = response.choices[0].finish_reason
+                if finish_reason != "stop":
+                    raise RuntimeError(
+                        f"GPT-svar avslutades med '{finish_reason}' – kan vara trunkerat eller felaktigt."
+                    )
+
+                logger.debug(f"GPT-response:\n{response}")
+                return response.choices[0].message.content.strip()
+
+            except (RateLimitError, Timeout, APIError) as ex:
+                delay = initial_delay * (backoff_factor ** attempt)
+                logger.warning(f"OpenAI API-fel (försök {attempt+1}/{max_retries}): {ex}. Försöker igen om {delay:.1f}s.")
+                time.sleep(delay)
+                attempt += 1
+            except Exception as ex:
+                logger.error(f"Allvarligt fel i OpenAI-anrop: {ex}")
+                break
+
+        raise RuntimeError("Maximalt antal försök för API-anropet överskreds.")
 
     def _clean_presumed_prefixed_json(self, presumed_prefixed_json):
         if presumed_prefixed_json.startswith("```json"):
