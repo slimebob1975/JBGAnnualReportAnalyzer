@@ -18,7 +18,7 @@ logger.setLevel(logging.DEBUG)
 class JBGAnnualReportAnalyzer:
     METRIC_KEY_NUMBER_KEY = "Nyckeltal"
     METRIC_KEY_NUMBER_ALTERNATE_KEY = "Alternativa benämningar"
-    FIX_BROKEN_LINES_WITH_KEY_NUMBERS = False
+    FIX_BROKEN_LINES_WITH_KEY_NUMBERS = True
     FIELD_VALUE = "värde"
     FIELD_SOURCE = "källa"
     FIELD_CERTAINTY = "säkerhet"
