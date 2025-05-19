@@ -10,6 +10,7 @@ import tiktoken
 import time
 import ocrmypdf
 import re
+from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -485,6 +486,27 @@ class JBGAnnualReportAnalyzer:
         
         return result
     
+    def _deep_merge_json_objects(self, json_list: List[dict]) -> dict:
+
+        def deep_merge(a: dict, b: dict) -> dict:
+            result = dict(a)
+            for k, v in b.items():
+                if (
+                    k in result
+                    and isinstance(result[k], Mapping)
+                    and isinstance(v, Mapping)
+                ):
+                    result[k] = deep_merge(result[k], v)
+                else:
+                    result[k] = v
+            return result
+
+        result = {}
+        for obj in json_list:
+            result = deep_merge(result, obj)
+
+        return result
+    
     def _merge_json_fund_data(self, data):
                 
         logger.debug(f"JSON data to be merged: {data}")
@@ -665,7 +687,7 @@ class JBGAnnualReportAnalyzer:
             logger.info(f"Extraherar text från: {pdf_path.name}")
             try:
                 full_text = self._extract_text_from_pdf_from_pdf(pdf_path)
-                logger.debug(f"The full text for {pdf_path} is: {full_text}")
+                #logger.debug(f"The full text for {pdf_path} is: {full_text}")
             except FileTypeException:
                 logger.warning(f"Skipping file {pdf_path} since I could not extract any text from it (perhaps it was scanned?)")
                 continue
@@ -688,7 +710,7 @@ class JBGAnnualReportAnalyzer:
             logger.info(f"{len(chunks)} chunk(s) genererade för {pdf_path.name}")
             
             # Loop over the chunks
-            partial_result = []
+            partial_results = []
             for i, chunk in enumerate(chunks):
                 
                 # Build the system prompt instructions
@@ -712,7 +734,7 @@ class JBGAnnualReportAnalyzer:
                         continue
                     try:
                         parsed = json.loads(response)
-                        partial_result.append(parsed)
+                        partial_results.append(parsed)
                     except json.JSONDecodeError as e:
                         logger.error(f"Misslyckades ladda JSON: {e}")
                         continue
@@ -721,7 +743,11 @@ class JBGAnnualReportAnalyzer:
                     continue
             
             # Put together and clean up the result
-            appended_result = self._merge_json_objects(partial_result)
+            appended_result = self._deep_merge_json_objects(partial_results)
+            logger.debug(f"In do_analysis: partial_results:")
+            for result in partial_results:
+                logger.debug(f"{result}")
+            logger.debug(f"In do_analysis: appended_result: {appended_result}")
             if appended_result:
                 appended_result, conflicts = self._merge_json_fund_data(appended_result)
                 if conflicts:
@@ -735,7 +761,7 @@ class JBGAnnualReportAnalyzer:
 
         # Write result to JSON output
         if total_result:
-            final_result = self._merge_json_objects(total_result)
+            final_result = self._deep_merge_json_objects(total_result)
             output_path.write_text(json.dumps(final_result, ensure_ascii=False, indent=2), encoding=self.STANDARD_ENCODING)
             logger.info(f"Analysresultat sparat till: {output_path}")
             return output_path
