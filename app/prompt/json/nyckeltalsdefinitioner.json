@@ -80,7 +80,7 @@
   },
   {
     "Nyckeltal": "Eget kapital",
-    "Alternativa benämningar": [],
+    "Alternativa benämningar": ["Summa eget kapital"],
     "Beskrivning": "Skillnaden mellan tillgångar och skulder",
     "Formel": "Från balansräkning",
     "Grupp": "📊 Balansposter",

@@ -9,11 +9,15 @@ import fitz
 import tiktoken
 import time
 import ocrmypdf
+import re
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 class JBGAnnualReportAnalyzer:
+    METRIC_KEY_NUMBER_KEY = "Nyckeltal"
+    METRIC_KEY_NUMBER_ALTERNATE_KEY = "Alternativa benämningar"
+    FIX_BROKEN_LINES_WITH_KEY_NUMBERS = False
     FIELD_VALUE = "värde"
     FIELD_SOURCE = "källa"
     FIELD_CERTAINTY = "säkerhet"
@@ -24,6 +28,9 @@ class JBGAnnualReportAnalyzer:
     OFFSET_LIMIT = 99
     MIN_CHECK_OFFSETS = 5
     MIN_OFFSET_AGREEMENT_RATE = 0.8
+    MIN_YEAR_AGREEMENT_RATE = 0.8
+    MIN_CHECK_YEARS = 5            
+    FALLBACK_YEAR = -1
     MAX_TOKENS = 10000
     MAX_TOKEN_OVERLAP = 1000
     MAX_TOKEN_OVERLAP_REDUCTION = 200
@@ -99,6 +106,55 @@ class JBGAnnualReportAnalyzer:
             logger.warning(f"Could not extract pdf page number offset from {pdf_path.name}: {e}. Using standard value.")
             return self.PAGE_OFFSET
 
+    def _find_primary_year_from_pdf(self, pdf_path: Path) -> int:
+        try:
+            doc = fitz.open(pdf_path)
+            year_counts = {}
+            most_likely_year = -1
+            first_openai_call = True
+            page_counter = 0
+
+            for page in doc:
+                page_counter += 1
+                if first_openai_call:
+                    prompt = self._prompt_instructions_pdf_actual_year()
+                    first_openai_call = False
+                else:
+                    time.sleep(self.DEFAULT_SHORT_SLEEP_TIME)
+
+                text = page.get_text()
+                response = self._make_openai_api_call(prompt, f"[Sida {page_counter}]:\n{text}")
+                logger.debug(f"GPT-rådata (årtolkning):\n{response}")
+
+                try:
+                    extracted_year = int(response.strip())
+                except Exception as ex:
+                    logger.warning(f"Kunde inte tolka år från GPT-svar: {response} på sida {page_counter}")
+                    continue
+
+                # Ignorera specialvärden (-1, -2)
+                if extracted_year < 2000:
+                    continue
+
+                year_counts[extracted_year] = year_counts.get(extracted_year, 0) + 1
+                logger.debug(f"Aktuella årfrekvenser: {year_counts}")
+
+                # Bedöm ledande år
+                most_likely_year = max(year_counts, key=year_counts.get)
+                dominance_rate = year_counts[most_likely_year] / sum(year_counts.values())
+
+                logger.debug(f"Aktuellt huvudår: {most_likely_year} (andel: {round(dominance_rate,2)})")
+
+                if dominance_rate >= self.MIN_YEAR_AGREEMENT_RATE and page_counter >= self.MIN_CHECK_YEARS:
+                    logger.info(f"Bryter årtolkningsloop vid sida {page_counter} med {round(dominance_rate,2)} dominans.")
+                    break
+
+            return most_likely_year if most_likely_year > 0 else self.FALLBACK_YEAR
+
+        except Exception as e:
+            logger.warning(f"Kunde inte tolka år från {pdf_path.name}: {e}. Återgår till standardår.")
+            return self.FALLBACK_YEAR
+
     def _extract_text_from_pdf_from_pdf(self, pdf_path: Path) -> str:
 
         try:
@@ -169,6 +225,48 @@ class JBGAnnualReportAnalyzer:
             f"[Sida {page_label(i+1, offset)}]\n{page.get_text()}"
             for i, page in enumerate(doc)
         ])
+        
+    def _merge_broken_key_number_lines(self, text: str, key_number_terms: List[str]=None) -> str:
+        
+        if not key_number_terms:
+            key_number_terms = self._extract_key_number_term()
+        
+        lines = text.split("\n")
+        terms = {term.lower() for term in key_number_terms}
+        merged = []
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            lower = line.lower()
+
+            if any(lower.startswith(term) for term in terms):
+                parts = [line]
+                j = i + 1
+                while j < len(lines):
+                    next_line = lines[j].strip()
+                    if not next_line:
+                        j += 1
+                        continue
+                    if re.match(r"^[\d\s]+$", next_line):
+                        parts.append(next_line)
+                        j += 1
+                    else:
+                        break
+                merged.append(" | ".join(parts))
+                i = j
+            else:
+                merged.append(line)
+                i += 1
+
+        return "\n".join(merged)
+    
+    def _extract_key_number_terms(self) -> List[str]:
+        metrics = self._load_metrics(dump=False)
+        key_number_terms = [metric.get(self.METRIC_KEY_NUMBER_KEY) for metric in metrics]
+        for metric in metrics:
+            key_number_terms = key_number_terms + [alt_metric for alt_metric in metric.get(self.METRIC_KEY_NUMBER_ALTERNATE_KEY)]
+        
+        return key_number_terms
     
     def _count_tokens(self, text: str, model: str = "gpt-4o") -> int:
         enc = tiktoken.encoding_for_model(model)
@@ -268,9 +366,12 @@ class JBGAnnualReportAnalyzer:
     def _load_instruction(self) -> str:
         return self.instruction_path.read_text(encoding=self.STANDARD_ENCODING)
 
-    def _load_metrics(self) -> str:
+    def _load_metrics(self, dump : bool = True) -> str:
         metrics = json.loads(self.metrics_path.read_text(encoding=self.STANDARD_ENCODING))
-        return json.dumps(metrics, ensure_ascii=False, indent=2)
+        if dump:
+            return json.dumps(metrics, ensure_ascii=False, indent=2)
+        else:
+            return metrics
 
     def _build_request_text(self, extracted_text: str) -> str:
        
@@ -283,17 +384,27 @@ class JBGAnnualReportAnalyzer:
         """
         return request_text
 
-    def _build_system_prompt(self):
+    def _build_system_prompt(self, the_year: int = None):
         
         instruction = self._load_instruction()
         metrics_json = self._load_metrics()
-        system_prompt = f"""
-            {instruction}
-            -------------
-            Följande nyckeltal ska extraheras:
-            -------------
-            {metrics_json}
-        """
+        
+        if the_year:
+            system_prompt = f"""
+                {instruction}
+                -------------
+                Följande nyckeltal ska extraheras för {the_year}:
+                -------------
+                {metrics_json}
+            """
+        else:
+            system_prompt = f"""
+                {instruction}
+                -------------
+                Följande nyckeltal ska extraheras:
+                -------------
+                {metrics_json}
+            """
         return system_prompt
 
     def _make_openai_api_call(self, system_prompt, request_text: str, model: str = "") -> str:
@@ -503,6 +614,26 @@ class JBGAnnualReportAnalyzer:
         Svara alltid enbart med en siffra.
         """
         return system_prompt
+    
+    def _prompt_instructions_pdf_actual_year(self):
+        
+        system_prompt = """
+        Du får ett textutdrag från en PDF-sida. Försök analysera vilket årtal texten handlar om. 
+        Svaret ska vara:
+        - En **ensam siffra**
+        - Om det inte finns något årtal i texten, svara då med "-1", vilket jag kommer tolka som okänt.
+        - Om flera årtal förekommer i texten, svara med det årtal som förekommer flest gånger. Är det finns
+        flera årtal som förekommer lika många gånger, svara då med "-2", vilket jag kommer tolka som obestämbart.
+        
+        Några vägledande exempel:
+        - Texten innehåller årtalen: 2021, 2022, 2022, 2023 → svar: 2022
+        - Texten innehåller endast 2023 → svar: 2023
+        - Texten innehåller 2020, 2021 → svar: -2
+        - Texten innehåller inga årtal → svar: -1
+        
+        Svara alltså alltid bara med en siffra: -1, -2 eller med ett årtal. 
+        """
+        return system_prompt
 
     def do_analysis(self, fil: Path, output_path: Path, model: str = "gpt-4o") -> Path:
         logger.info(f"Startar analys av fil: {fil.name}")
@@ -514,13 +645,40 @@ class JBGAnnualReportAnalyzer:
         total_result = []
 
         first_openai_call = True
+        
+        # We loop over all the pdf files
         for pdf_path in self.upload_files:
+            logger.info(f"Processar fil: {pdf_path}")
+            
+            
+            # Get the current year for the analysis
+            try:
+                the_year = self._find_primary_year_from_pdf(pdf_path)
+                logger.info(f"Extraherade aktuellt år från: {pdf_path.name} som: {the_year}")
+                if the_year < 0:
+                    raise RuntimeError(f"Could not extract main year from {pdf_path} to be used in system prompt.")
+            except RuntimeError as ex:
+                logger.warning(f"{str(ex)}. Setting year unknown.")
+                the_year = None
+            
+            # Get the full text of the pdf
             logger.info(f"Extraherar text från: {pdf_path.name}")
             try:
                 full_text = self._extract_text_from_pdf_from_pdf(pdf_path)
+                logger.debug(f"The full text for {pdf_path} is: {full_text}")
             except FileTypeException:
                 logger.warning(f"Skipping file {pdf_path} since I could not extract any text from it (perhaps it was scanned?)")
                 continue
+            
+            # Try to fix broken lines that can contain key numbers and values
+            if self.FIX_BROKEN_LINES_WITH_KEY_NUMBERS:
+                try:
+                    full_text = self._merge_broken_key_number_lines(full_text, self._extract_key_number_terms())
+                    logger.debug(f"The full text for {pdf_path} where broken lines with key numbers are merged is: {full_text}")
+                except Exception as ex:
+                    logger.warning(f"Could not merge broken lines with key numbers and data in for full text of file: {pdf_path}")
+            
+            # Divide the text into chunks with or without overlap
             if self.USE_TOKEN_OVERLAP:
                 chunks = self._chunk_text_with_overlap(
                     text=full_text, max_tokens=self.MAX_TOKENS, max_overlap_tokens=self.MAX_TOKEN_OVERLAP, model=model
@@ -528,10 +686,16 @@ class JBGAnnualReportAnalyzer:
             else:
                 chunks = self._chunk_text(full_text, max_tokens=self.MAX_TOKENS, model=model)
             logger.info(f"{len(chunks)} chunk(s) genererade för {pdf_path.name}")
+            
+            # Loop over the chunks
             partial_result = []
             for i, chunk in enumerate(chunks):
-                prompt = self._build_system_prompt()
+                
+                # Build the system prompt instructions
+                prompt = self._build_system_prompt(the_year=the_year)
                 logger.debug(f"Prompt {i}: {prompt}")
+                
+                # Build the prompt request, make API call and collect results
                 request = self._build_request_text(chunk)
                 logger.debug(f"Request {i}: {request}")
                 try:
@@ -555,6 +719,8 @@ class JBGAnnualReportAnalyzer:
                 except Exception as e:
                     logger.error(f"Fel vid GPT-anrop chunk {i+1}: {e}")
                     continue
+            
+            # Put together and clean up the result
             appended_result = self._merge_json_objects(partial_result)
             if appended_result:
                 appended_result, conflicts = self._merge_json_fund_data(appended_result)
@@ -567,6 +733,7 @@ class JBGAnnualReportAnalyzer:
                         logger.warning(f"No conclicts were merged.")
                 total_result.append(appended_result)
 
+        # Write result to JSON output
         if total_result:
             final_result = self._merge_json_objects(total_result)
             output_path.write_text(json.dumps(final_result, ensure_ascii=False, indent=2), encoding=self.STANDARD_ENCODING)
