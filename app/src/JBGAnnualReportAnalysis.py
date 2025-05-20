@@ -677,8 +677,8 @@ class JBGAnnualReportAnalyzer:
             # Use masking if required
             if self.use_masking:
                 masker = PDFMasker()
-                pdf_output_path = _pdf_path.with_name(_pdf_path.stem + "_masked.pdf")
-                pdf_path = masker.do_masking(_pdf_path, pdf_output_path, logger=logger)
+                pdf_output_path = Path(_pdf_path.with_name(_pdf_path.stem + "_masked.pdf"))
+                pdf_path = Path(masker.do_masking(_pdf_path, pdf_output_path, logger=logger))
             else:
                 pdf_path = _pdf_path
 

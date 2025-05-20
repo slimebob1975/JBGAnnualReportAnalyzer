@@ -4,6 +4,7 @@ from transformers import pipeline
 import sys
 from pathlib import Path
 from logging import Logger
+import os
 
 class PDFMasker:
     def __init__(self):
@@ -18,7 +19,7 @@ class PDFMasker:
         for word in entities:
             if re.match(r"^[#@]", word):
                 continue
-            if word.lower() in {"and", "do", "gr", "vice", "statens", "is", "revis", "aukt", "kass", "Led"}:
+            if word.lower() in {"and", "do", "gr", "vice", "statens", "is", "revis", "aukt", "kass", "Led", "lem"}:
                 continue
             
             # Fixa extra mellanslag runt bindestreck
@@ -73,48 +74,77 @@ class PDFMasker:
         mid_y = (quad.rect.y0 + quad.rect.y1) / 2
         return fitz.Rect(quad.rect.x0, mid_y - fixed_height / 2, quad.rect.x1, mid_y + fixed_height / 2)
 
-    def mask_pdf_black_boxes(self, input_pdf, output_pdf, sensitive_terms):
-        doc = fitz.open(input_pdf)
-        for page in doc:
-            for term in sensitive_terms:
-                quads = page.search_for(term, quads=True)
-                for quad in quads:
-                    rect = self._make_masking_rectangle(quad)
-                    page.add_redact_annot(rect, fill=(0, 0, 0))
-            page.apply_redactions()
-        doc.save(output_pdf)
+    def mask_pdf_black_boxes(self, input_pdf : Path, output_pdf : Path, sensitive_terms, logger: Logger=None):
+        if logger:
+            logger.debug(f"Calling mask_pdf_black_boxes with inputs: {input_pdf}, {output_pdf}, {sensitive_terms}")
+        try:
+            doc = fitz.open(input_pdf)
+            i = 0
+            for page in doc:
+                i += 1
+                for term in sensitive_terms:
+                    quads = page.search_for(term, quads=True)
+                    for quad in quads:
+                        rect = self._make_masking_rectangle(quad)
+                        page.add_redact_annot(rect, fill=(0, 0, 0))
+                page.apply_redactions()
+            if logger: logger.debug(f"Saving masked files...")
+            if doc.needs_pass:
+                raise Exception("Filen är krypterad eller behöver lösenord.")
+            try:
+                doc.save(output_pdf, garbage=4, deflate=True)
+            except fitz.mupdf.FzErrorFormat as ex:
+                logger.warning(f"Masking failed for {input_pdf} in call to save. Reason: {str(ex)}. File not masked.")
+                if os.path.exists(output_pdf):
+                    os.remove(output_pdf)
+                    logger.warning(f"Erased corrupted PDF: {output_pdf}")
+                return None
+        except Exception as ex:
+            if logger: logger.error(f"mask_pdf_black_boxes failed: {str(ex)}")
+        return output_pdf
         
-    def do_masking(self, pdf_path: Path, pdf_output_path: Path = None, logger: Logger = print):
+    def do_masking(self, pdf_path: Path, pdf_output_path: Path = None, logger: Logger = None)-> Path:
     
+        pdf_path = str(pdf_path)
         if not pdf_output_path:
             pdf_output_path = pdf_path.with_name(pdf_path.stem + "_masked.pdf")
+        else:
+            pdf_output_path = str(pdf_output_path)
         
-        logger.info(f"Performing masking on file: {pdf_path}")
+        if logger:
+            logger.info(f"Performing masking on file: {pdf_path}")
+        else:
+            print(f"Performing masking on file: {pdf_path}")
     
         page_texts = self.extract_text(pdf_path=pdf_path)
         
         sensitive_terms = self.detect_sensitive_terms(page_texts=page_texts)
-        logger.info(f"Identified sensitive terms: {sensitive_terms}. Masking...")
+        if logger:
+            logger.info(f"Identified sensitive terms: {sensitive_terms}. Masking...")
+        else:
+            print(f"Identified sensitive terms: {sensitive_terms}. Masking...")
         
-        self.mask_pdf_black_boxes(pdf_path, pdf_output_path, sensitive_terms)
-        logger.info(f"Masked file saved to path: {pdf_output_path}")
-        return pdf_output_path
-
+        pdf_output_path = self.mask_pdf_black_boxes(pdf_path, pdf_output_path, sensitive_terms, logger)
+        if pdf_output_path:
+            if logger:
+                logger.info(f"Masked file saved to path: {pdf_output_path}")
+            else:
+                print(f"Masked file saved to path: {pdf_output_path}")
+            return pdf_output_path    
+        else:
+            if logger: 
+                logger.info(f"Masking failed. Returning original file: {pdf_path}")
+            else:
+                print(f"Masking failed. Returning original file: {pdf_path}")
+            return pdf_path
 
 def main(pdf_path_str):
     masker = PDFMasker()
     pdf_path = Path(pdf_path_str)
-    out_path = pdf_path.with_name(pdf_path.stem + "_maskerad.pdf")
-
-    print(f"Läser: {pdf_path.name}")
-    page_texts = masker.extract_text(pdf_path)
-    terms = masker.detect_sensitive_terms(page_texts)
-    print(f"Identifierade känsliga termer: {terms}")
+    out_path = Path(pdf_path.with_name(pdf_path.stem + "_masked.pdf"))
     
-    masker.mask_pdf_black_boxes(str(pdf_path), str(out_path), terms)
+    out_path = masker.do_masking(pdf_path, out_path)
         
-    print(f"Maskerad PDF sparad till: {out_path}")
-
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Användning: python test_maskering.py <fil.pdf>")
