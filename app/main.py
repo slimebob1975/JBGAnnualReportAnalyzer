@@ -60,8 +60,15 @@ async def upload_file(
     model: str = Form(...),
     apikey: str = Form(...),
     format: str = Form(...),
-    sources: str = Form(...)
+    sources: str = Form(...),
+    masking: str = Form(...)
 ):
+    if masking == "yes":
+        logger.info("Will use masking in each pdf to analyze...")
+    elif masking == "no":
+        logger.info("Will not use masking...")
+    else:
+        raise Exception(f"Illegal values of masking parameter: {masking}")
     if sources == "yes":
         logger.info("Will include sources in final output!")
     elif sources == "no":
@@ -118,12 +125,15 @@ async def upload_file(
             instruction_path=\
                 BASE_DIR / "prompt" / "GPT-instruktioner.md" if not USE_COMPRESSED_GPT else \
                     BASE_DIR / "prompt" / "GPT-instruktioner_komprimerad.md",
-            metrics_path=BASE_DIR / "prompt" / "json" / "nyckeltalsdefinitioner.json"
+            metrics_path=BASE_DIR / "prompt" / "json" / "nyckeltalsdefinitioner.json",
+            use_masking = (masking == "yes")
         )
         analys.openai_client = OpenAI(api_key=apikey)
 
         json_output_path = UPLOAD_DIR / f"{Path(filename).stem}_resultat.json"
-        analys_result_path = analys.do_analysis(saved_path, json_output_path, model=model)
+        
+        # Do analysis and take care of result
+        analys_result_path = analys.do_analysis(json_output_path, model=model)
         if analys_result_path:
             resultat_json = json.loads(analys_result_path.read_text(encoding="utf-8"))
             

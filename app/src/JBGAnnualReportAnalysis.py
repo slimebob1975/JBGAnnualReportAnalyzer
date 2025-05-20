@@ -4,6 +4,7 @@ import json
 from typing import List, Union
 from openai import OpenAI, RateLimitError, Timeout, APIError
 from app.src.JBGAnnualReportExceptions import FileTypeException 
+from app.src.JBGPDFMasking import PDFMasker
 import logging
 import fitz
 import tiktoken
@@ -47,7 +48,8 @@ class JBGAnnualReportAnalyzer:
         self,
         upload_dir: Union[str, Path, List[Union[str, Path]]],
         instruction_path: Union[str, Path],
-        metrics_path: Union[str, Path]
+        metrics_path: Union[str, Path],
+        use_masking: bool = False
     ):
         # Accept list of paths or a folder
         if isinstance(upload_dir, (list, tuple)):
@@ -62,6 +64,7 @@ class JBGAnnualReportAnalyzer:
 
         self.instruction_path = Path(instruction_path)
         self.metrics_path = Path(metrics_path)
+        self.use_masking = use_masking
         self.openai_client = OpenAI()
 
     def _extract_zip(self, zip_path: Path) -> List[Path]:
@@ -657,8 +660,7 @@ class JBGAnnualReportAnalyzer:
         """
         return system_prompt
 
-    def do_analysis(self, fil: Path, output_path: Path, model: str = "gpt-4o") -> Path:
-        logger.info(f"Startar analys av fil: {fil.name}")
+    def do_analysis(self, output_path: Path, model: str = "gpt-4o") -> Path:
 
         if not self.upload_files:
             logger.error("No PDF files found for analysis.")
@@ -669,10 +671,17 @@ class JBGAnnualReportAnalyzer:
         first_openai_call = True
         
         # We loop over all the pdf files
-        for pdf_path in self.upload_files:
-            logger.info(f"Processar fil: {pdf_path}")
+        for _pdf_path in self.upload_files:
+            logger.info(f"Processar fil: {_pdf_path}")
             
-            
+            # Use masking if required
+            if self.use_masking:
+                masker = PDFMasker()
+                pdf_output_path = _pdf_path.with_name(_pdf_path.stem + "_masked.pdf")
+                pdf_path = masker.do_masking(_pdf_path, pdf_output_path, logger=logger)
+            else:
+                pdf_path = _pdf_path
+
             # Get the current year for the analysis
             try:
                 the_year = self._find_primary_year_from_pdf(pdf_path)

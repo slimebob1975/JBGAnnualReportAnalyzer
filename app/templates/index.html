@@ -14,7 +14,10 @@
 
         <form action="/upload" method="post" enctype="multipart/form-data">
             <label for="fileloader">Välj fil att ladda upp:</label><br>
-            <input type="file" name="file" id="fileloader" accept=".pdf,.zip" required><br><br>
+            <input type="file" name="file" id="fileloader" accept=".pdf,.zip" required>
+            
+            <input type="hidden" name="masking" value="no">
+            <label><input type="checkbox" id="masking" name="masking" value="yes" checked> Använd maskning av egennamn, personnummer m.m.</label><br><br>
 
             <label for="apikey">Ange din OpenAI API-nyckel:</label><br>
             <input type="password" name="apikey" id="apikey" placeholder="sk-..." required><br>
