@@ -19,7 +19,10 @@ class PDFMasker:
         for word in entities:
             if re.match(r"^[#@]", word):
                 continue
-            if word.lower() in {"and", "do", "gr", "vice", "statens", "is", "revis", "aukt", "kass", "Led", "lem"}:
+            if word.lower() in {"and", "do", "gr", "vice", "statens", "is", "revis", "aukt", "kass", "Led", "lem", "mar", "sum", "id",\
+                "supp", "cer", "föret", "kassach"}:
+                continue
+            if word in {"Signerat", "jan", "kassa", "signe", "dista"}:
                 continue
             
             # Fixa extra mellanslag runt bindestreck
@@ -43,13 +46,37 @@ class PDFMasker:
                 except Exception as e:
                     print(f"NER-fel: {e}")
         full_text = "\n".join(page_texts)
+        
+        # Personnummer
         pnr_matches = set(re.findall(r"\b\d{6}[-+]\d{4}\b", full_text))
+        
+        # Epost
+        full_text = self._fix_split_emails(full_text)
         email_matches = set(re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", full_text))
+        
+        # Twitter-konton
+        twitter_matches = set(re.findall(r"@[A-Za-z0-9_]{1,15}", full_text))
+        
+        # Födelsedatum vid signering
         dob_matches = set(re.findall(r"\bDOB:\s*(?:19|20)\d{2}/\d{2}/\d{2}\b", full_text))
+        
+        # Extra namn som inte BERT-modellen identifierar
+        extra_fornamn, extra_efternamn = self._get_extra_names()
 
-        all_terms = sensitive_words.union(pnr_matches, email_matches, dob_matches)
+        all_terms = sensitive_words.union(pnr_matches, email_matches, twitter_matches, dob_matches, extra_fornamn, extra_efternamn)
         return self._clean_entities(all_terms)
 
+    @staticmethod
+    def _fix_split_emails(text: str) -> str:
+        # Sätt ihop mejladresser där hostnamn eller domän brutits
+        return re.sub(r'(@[^\s@]*)[\r\n]+([^\s@]+\.[a-z]{2,10})', r'\1\2', text, flags=re.IGNORECASE)
+    
+    @staticmethod
+    def _get_extra_names():
+        names =   {"Jeanette"}
+        surnames = {"Cervin"}
+        return names, surnames
+    
     @staticmethod
     def _deduplicate_if_mirrored_with_space(s: str) -> str:
         s = s.strip()
@@ -63,7 +90,6 @@ class PDFMasker:
         if left == right:
             return s[:mid].strip()
         return s
-
     
     @staticmethod
     def _normalize_hyphens(text: str) -> str:
