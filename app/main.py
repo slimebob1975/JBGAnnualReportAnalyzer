@@ -11,6 +11,7 @@ import os
 from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
 from app.src.JBGAnnualReportExceptions import FileTypeException, EmptyOutputException
 from app.src.JBGJSONConverter import JsonConverter
+from app.src.JBGPDFMasking import PDFMasker
 from openai import OpenAI
 import logging
 from datetime import datetime
@@ -21,6 +22,8 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 TITLE = "JBG nyckeltalsanalys"
 SUBTITLE = "Obs! För .PDF (eller .ZIP av .PDF)"
+TITLE_MASKING = "JBG filmaskning"
+SUBTITLE_MASKING = "Obs! För .PDF"
 INVALID_FILETYPE_FOR = "Ogiltig filtyp för"
 FILES_ALLOWED = "Endast pdf eller zip av pdf tillåtes"
 USE_COMPRESSED_GPT = True
@@ -50,7 +53,10 @@ async def read_root(request: Request):
         "request": request, 
         "title": TITLE, 
         "subtitle": SUBTITLE, 
-        "message": ""
+        "title_masking": TITLE_MASKING, 
+        "subtitle_masking": SUBTITLE_MASKING, 
+        "message": "",
+        "active_tab": "analysis"
     })
 
 @app.post("/upload", response_class=HTMLResponse)
@@ -61,11 +67,11 @@ async def upload_file(
     apikey: str = Form(...),
     format: str = Form(...),
     sources: str = Form(...),
-    masking: str = Form(...)
+    use_masking: str = Form(...)
 ):
-    if masking == "yes":
+    if use_masking == "yes":
         logger.info("Will use masking in each pdf to analyze...")
-    elif masking == "no":
+    elif use_masking == "no":
         logger.info("Will not use masking...")
     else:
         raise Exception(f"Illegal values of masking parameter: {masking}")
@@ -126,7 +132,7 @@ async def upload_file(
                 BASE_DIR / "prompt" / "GPT-instruktioner.md" if not USE_COMPRESSED_GPT else \
                     BASE_DIR / "prompt" / "GPT-instruktioner_komprimerad.md",
             metrics_path=BASE_DIR / "prompt" / "json" / "nyckeltalsdefinitioner.json",
-            use_masking = (masking == "yes")
+            use_masking = (use_masking == "yes")
         )
         analys.openai_client = OpenAI(api_key=apikey)
 
@@ -164,6 +170,8 @@ async def upload_file(
                 "request": request,
                 "title": TITLE,
                 "subtitle": SUBTITLE,
+                "title_masking": TITLE_MASKING, 
+                "subtitle_masking": SUBTITLE_MASKING, 
                 "message": f"{len(extracted_files)} fil(er) analyserade.",
                 "resultat": json.dumps(resultat_json, indent=2, ensure_ascii=False),
                 "download_filename": download_filename
@@ -178,6 +186,8 @@ async def upload_file(
             "request": request,
             "title": TITLE,
             "subtitle": SUBTITLE,
+            "title_masking": TITLE_MASKING, 
+            "subtitle_masking": SUBTITLE_MASKING, 
             "message": f"{ex.message}"
         })
 
@@ -187,6 +197,8 @@ async def upload_file(
             "request": request,
             "title": TITLE,
             "subtitle": SUBTITLE,
+            "title_masking": TITLE_MASKING, 
+            "subtitle_masking": SUBTITLE_MASKING, 
             "message": f"Ett fel uppstod vid nyckeltalsanalysen: {str(e)}"
         })
     
@@ -197,6 +209,8 @@ async def upload_file(
             "request": request,
             "title": TITLE,
             "subtitle": SUBTITLE,
+            "title_masking": TITLE_MASKING, 
+            "subtitle_masking": SUBTITLE_MASKING, 
             "message": f"Fel vid analys: {str(e)}"
         })
 
@@ -206,3 +220,43 @@ async def download_file(filename: str):
     if file_path.exists():
         return FileResponse(path=file_path, filename=filename, media_type='application/octet-stream')
     return {"error": "Filen finns inte"}
+
+@app.post("/mask", response_class=HTMLResponse)
+async def mask_only(
+    request: Request,
+    file: UploadFile = File(...)
+):
+    try:
+        # Spara fil
+        filename = file.filename
+        saved_path = UPLOAD_DIR / filename
+        with saved_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Kör maskering
+        masker = PDFMasker()
+        masked_output = saved_path.with_name(saved_path.stem + "_masked.pdf")
+        masked_output = Path(masker.do_masking(Path(saved_path), Path(masked_output)))
+
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "title": TITLE,
+            "subtitle": SUBTITLE,
+            "title_masking": TITLE_MASKING, 
+            "subtitle_masking": SUBTITLE_MASKING, 
+            "message": f"Filen '{filename}' maskerad.",
+            "masked_filename": masked_output.name,
+            "active_tab": "masking"
+        })
+
+    except Exception as e:
+        logger.error(f"Fel vid maskering: {e}")
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "title": TITLE,
+            "subtitle": SUBTITLE,
+            "title_masking": TITLE_MASKING, 
+            "subtitle_masking": SUBTITLE_MASKING, 
+            "message": f"Fel vid maskering: {str(e)}",
+            "active_tab": "masking"
+        })

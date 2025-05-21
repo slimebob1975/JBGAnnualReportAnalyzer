@@ -8,58 +8,91 @@
     <link rel="icon" href="/static/favicon/favicon.ico" type="image/x-icon">
 </head>
 <body>
-    <div id="wrapper">
-        <h1>{{ title }}</h1>
-        <h3><em>{{subtitle}}</em></h3>
+    <!-- A spinner that spins while executing -->
+    <div id="spinner-container">
+        <div class="spinner"></div>
+    </div>
+    <div class="tab-container">
+        <button class="tab-button" onclick="showTab('analysis')"> Nyckeltalsanalys</button>
+        <button class="tab-button" onclick="showTab('masking')"> Maskning av .PDF</button>
+    </div>
+    <div id="analysis" name="analysis" class="tab-content active">
+        <div id="wrapper">
+            <h1>{{ title }}</h1>
+            <h3><em>{{subtitle}}</em></h3>
 
-        <form action="/upload" method="post" enctype="multipart/form-data">
-            <label for="fileloader">Välj fil att ladda upp:</label><br>
-            <input type="file" name="file" id="fileloader" accept=".pdf,.zip" required>
-            
-            <input type="hidden" name="masking" value="no">
-            <label><input type="checkbox" id="masking" name="masking" value="yes" checked> Använd maskning av egennamn, personnummer m.m.</label><br><br>
+            <form action="/upload" method="post" enctype="multipart/form-data">
+                <label for="fileloader">Välj fil att ladda upp:</label><br>
+                <input type="file" name="file" id="fileloader" accept=".pdf,.zip" required>
+                
+                <input type="hidden" name="use_masking" value="no">
+                <label><input type="checkbox" id="use_masking" name="use_masking" value="yes" checked> Använd maskning av egennamn, personnummer m.m.</label><br><br>
 
-            <label for="apikey">Ange din OpenAI API-nyckel:</label><br>
-            <input type="password" name="apikey" id="apikey" placeholder="sk-..." required><br>
-            <small style="display:block; margin-bottom:1rem; color:#666;">
-                Din API-nyckel sparas endast i din webbläsare (lokalt) för bekvämlighet.
-            </small><br>
-              
-            <label for="model">Välj GPT-modell:</label><br>
-            <select name="model" required>
-                <option value="gpt-4o">gpt-4o -- snabbast, billigast, mest kapabel i textförståelse</option>
-                <option value="gpt-4-turbo">gpt-4-turbo -- bra fallback</option>
-                <option value="gpt-4 (standard)">gpt-4 -- långsammare modell</option>
-            </select><br>
+                <label for="apikey">Ange din OpenAI API-nyckel:</label><br>
+                <input type="password" name="apikey" id="apikey" placeholder="sk-..." required><br>
+                <small style="display:block; margin-bottom:1rem; color:#666;">
+                    Din API-nyckel sparas endast i din webbläsare (lokalt) för bekvämlighet.
+                </small><br>
+                
+                <label for="model">Välj GPT-modell:</label><br>
+                <select name="model" required>
+                    <option value="gpt-4o">gpt-4o -- snabbast, billigast, mest kapabel i textförståelse</option>
+                    <option value="gpt-4-turbo">gpt-4-turbo -- bra fallback</option>
+                    <option value="gpt-4 (standard)">gpt-4 -- långsammare modell</option>
+                </select><br>
 
-            <label for="download-options">Svarsformat:</label><br>
-            <div id="download-options">
-                <label><input type="radio" name="format" value="json" checked> JSON</label>
-                <label><input type="radio" name="format" value="csv"> CSV</label>
-                <label><input type="radio" name="format" value="xlsx"> Excel</label>
-                <input type="hidden" name="sources" value="no">
-                <label><input type="checkbox" id="sources" name="sources" value="yes" checked> Specificera källor</label>
-            </div>
+                <label for="download-options">Svarsformat:</label><br>
+                <div id="download-options">
+                    <label><input type="radio" name="format" value="json" checked> JSON</label>
+                    <label><input type="radio" name="format" value="csv"> CSV</label>
+                    <label><input type="radio" name="format" value="xlsx"> Excel</label>
+                    <input type="hidden" name="sources" value="no">
+                    <label><input type="checkbox" id="sources" name="sources" value="yes" checked> Specificera källor</label>
+                </div>
 
-            <button type="submit">Ladda upp och analysera</button>
-        </form>
-    
-        {% if message %}
-            <p style="color: green;">{{ message }}</p>
+                <button type="submit">Ladda upp och analysera</button>
+            </form>
+        
+            {% if message %}
+                <p style="color: green;">{{ message }}</p>
+            {% endif %}
+
+            {% if download_filename %}
+                <div id="download-panel">
+                    <p><a href="/download/{{ download_filename }}" download>Ladda ner resultatfil</a></p>
+                    <p><a href="/" class="back-button">⬅️ Tillbaka till start</a></p>
+                </div>
+            {% endif %}
+        </div> <!-- Wrapper -->
+    </div>
+    <div id="masking" name="masking" class="tab-content">
+        <div id="wrapper2">
+            <h1>{{ title_masking }}</h1>
+            <h3><em>{{subtitle_masking}}</em></h3>
+            <form action="/mask" method="post" enctype="multipart/form-data">
+                <label for="maskfile">Välj PDF att maskera:</label><br>
+                <input type="file" name="file" id="maskfile" accept=".pdf" required><br><br>
+                <button type="submit">Starta maskering</button>
+            </form>
+            {% if message and 'maskerad' in message %}
+                 <p style="color: green;">{{ message }}</p>
+            {% endif %}
+
+             {% if masked_filename %}
+                <div id="download-panel2">
+                    <p><a href="/download/{{ masked_filename }}" download>Ladda ner maskerad fil</a></p>
+                    <p><a href="/" class="back-button">⬅️ Tillbaka till start</a></p>
+                </div>
+            {% endif %}
+        </div> <!-- Wrapper2 -->
+    </div>
+
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        {% if active_tab %}
+        showTab("{{ active_tab }}");
         {% endif %}
-
-       {% if download_filename %}
-            <div id="download-panel">
-                <p><a href="/download/{{ download_filename }}" download>Ladda ner resultatfil</a></p>
-                <p><a href="/" class="back-button">⬅️ Tillbaka till start</a></p>
-            </div>
-        {% endif %}
-
-         <!-- A spinner that spins while executing -->
-         <div id="spinner-container">
-            <div class="spinner"></div>
-            <p>Bearbetar filen...</p>
-        </div>
-    </div> <!-- Wrapper -->
+    });
+    </script>
 </body>
 </html>

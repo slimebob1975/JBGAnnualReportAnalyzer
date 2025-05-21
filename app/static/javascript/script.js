@@ -5,17 +5,42 @@ document.addEventListener("DOMContentLoaded", function () {
         if (apikeyField) apikeyField.value = savedKey;
     }
 
-    const form = document.querySelector("form");
     const spinner = document.getElementById("spinner-container");
 
-    if (form && spinner) {
+    // Hantera alla formulär på sidan
+    document.querySelectorAll("form").forEach(form => {
         form.addEventListener("submit", function () {
-            const apikeyField = document.getElementById("apikey");
+            // Spara API-nyckel om det finns
+            const apikeyField = form.querySelector("#apikey");
             if (apikeyField) {
                 const apikey = apikeyField.value.trim();
                 localStorage.setItem("openai_api_key", apikey);
             }
-            spinner.style.display = "block";
+
+            // Visa spinner
+            if (spinner) {
+                spinner.classList.add("active");                
+                console.log("Spinner activated");
+            }
         });
-    }
+    });
 });
+
+function showTab(tabId) {
+    console.log("showTab called with tabId:", tabId);
+
+    // Göm alla flikar
+    document.querySelectorAll(".tab-content").forEach(tab => {
+        console.log("Hiding tab:", tab.id);
+        tab.classList.remove("active");
+    });
+
+    // Visa vald flik
+    const selectedTab = document.getElementById(tabId);
+    if (selectedTab) {
+        console.log("Activating tab:", selectedTab.id);
+        selectedTab.classList.add("active");
+    } else {
+        console.warn("Tab not found:", tabId);
+    }
+}
