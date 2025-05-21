@@ -4,7 +4,7 @@ import json
 from typing import List, Union
 from openai import OpenAI, RateLimitError, Timeout, APIError
 from app.src.JBGAnnualReportExceptions import FileTypeException 
-from app.src.JBGPDFMasking import PDFMasker
+from app.src.masking.JBGPDFMasking import PDFMasker
 import logging
 import fitz
 import tiktoken

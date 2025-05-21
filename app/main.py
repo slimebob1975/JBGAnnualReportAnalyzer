@@ -11,7 +11,7 @@ import os
 from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
 from app.src.JBGAnnualReportExceptions import FileTypeException, EmptyOutputException
 from app.src.JBGJSONConverter import JsonConverter
-from app.src.JBGPDFMasking import PDFMasker
+from app.src.masking.JBGPDFMasking import PDFMasker
 from openai import OpenAI
 import logging
 from datetime import datetime
