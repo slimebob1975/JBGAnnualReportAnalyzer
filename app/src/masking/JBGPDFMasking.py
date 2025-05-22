@@ -20,9 +20,9 @@ class PDFMasker:
             if re.match(r"^[#@]", word):
                 continue
             if word.lower() in {"and", "do", "gr", "vice", "statens", "is", "revis", "aukt", "kass", "Led", "lem", "mar", "sum", "id",\
-                "supp", "cer", "föret", "kassach"}:
+                "supp", "cer", "föret", "kassach", "gransk", "general", "sek", "arb"}:
                 continue
-            if word in {"Signerat", "jan", "kassa", "signe", "dista"}:
+            if word in {"Signerat", "jan", "kassa", "signe", "dista", "manuell", "Sek", "General"}:
                 continue
             
             # Fixa extra mellanslag runt bindestreck
@@ -73,7 +73,7 @@ class PDFMasker:
     
     @staticmethod
     def _get_extra_names():
-        names =   {"Jeanette"}
+        names =   {"Jeanette", "Mathias"}
         surnames = {"Cervin"}
         return names, surnames
     
