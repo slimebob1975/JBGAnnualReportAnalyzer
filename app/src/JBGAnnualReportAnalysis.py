@@ -722,7 +722,11 @@ class JBGAnnualReportAnalyzer:
             if self.use_masking:
                 masker = PDFMasker()
                 pdf_output_path = Path(_pdf_path.with_name(_pdf_path.stem + "_masked.pdf"))
-                pdf_path = Path(masker.do_masking(_pdf_path, pdf_output_path, logger=logger))
+                pdf_path = masker.do_masking(_pdf_path, pdf_output_path, logger=logger)
+                
+                if pdf_path is None:
+                    logger.error(f"Maskering misslyckades för fil: {_pdf_path.name}. Hoppar över denna fil i analysen.")
+                    continue
             else:
                 pdf_path = _pdf_path
 
