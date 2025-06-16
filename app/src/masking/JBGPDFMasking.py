@@ -173,6 +173,6 @@ def main(pdf_path_str):
         
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Användning: python test_maskering.py <fil.pdf>")
+        print("Användning: python JBGPDFMasking.py <fil.pdf>")
     else:
         main(sys.argv[1])

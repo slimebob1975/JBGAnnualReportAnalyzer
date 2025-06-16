@@ -489,7 +489,16 @@ class JBGAnnualReportAnalyzer:
         
         return result
     
-    def _deep_merge_json_objects(self, json_list: List[dict]) -> dict:
+    def _deep_merge_json_objects_simple(self, json_list: List[dict]) -> dict:
+        """
+        Merge JSON object, but with risk of overwriting existing values with null values
+
+        Args:
+            json_list (List[dict]): _description_
+
+        Returns:
+            dict: _description_
+        """
 
         def deep_merge(a: dict, b: dict) -> dict:
             result = dict(a)
@@ -509,6 +518,41 @@ class JBGAnnualReportAnalyzer:
             result = deep_merge(result, obj)
 
         return result
+    
+    def _deep_merge_json_objects(self, json_list: List[dict]) -> dict:
+        """
+        Merge JSON object, but with less risk of overwriting existing values with null values
+
+        Args:
+            json_list (List[dict]): _description_
+
+        Returns:
+            dict: _description_
+        """
+        def deep_merge(a: dict, b: dict) -> dict:
+            result = dict(a)
+            for k, v in b.items():
+                if (
+                    k in result
+                    and isinstance(result[k], Mapping)
+                    and isinstance(v, Mapping)
+                ):
+                    result[k] = deep_merge(result[k], v)
+                else:
+                    # Huvudpatchen: skriv inte över med None
+                    if k not in result or (result[k] is None and v is not None):
+                        result[k] = v
+                    elif result[k] is None and v is None:
+                        result[k] = None  # Båda är None, skriv None
+                    # Annars: behåll existerande värde
+            return result
+
+        result = {}
+        for obj in json_list:
+            result = deep_merge(result, obj)
+
+        return result
+
     
     def _merge_json_fund_data(self, data):
                 
@@ -737,16 +781,28 @@ class JBGAnnualReportAnalyzer:
                     logger.info(f"Skickar chunk {i+1}/{len(chunks)} till GPT...")
                     response = self._make_openai_api_call(prompt, request, model)
                     logger.debug(f"GPT-rådata:\n{response}")
-                    response = self._clean_presumed_prefixed_json(response)
-                    if not response.strip().startswith("{"):
-                        logger.warning("GPT-svar är inte giltig JSON – hoppar över.")
+                    
+                    # Hantera JSON-data som kommer tillbaka från GPT-anropet
+                    response_cleaned = self._clean_presumed_prefixed_json(response).strip()
+
+                    # Kontrollera att svaret åtminstone ser ut som JSON
+                    if not response_cleaned.startswith("{") or not response_cleaned.endswith("}"):
+                        logger.warning("GPT-svar representerar inte giltig JSON-kod – hoppar över detta chunk.")
                         continue
+
+                    # Försök att ladda in JSON strukturen
                     try:
-                        parsed = json.loads(response)
-                        partial_results.append(parsed)
+                        response_json = json.loads(response_cleaned)
                     except json.JSONDecodeError as e:
-                        logger.error(f"Misslyckades ladda JSON: {e}")
+                        logger.warning(f"Misslyckades att parsa JSON: {e} – hoppar över detta chunk.")
                         continue
+
+                    # Kontroll att innehållet tillför något, annars hoppa över
+                    non_null_count = self._count_non_null_metrics(response_json)
+                    if non_null_count == 0:
+                        logger.info(f"Skipping chunk due to low data extraction: {non_null_count} metrics found.")
+                        continue
+                    partial_results.append(response_json)
                 except Exception as e:
                     logger.error(f"Fel vid GPT-anrop chunk {i+1}: {e}")
                     continue
@@ -777,3 +833,12 @@ class JBGAnnualReportAnalyzer:
         else:
             logger.warning(f"Inga resultat sparades.")
             return None
+    
+    def _count_non_null_metrics(self, json_obj: dict) -> int:
+        count = 0
+        for fund, years in json_obj.items():
+            for year, metrics in years.items():
+                for metric_name, metric_data in metrics.items():
+                    if isinstance(metric_data, dict) and metric_data.get("värde") is not None:
+                        count += 1
+        return count

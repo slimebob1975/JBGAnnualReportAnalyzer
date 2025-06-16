@@ -13,7 +13,9 @@
   },
   {
     "Nyckeltal": "Fordringar statligt bidrag till arbetslöshetsersättning",
-    "Alternativa benämningar": [],
+    "Alternativa benämningar": [
+      "Fordringar statliga bidrag till arbetslöshetsersättning"
+    ],
     "Beskrivning": "Belopp som a-kassan har rätt att få från staten för utbetald arbetslöshetsersättning",
     "Formel": "",
     "Grupp": "📊 Balansposter",

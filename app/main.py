@@ -130,9 +130,9 @@ async def upload_file(
             upload_dir=UPLOAD_DIR,
             instruction_path=\
                 BASE_DIR / "prompt" / "GPT-instruktioner.md" if not USE_COMPRESSED_GPT else \
-                    BASE_DIR / "prompt" / "GPT-instruktioner_komprimerad.md",
-            metrics_path=BASE_DIR / "prompt" / "json" / "nyckeltalsdefinitioner.json",
-            use_masking = (use_masking == "yes")
+                BASE_DIR / "prompt" / "GPT-instruktioner_komprimerad.md",
+                metrics_path=BASE_DIR / "prompt" / "json" / "nyckeltalsdefinitioner.json",
+                use_masking = (use_masking == "yes")
         )
         analys.openai_client = OpenAI(api_key=apikey)
 
