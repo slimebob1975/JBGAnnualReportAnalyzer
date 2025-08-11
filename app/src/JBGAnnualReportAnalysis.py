@@ -39,6 +39,8 @@ class JBGAnnualReportAnalyzer:
     USE_TOKEN_OVERLAP = True
     DEFAULT_MODEL = "gpt-4o"
     DEFAULT_OPENAI_TEMPERATURE = 0.3
+    GPT_5_TEMPERATURE = 1.0
+    MODEL_GPT_5_MARKER = "gpt-5"
     DEFAULT_OPENAI_TOP_P = 1
     DEFAULT_SHORT_SLEEP_TIME = 1
     DEFAULT_LONG_SLEEP_TIME = 5
@@ -272,8 +274,43 @@ class JBGAnnualReportAnalyzer:
         
         return key_number_terms
     
+    @staticmethod
+    def _get_encoder_for_model(model_name: str):
+        """
+        Returnerar en tiktoken-encoder för angiven modell.
+        1) Försöker modell-specifik encoder via encoding_for_model
+        2) Faller tillbaka enligt känd praxis:
+        - GPT-5*  -> "o200k_base"
+        - GPT-4o* -> "o200k_base"
+        - GPT-4*  -> "cl100k_base"
+        - GPT-3.5 -> "cl100k_base"
+        - Annat   -> "o200k_base" (säkert val för nyare modeller)
+        """
+        
+        _GPT5_RE = re.compile(r"^gpt-5", re.IGNORECASE)      # gpt-5, gpt-5-mini, gpt-5-pro, etc.
+        _GPT4O_RE = re.compile(r"^(gpt-4o|o\d)", re.IGNORECASE)  # gpt-4o, gpt-4o-mini, ev. o-…-modeller
+        _GPT4_STD_RE = re.compile(r"^gpt-4(?!o)", re.IGNORECASE) # gpt-4, gpt-4-0613 osv.
+        _GPT35_RE = re.compile(r"^gpt-3\.5", re.IGNORECASE)
+        
+        # 1) Försök med tiktokens inbyggda mappning
+        try:
+            return tiktoken.encoding_for_model(model_name)
+        except Exception:
+            pass
+
+        # 2) Heuristiska fallbacks
+        if _GPT5_RE.match(model_name):
+            return tiktoken.get_encoding("o200k_base")
+        if _GPT4O_RE.match(model_name):
+            return tiktoken.get_encoding("o200k_base")
+        if _GPT4_STD_RE.match(model_name) or _GPT35_RE.match(model_name):
+            return tiktoken.get_encoding("cl100k_base")
+
+        # Sista utväg: anta nyare tokenizer
+        return tiktoken.get_encoding("o200k_base")
+    
     def _count_tokens(self, text: str, model: str = "gpt-4o") -> int:
-        enc = tiktoken.encoding_for_model(model)
+        enc = JBGAnnualReportAnalyzer._get_encoder_for_model(model)
         return len(enc.encode(text))
 
     def _chunk_text(self, text: str, max_tokens: int, model: str) -> List[str]:
@@ -300,7 +337,7 @@ class JBGAnnualReportAnalyzer:
     ) -> List[str]:
         
         # Ladda rätt tokenisering beroende på modell
-        enc = tiktoken.encoding_for_model(model)
+        enc = JBGAnnualReportAnalyzer._get_encoder_for_model(model)
         
         # Tokenisera hela texten
         tokens = enc.encode(text)
@@ -410,9 +447,20 @@ class JBGAnnualReportAnalyzer:
                 {metrics_json}
             """
         return system_prompt
+    
+    @staticmethod
+    def get_permitted_temperature(gpt_model):
+        
+        try:
+            index = gpt_model.index(JBGAnnualReportAnalyzer.MODEL_GPT_5_MARKER)
+            return JBGAnnualReportAnalyzer.GPT_5_TEMPERATURE
+        except ValueError as ex:
+            return JBGAnnualReportAnalyzer.DEFAULT_OPENAI_TEMPERATURE
 
     def _make_openai_api_call(self, system_prompt, request_text: str, model: str = "") -> str:
         MODEL_TOKEN_LIMITS = {
+            "gpt-5": 16384,
+            "gpt-5-mini": 8192,
             "gpt-4": 8192,
             "gpt-4-0613": 8192,
             "gpt-4-1106-preview": 128000,
@@ -429,13 +477,14 @@ class JBGAnnualReportAnalyzer:
 
         while attempt < max_retries:
             try:
+                logger.debug(f"Open AI call attempt: {attempt}")
                 response = self.openai_client.chat.completions.create(
                     model=model_used,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": request_text}
                     ],
-                    temperature=self.DEFAULT_OPENAI_TEMPERATURE,
+                    temperature=JBGAnnualReportAnalyzer.get_permitted_temperature(model_used),
                     top_p=self.DEFAULT_OPENAI_TOP_P
                 )
 
