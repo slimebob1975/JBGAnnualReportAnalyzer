@@ -14,7 +14,7 @@ ocrmypdf
 pytesseract
 tf-keras
 openai
-uvicorn
+uvicorn[standard]
 PyMuPDF # Includes fitz
 transformers
 tiktoken
