@@ -8,7 +8,7 @@ import tempfile
 
 class PDFMasker:
     def __init__(self):
-        self.ner = pipeline("ner", model="KBLab/bert-base-swedish-cased-ner", tokenizer="KBLab/bert-base-swedish-cased-ner", grouped_entities=True)
+        self.ner = pipeline("ner", model="KBLab/bert-base-swedish-cased-ner", tokenizer="KBLab/bert-base-swedish-cased-ner", aggregation_strategy="simple")
 
     def sanitize_pdf(self, input_pdf: Path, logger: Logger = None) -> Path:
         temp_dir = tempfile.mkdtemp()

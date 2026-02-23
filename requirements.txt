@@ -18,3 +18,4 @@ uvicorn[standard]
 PyMuPDF # Includes fitz
 transformers
 tiktoken
+torch
