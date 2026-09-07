@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jbg-annual-report-analyzer"
+version = "0.2.0"
+description = "Extraherar nyckeltal ur svenska arbetslöshetskassors årsredovisningar"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# Core: what the web service needs to accept a PDF, read it, call the model
+# and write JSON, CSV or Excel. Nothing else belongs here.
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.30,<1.0",
+    "jinja2>=3.1,<4.0",
+    "python-multipart>=0.0.9",
+    "openai>=1.66,<4.0",
+    "tiktoken>=0.7,<1.0",
+    "PyMuPDF>=1.24.3,<2.0",
+    "openpyxl>=3.1,<4.0",
+]
+
+[project.optional-dependencies]
+# Name masking. Pulls in torch, which is roughly 2 GB, so a deployment that
+# runs with masking disabled should not have to install it.
+masking = [
+    "transformers>=4.40,<6.0",
+]
+
+# OCR for scanned reports. Also needs the system packages tesseract-ocr,
+# tesseract-ocr-swe and ghostscript, which pip cannot install.
+ocr = [
+    "ocrmypdf>=16.0,<18.0",
+]
+
+# Only for JsonConverter.to_dataframe() and to_excel(); the service itself
+# writes CSV with the standard library and Excel with openpyxl.
+analysis = [
+    "pandas>=2.0,<4.0",
+]
+
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "ruff>=0.6",
+]
+
+all = [
+    "jbg-annual-report-analyzer[masking,ocr,analysis]",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["prompt/**/*", "src/json/*.json", "templates/*", "static/**/*", "config/*.example.json"]
+
+# ---------------------------------------------------------------------------
+# Removed from the old requirements.txt because nothing in the codebase
+# imports them: aiofiles, beautifulsoup4, lxml, requests, python-docx,
+# pytesseract, tf-keras, pdfminer.six. pydantic and torch are still installed,
+# but as transitive dependencies of fastapi and transformers respectively,
+# so they do not need declaring.
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",   # line length is handled by the formatter
+    "B008",   # FastAPI's Depends/File/Form defaults are the documented idiom
+    # Typing modernisation (List -> list, Union -> |) is deferred to the
+    # cleanup patch so it does not bury the packaging changes in this one.
+    "UP006",
+    "UP007",
+    "UP035",
+    "UP045",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]  # sys.path manipulation before imports
+# The PyMuPDF import needs a try/except before the remaining imports.
+"app/src/JBGAnnualReportAnalysis.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "error::DeprecationWarning:app.*",
+]
