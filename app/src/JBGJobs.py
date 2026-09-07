@@ -17,10 +17,10 @@ import tempfile
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,10 @@ STATUS_ERROR = "error"
 # the default lifetime is short. Override with JBG_JOB_TTL_SECONDS.
 DEFAULT_TTL_SECONDS = int(os.getenv("JBG_JOB_TTL_SECONDS", "3600"))
 MAX_CONCURRENT_JOBS = int(os.getenv("JBG_MAX_CONCURRENT_JOBS", "2"))
+# How often the background sweeper runs. Expiry used to be checked only when a
+# new job was created, so an idle service kept uploaded reports and results on
+# disk indefinitely after the last run of the day.
+SWEEP_INTERVAL_SECONDS = int(os.getenv("JBG_SWEEP_INTERVAL_SECONDS", "300"))
 
 
 @dataclass
@@ -42,13 +46,13 @@ class Job:
     status: str = STATUS_QUEUED
     message: str = "Väntar på att starta..."
     created_at: float = field(default_factory=time.time)
-    started_at: Optional[float] = None
-    finished_at: Optional[float] = None
+    started_at: float | None = None
+    finished_at: float | None = None
     total_files: int = 0
     done_files: int = 0
     current_file: str = ""
-    output_name: Optional[str] = None
-    error: Optional[str] = None
+    output_name: str | None = None
+    error: str | None = None
 
     @property
     def duration(self) -> float:
@@ -83,16 +87,42 @@ class JobRegistry:
     runs behind more than one worker, this needs to move to shared storage.
     """
 
-    def __init__(self, root: Optional[Path] = None, ttl_seconds: int = DEFAULT_TTL_SECONDS):
+    def __init__(
+        self,
+        root: Path | None = None,
+        ttl_seconds: int = DEFAULT_TTL_SECONDS,
+        sweep_interval: int = SWEEP_INTERVAL_SECONDS,
+    ):
         self.root = Path(root or os.getenv("JBG_JOB_DIR") or (Path(tempfile.gettempdir()) / "jbg-jobs"))
         self.root.mkdir(parents=True, exist_ok=True)
         self.ttl_seconds = ttl_seconds
-        self._jobs: Dict[str, Job] = {}
+        self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self._pool = ThreadPoolExecutor(
             max_workers=MAX_CONCURRENT_JOBS, thread_name_prefix="jbg-job"
         )
+        self._stop_sweeper = threading.Event()
+        self._sweeper = None
         logger.info(f"Jobbkatalog: {self.root} (livslängd {self.ttl_seconds}s)")
+        if sweep_interval > 0:
+            self.start_sweeper(sweep_interval)
+
+    # --------------------------------------------------------------- sweeper
+    def start_sweeper(self, interval: int) -> None:
+        """Run purge_expired on a timer, not only when a job is created."""
+
+        def loop():
+            while not self._stop_sweeper.wait(interval):
+                try:
+                    self.purge_expired()
+                except Exception as ex:  # pragma: no cover - must never die
+                    logger.warning(f"Städning av jobbkatalogen misslyckades: {ex}")
+
+        self._sweeper = threading.Thread(
+            target=loop, name="jbg-job-sweeper", daemon=True
+        )
+        self._sweeper.start()
+        logger.info(f"Städning av gamla jobb var {interval}s.")
 
     # ------------------------------------------------------------------ jobs
     def create(self) -> Job:
@@ -106,7 +136,7 @@ class JobRegistry:
         logger.info(f"Skapade jobb {job_id}")
         return job
 
-    def get(self, job_id: str) -> Optional[Job]:
+    def get(self, job_id: str) -> Job | None:
         with self._lock:
             return self._jobs.get(job_id)
 
@@ -119,8 +149,13 @@ class JobRegistry:
             job.message = "Analysen har startat..."
             try:
                 job.output_name = work(job)
+                job.finished_at = time.time()
                 job.status = STATUS_DONE
                 job.message = self._completion_message(job)
+                logger.info(
+                    f"Jobb {job.id} klart på {self.format_duration(job.duration)} "
+                    f"({job.total_files} fil(er)) -> {job.output_name}"
+                )
             except Exception as ex:
                 logger.exception(f"Jobb {job.id} misslyckades")
                 job.status = STATUS_ERROR
@@ -198,6 +233,7 @@ class JobRegistry:
         return removed
 
     def shutdown(self) -> None:
+        self._stop_sweeper.set()
         self._pool.shutdown(wait=False, cancel_futures=True)
 
 

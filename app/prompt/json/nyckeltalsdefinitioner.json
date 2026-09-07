@@ -54,12 +54,14 @@
   {
     "Nyckeltal": "Skulder",
     "Alternativa benämningar": [
-      "Summa skulder"
+      "Summa skulder",
+      "Summa kortfristiga skulder",
+      "Summa avsättningar och skulder"
     ],
     "Beskrivning": "Summan av föreningens förpliktelser",
-    "Formel": "",
+    "Formel": "Summa skulder. Finns bara 'Summa avsättningar och skulder' anges den summan minus summa avsättningar.",
     "Grupp": "📉 Skulder och åtaganden",
-    "Specifika instruktioner": "Ange totalen av skulderna. Blanda inte in avsättningar eller eget kapital. Hittas ofta sist i skuldavsnittet."
+    "Specifika instruktioner": "Ange skulderna EXKLUSIVE avsättningar, så att beloppet blir jämförbart mellan kassor. Hittas oftast som 'Summa skulder' sist i skuldavsnittet. Viktigt: en del årsredovisningar redovisar ingen egen rad för 'Summa skulder' utan enbart 'Summa avsättningar och skulder'. Ange då den summan MINUS summa avsättningar, och skriv i kommentaren att värdet är beräknat på det sättet samt vilka två belopp du använt. Kontrollera gärna att Eget kapital + Skulder + Utgående avsättningar blir lika med balansomslutningen. Blir summan i stället lika med balansomslutningen redan utan avsättningarna har avsättningarna räknats in i skulderna, vilket är fel här."
   },
   {
     "Nyckeltal": "Skulder arbetslöshetsersättning",
@@ -82,7 +84,9 @@
   },
   {
     "Nyckeltal": "Eget kapital",
-    "Alternativa benämningar": ["Summa eget kapital"],
+    "Alternativa benämningar": [
+      "Summa eget kapital"
+    ],
     "Beskrivning": "Skillnaden mellan tillgångar och skulder",
     "Formel": "Från balansräkning",
     "Grupp": "📊 Balansposter",

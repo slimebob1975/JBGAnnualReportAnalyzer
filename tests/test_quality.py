@@ -109,16 +109,17 @@ def test_balanced_balance_sheet_produces_no_findings():
     assert validation.validate(result) == []
 
 
-def test_the_real_discrepancy_is_caught():
-    """Finans- och Försäkringsbranschens 2024, reproduced in two runs."""
+def test_a_balance_sheet_that_does_not_add_up_is_caught():
+    """Neither EK+S nor EK+S+A equals BO, so a figure is genuinely wrong."""
     result = _fund(
-        **{"Balansomslutning": 45776, "Eget kapital": 20000, "Skulder": 25776,
+        **{"Balansomslutning": 45776, "Eget kapital": 20000, "Skulder": 20000,
            "Utgående avsättningar": 2867}
     )
     findings = validation.validate(result)
     assert len(findings) == 1
+    assert findings[0].rule == "Balansräkningen balanserar"
     assert findings[0].severity == validation.SEVERITY_ERROR
-    assert "-2 867" in findings[0].message or "+2 867" in findings[0].message
+    assert "differens" in findings[0].message
 
 
 def test_rounding_in_tkr_does_not_trip_the_check():
@@ -201,7 +202,9 @@ def test_csv_now_carries_certainty_and_comment(sample_json, tmp_path):
     out = tmp_path / "out.csv"
     JsonConverter(sample_json, include_sources=True).to_csv(out)
     header = out.read_text(encoding="utf-8-sig").splitlines()[0]
-    assert header.split(";") == ["Fund", "Year", "Key", "Value", "Source", "Certainty", "Comment"]
+    assert header.split(";") == [
+        "Fund", "Year", "Key", "Value", "Source", "Certainty", "Comment", "Validering",
+    ]
 
 
 def test_csv_without_sources_stays_minimal(sample_json, tmp_path):
@@ -286,7 +289,9 @@ def test_csv_export_needs_no_pandas(sample_json, tmp_path, monkeypatch):
     out = tmp_path / "out.csv"
     JsonConverter(sample_json, include_sources=True).to_csv(out)
     lines = out.read_text(encoding="utf-8-sig").splitlines()
-    assert lines[0].split(";") == ["Fund", "Year", "Key", "Value", "Source", "Certainty", "Comment"]
+    assert lines[0].split(";") == [
+        "Fund", "Year", "Key", "Value", "Source", "Certainty", "Comment", "Validering",
+    ]
     assert len(lines) == 3  # header plus two metrics
 
 
@@ -306,5 +311,175 @@ def test_dataframe_still_works_when_pandas_is_present(sample_json):
     from app.src.JBGJSONConverter import JsonConverter
 
     df = JsonConverter(sample_json, include_sources=True).to_dataframe()
-    assert list(df.columns) == ["Fund", "Year", "Key", "Value", "Source", "Certainty", "Comment"]
+    assert list(df.columns) == [
+        "Fund", "Year", "Key", "Value", "Source", "Certainty", "Comment", "Validering",
+    ]
     assert len(df) == 2
+
+
+# ------------------------------------------ findings in every output format
+@pytest.fixture
+def flagged_json(tmp_path):
+    """A result whose balance sheet does not balance, with the finding
+    recorded in the file the way do_analysis now writes it."""
+    result = {
+        "Journalisternas arbetslöshetskassa": {
+            "2024": {
+                "Balansomslutning": {"värde": 45776, "källa": "Sida 15",
+                                     "säkerhet": 1.0, "kommentar": "Summa tillgångar."},
+                "Eget kapital": {"värde": 29179, "källa": "Sida 16",
+                                 "säkerhet": 1.0, "kommentar": "."},
+                "Skulder": {"värde": 16597, "källa": "Sida 16",
+                            "säkerhet": 1.0, "kommentar": "."},
+                "Utgående avsättningar": {"värde": 2867, "källa": "Not 9",
+                                          "säkerhet": 0.8, "kommentar": "."},
+            }
+        }
+    }
+    findings = validation.validate(result)
+    assert len(findings) == 1, "fixture should trip the balance check"
+    result["_rimlighetskontroller"] = [f.as_dict() for f in findings]
+
+    path = tmp_path / "r.json"
+    path.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def test_metadata_key_is_not_treated_as_a_fund(flagged_json):
+    from app.src.JBGJSONConverter import JsonConverter
+
+    conv = JsonConverter(flagged_json, include_sources=True)
+    assert "_rimlighetskontroller" not in conv._funds()
+    assert list(conv._funds()) == ["Journalisternas arbetslöshetskassa"]
+    assert len(conv.findings()) == 1
+
+
+def test_csv_names_the_failed_check_per_cell(flagged_json, tmp_path):
+    """Choosing CSV used to lose the checks entirely; they were only logged."""
+    from app.src.JBGJSONConverter import JsonConverter
+
+    out = tmp_path / "out.csv"
+    JsonConverter(flagged_json, include_sources=True).to_csv(out)
+    lines = out.read_text(encoding="utf-8-sig").splitlines()
+    assert lines[0].endswith("Validering")
+
+    flagged = [line for line in lines[1:] if line.rsplit(";", 1)[-1]]
+    keys = {line.split(";")[2] for line in flagged}
+    assert keys == {"Balansomslutning", "Eget kapital", "Skulder", "Utgående avsättningar"}
+    assert all("Balansräkningen balanserar" in line for line in flagged)
+
+
+def test_unflagged_rows_have_an_empty_validation_column(flagged_json, tmp_path):
+    from app.src.JBGJSONConverter import JsonConverter
+
+    out = tmp_path / "out.csv"
+    JsonConverter(flagged_json, include_sources=True).to_csv(out)
+    # every metric in this fixture is named by the one finding, so add a
+    # second fund that is fine and check it stays blank
+    data = json.loads(flagged_json.read_text(encoding="utf-8"))
+    data["Fastighets arbetslöshetskassa"] = {
+        "2024": {"Balansomslutning": {"värde": 1, "källa": "s", "säkerhet": 1, "kommentar": "."}}
+    }
+    flagged_json.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    JsonConverter(flagged_json, include_sources=True).to_csv(out)
+    rows = out.read_text(encoding="utf-8-sig").splitlines()[1:]
+    fine = [r for r in rows if r.startswith("Fastighets")]
+    assert fine and all(r.endswith(";") for r in fine)
+
+
+def test_excel_recovers_findings_from_the_result_file(flagged_json, tmp_path):
+    """Exporting an existing JSON keeps the flags even when no findings list
+    is passed in."""
+    openpyxl = pytest.importorskip("openpyxl")
+    from app.src.JBGJSONConverter import JsonConverter
+
+    out = tmp_path / "out.xlsx"
+    JsonConverter(flagged_json, include_sources=True).to_excel_by_year(
+        out, key_def_path=KEY_DEFS, fund_names=KASSOR  # note: no findings=
+    )
+    wb = openpyxl.load_workbook(out)
+    ws = wb["2024"]
+    cells = {r[0].value: r[1] for r in ws.iter_rows(min_row=2)}
+    assert cells["Balansomslutning"].fill.start_color.rgb.endswith("E1BEE7")
+    assert "Balansräkningen balanserar" in cells["Balansomslutning"].comment.text
+    # a high-certainty value that is not flagged keeps its own colour
+    assert cells["Eget kapital"].fill.start_color.rgb.endswith("E1BEE7")
+
+
+# --------------------------------------------------- certainty calibration
+def test_certainty_histogram_counts_the_three_levels():
+    result = {"K": {"2023": {
+        "a": {"värde": 1, "säkerhet": "explicit"},
+        "b": {"värde": 1, "säkerhet": "explicit"},
+        "c": {"värde": 1, "säkerhet": "härledd"},
+        "d": {"värde": 1, "säkerhet": "osäker"},
+        "e": {"värde": 1},
+    }}}
+    assert validation.certainty_histogram(result) == {
+        "explicit": 2, "härledd": 1, "osäker": 1, "saknas": 1
+    }
+
+
+def test_histogram_maps_legacy_floats_onto_the_levels():
+    """Result files produced before the enum still contain numbers."""
+    result = {"K": {"2023": {
+        "a": {"värde": 1, "säkerhet": 1.0},
+        "b": {"värde": 1, "säkerhet": 0.95},
+        "c": {"värde": 1, "säkerhet": 0.6},
+        "d": {"värde": 1, "säkerhet": 0.2},
+    }}}
+    assert validation.certainty_histogram(result) == {
+        "explicit": 2, "härledd": 1, "osäker": 1, "saknas": 0
+    }
+
+
+def test_histogram_ignores_the_metadata_key():
+    result = {
+        "K": {"2023": {"a": {"värde": 1, "säkerhet": 1.0}}},
+        "_rimlighetskontroller": [{"kassa": "K"}],
+    }
+    assert sum(validation.certainty_histogram(result).values()) == 1
+
+
+def test_no_warning_when_almost_everything_is_explicit(caplog):
+    """A real run was 98% explicit and the three exceptions were exactly the
+    values worth checking. For a lookup task against structured statements
+    that is the expected outcome, not a failure of the scale."""
+    metrics = {str(i): {"värde": 1, "säkerhet": "explicit"} for i in range(117)}
+    metrics.update({f"h{i}": {"värde": 1, "säkerhet": "härledd"} for i in range(2)})
+    metrics["o"] = {"värde": 1, "säkerhet": "osäker"}
+
+    with caplog.at_level("INFO"):
+        validation.log_certainty_histogram({"K": {"2024": metrics}})
+    assert any("explicit: 117" in r.message for r in caplog.records)
+    assert not any(r.levelname == "WARNING" for r in caplog.records)
+
+
+def test_warning_only_when_the_scale_has_no_variation_at_all(caplog):
+    metrics = {str(i): {"värde": 1, "säkerhet": "explicit"} for i in range(30)}
+    with caplog.at_level("INFO"):
+        validation.log_certainty_histogram({"K": {"2024": metrics}})
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert warnings and "samma säkerhetsnivå" in warnings[0].message
+
+
+def test_no_warning_on_a_small_sample(caplog):
+    """A handful of values sharing a level means a small run, not a broken
+    scale."""
+    metrics = {str(i): {"värde": 1, "säkerhet": "explicit"} for i in range(5)}
+    with caplog.at_level("INFO"):
+        validation.log_certainty_histogram({"K": {"2024": metrics}})
+    assert not any(r.levelname == "WARNING" for r in caplog.records)
+
+
+def test_skulder_definition_states_the_exclusive_convention():
+    """The prompt has to tell the model what to do when only
+    "Summa avsättningar och skulder" is presented."""
+    definitions = json.loads(KEY_DEFS.read_text(encoding="utf-8"))
+    skulder = next(d for d in definitions if d["Nyckeltal"] == "Skulder")
+    instructions = skulder["Specifika instruktioner"]
+    assert "EXKLUSIVE avsättningar" in instructions
+    assert "Summa avsättningar och skulder" in instructions
+    assert "MINUS" in instructions
+    assert "Summa avsättningar och skulder" in skulder["Alternativa benämningar"]

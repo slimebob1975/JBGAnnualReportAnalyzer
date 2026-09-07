@@ -2,13 +2,13 @@ import csv
 import json
 import logging
 from pathlib import Path
-from typing import List, Union
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from app.src import JBGMetricSchema as schema
 from app.src import JBGValidation as validation
 from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
 from app.src.JBGFundNames import FundNameResolver
@@ -16,25 +16,50 @@ from app.src.JBGFundNames import FundNameResolver
 logger = logging.getLogger(__name__)
 
 class JsonConverter:
-    def __init__(self, json_path: Union[str, Path], include_sources: bool = False):
+    def __init__(self, json_path: str | Path, include_sources: bool = False):
         self.json_path = Path(json_path)
         if not self.json_path.exists():
             raise FileNotFoundError(f"JSON file not found: {self.json_path}")
         self.include_sources = include_sources
         self.data = self._load_json()
 
+    METADATA_PREFIX = "_"
+
     def _load_json(self):
         with open(self.json_path, encoding='utf-8') as f:
             return json.load(f)
 
-    def _rows(self) -> List[dict]:
+    def _funds(self) -> dict:
+        """The fund entries only. Keys prefixed with an underscore hold
+        metadata such as the validation findings, not a fund."""
+        return {
+            name: years
+            for name, years in self.data.items()
+            if not name.startswith(self.METADATA_PREFIX) and isinstance(years, dict)
+        }
+
+    def findings(self) -> list[dict]:
+        """Validation findings recorded in the result file, if any."""
+        recorded = self.data.get("_rimlighetskontroller") or []
+        return recorded if isinstance(recorded, list) else []
+
+    def _findings_by_cell(self) -> dict:
+        index = {}
+        for finding in self.findings():
+            for metric in finding.get("berörda_nyckeltal") or []:
+                key = (finding.get("kassa"), str(finding.get("år")), metric)
+                index.setdefault(key, []).append(finding.get("kontroll", ""))
+        return index
+
+    def _rows(self) -> list[dict]:
         """Flatten to Fund | Year | Key | Value [| Source | Certainty | Comment].
 
         The certainty and comment the model produces used to be discarded here,
         even though the prompt spends considerable effort calibrating them.
         """
         rows = []
-        for fund_name, years in self.data.items():
+        flagged = self._findings_by_cell()
+        for fund_name, years in self._funds().items():
             for year, key_numbers in years.items():
                 for key, value_dict in key_numbers.items():
                     if not isinstance(value_dict, dict):
@@ -53,13 +78,18 @@ class JsonConverter:
                         row["Comment"] = value_dict.get(
                             JBGAnnualReportAnalyzer.FIELD_COMMENT
                         )
+                        row["Validering"] = "; ".join(
+                            flagged.get((fund_name, str(year), key), [])
+                        )
                     rows.append(row)
         return rows
 
     @property
-    def columns(self) -> List[str]:
+    def columns(self) -> list[str]:
         base = ["Fund", "Year", "Key", "Value"]
-        return base + ["Source", "Certainty", "Comment"] if self.include_sources else base
+        if not self.include_sources:
+            return base
+        return base + ["Source", "Certainty", "Comment", "Validering"]
 
     def to_dataframe(self):
         """Optional convenience wrapper. Requires the 'analysis' extra.
@@ -76,7 +106,7 @@ class JsonConverter:
             ) from ex
         return pd.DataFrame(self._rows(), columns=self.columns)
 
-    def to_csv(self, output_path: Union[str, Path]):
+    def to_csv(self, output_path: str | Path):
         output_path = Path(output_path)
         rows = self._rows()
         # utf-8-sig so Excel on Windows opens it with the right encoding, and
@@ -89,7 +119,7 @@ class JsonConverter:
             writer.writerows(rows)
         logger.info(f"CSV file saved to {output_path} ({len(rows)} rader)")
 
-    def to_excel(self, output_path: Union[str, Path], by: str = "fund"):
+    def to_excel(self, output_path: str | Path, by: str = "fund"):
         """
         Save to Excel with multiple sheets.
         by: 'fund' or 'year'
@@ -114,28 +144,27 @@ class JsonConverter:
     # Confidence bands used to shade value cells. Read straight off the
     # "säkerhet" the model reports, which the prompt calibrates explicitly.
     CERTAINTY_BANDS = [
-        (0.9, "C6EFCE", "Hög säkerhet (>= 0,9)"),
-        (0.7, "FFEB9C", "Medelhög säkerhet (0,7-0,9)"),
-        (0.5, "FFD8A8", "Låg säkerhet (0,5-0,7)"),
-        (0.0, "FFC7CE", "Mycket låg säkerhet (< 0,5)"),
+        (schema.CERTAINTY_EXPLICIT, "C6EFCE", "explicit – står ordagrant i dokumentet"),
+        (schema.CERTAINTY_DERIVED, "FFEB9C", "härledd – uträknad eller tolkad rubrik"),
+        (schema.CERTAINTY_UNCERTAIN, "FFC7CE", "osäker – bör kontrolleras mot källan"),
     ]
     FLAGGED_FILL = "E1BEE7"
 
     @classmethod
-    def _certainty_fill(cls, certainty) -> Union[PatternFill, None]:
-        if not isinstance(certainty, (int, float)):
-            return None
-        for threshold, colour, _ in cls.CERTAINTY_BANDS:
-            if certainty >= threshold:
+    def _certainty_fill(cls, certainty) -> PatternFill | None:
+        """Shade by the reported level, mapping legacy floats onto the scale."""
+        level = schema.certainty_level(certainty)
+        for name, colour, _ in cls.CERTAINTY_BANDS:
+            if level == name:
                 return PatternFill(start_color=colour, end_color=colour, fill_type="solid")
         return None
 
     def to_excel_by_year(
         self,
-        output_path: Union[str, Path],
-        key_def_path: Union[str, Path],
-        fund_names: Union[None, str, Path] = None,
-        findings: Union[list, None] = None,
+        output_path: str | Path,
+        key_def_path: str | Path,
+        fund_names: None | str | Path = None,
+        findings: list | None = None,
     ):
         """
         Export JSON data to Excel with:
@@ -168,12 +197,25 @@ class JsonConverter:
         group_order = list(grouped_keys.keys())
         all_keys = [entry["Nyckeltal"] for entry in key_defs]
 
-        flagged = validation.findings_by_cell(findings or [])
+        if findings:
+            flagged = validation.findings_by_cell(findings)
+        else:
+            # Fall back to whatever the result file recorded, so exporting an
+            # existing JSON keeps the flags.
+            flagged = {
+                key: [
+                    validation.Finding(
+                        fund=key[0], year=key[1], rule=rule, message="", metrics=[key[2]]
+                    )
+                    for rule in rules
+                ]
+                for key, rules in self._findings_by_cell().items()
+            }
 
         # Build year -> fund -> key -> entry dict (not just the bare value, so
         # the source, certainty and comment survive to this point)
         year_structured = {}
-        for fund, year_data in self.data.items():
+        for fund, year_data in self._funds().items():
             for year, metrics in year_data.items():
                 per_fund = year_structured.setdefault(str(year), {}).setdefault(fund, {})
                 for key in all_keys:
@@ -249,7 +291,7 @@ class JsonConverter:
     @staticmethod
     def _build_note(certainty, source, comment, problems) -> str:
         parts = []
-        if isinstance(certainty, (int, float)):
+        if certainty:
             parts.append(f"Säkerhet: {certainty}")
         if source:
             parts.append(f"Källa: {source}")
@@ -272,7 +314,7 @@ class JsonConverter:
     def _write_legend_sheet(self, wb, findings: list, resolver) -> None:
         """A short reading guide, plus any sanity checks that failed."""
         ws = wb.create_sheet(title="Läsanvisning")
-        ws.append(["Färgkodning av värden"])
+        ws.append(["Färgkodning av värden (modellens egen bedömning)"])
         ws["A1"].font = Font(bold=True)
         for _, colour, label in self.CERTAINTY_BANDS:
             ws.append([label])

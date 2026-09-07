@@ -29,7 +29,7 @@ Svaret valideras mot ett JSON-schema. För varje nyckeltal du hittar anger du:
 - `"namn"`: nyckeltalets primära namn, exakt som det står i specifikationsfilen
 - `"värde"`: det numeriska värdet, utan tusenavgränsare
 - `"källa"`: sidnummer och rubrik där värdet hittades
-- `"säkerhet"`: din egen bedömning av precisionen (0-1)
+- `"säkerhet"`: `explicit`, `härledd` eller `osäker` (se nedan)
 - `"kommentar"`: motivering, alltid obligatorisk
 
 Utöver listan anger du `"kassa"` (kassans namn) och `"år"` (räkenskapsåret).
@@ -38,7 +38,7 @@ Utöver listan anger du `"kassa"` (kassans namn) och `"år"` (räkenskapsåret).
 
 Du får **endast** ta med nyckeltal som faktiskt återfinns i det utdrag du fått.
 Hittar du inte ett nyckeltal ska du **utelämna det helt** ur listan. Lägg aldrig
-till ett nyckeltal med `"värde": null` och låg `"säkerhet"` bara för att det
+till ett nyckeltal med `"värde": null` och `"säkerhet": "osäker"` bara för att det
 efterfrågas. Utdraget är en del av en längre årsredovisning, och en post du inte
 ser finns nästan alltid på en sida som ingår i ett annat utdrag. Ett `null`-svar
 från dig konkurrerar då med det korrekta värdet från ett annat utdrag.
@@ -50,26 +50,34 @@ hittats eller varför du är säker eller osäker.
 
 ## Hantera osäkerhet och kvalificerade tolkningar
 
-Du får gärna ge förslag på värde på ett nyckeltal även om du inte är säker. Det är bättre att svara med lägre `"säkerhet"` än att utelämna ett värde helt, så länge du kommenterar varför.
+Du får gärna ge förslag på värde på ett nyckeltal även om du inte är säker. Det
+är bättre att svara `"säkerhet": "osäker"` med en förklarande kommentar än att
+utelämna ett värde du faktiskt tror på.
 
-Exempel:
+Exempel på sådana fall:
 - Du hittar en post som sannolikt motsvarar ett nyckeltal, men rubriken är lite annorlunda.
 - Värdet står i en tabell utan tydlig etikett, men siffran passar in i sammanhanget.
 - Du tolkar en not eller sammanställning som underlag.
-- Du hittar nyckeltalet för ett år, då finns ofta motsvarande värde för ett annat år i närheten i texten
+- Du hittar nyckeltalet för ett år, då finns ofta motsvarande värde för ett annat år i närheten i texten.
 
-### Säkerhetsskala (riktlinjer)
+### Säkerhetsnivåer
 
-Använd följande tumregler för att ange `"säkerhet"`:
+`"säkerhet"` är inte en siffra utan exakt ett av tre värden. Välj det som
+beskriver hur du faktiskt kom fram till beloppet:
 
-- **= 1.0** → Beloppet hittas exakt där nyckeltalet definieras, med korrekt rubrik och årsangivelse
-- **> 0.9** → Rubrik stämmer men saknar t.ex. årtal, eller placeringen är indirekt
-- **> 0.8** → Rubriken stämmer ungefär, eller du har behövt tolka rubrikens innebörd
-- **> 0.7** → Du tolkar en not eller tabell med viss osäkerhet, men helheten stöder att beloppet är rätt
-- **> 0.5** → Du beräknar värdet indirekt eller gör en kvalificerad gissning – kommentera noggrant
-- **<= 0.5** → Du har vissa fog för din gissning, men det kan lika gärna vara fel - kommentera extra utförligt!
+- **`"explicit"`** – beloppet står ordagrant i dokumentet, under en rubrik som
+  otvetydigt motsvarar nyckeltalet, för rätt år. Inget räknande, ingen tolkning
+  av vad rubriken betyder.
+- **`"härledd"`** – du har räknat ut beloppet, lagt samman flera poster, dragit
+  bort en delpost, eller hämtat det under en rubrik vars innebörd du behövt
+  tolka. Skriv i kommentaren vilka belopp och rubriker du utgått från.
+- **`"osäker"`** – kvalificerad gissning. Beloppet kan vara rätt, men det bör
+  kontrolleras mot källdokumentet innan det används. Kommentera extra utförligt.
 
-Det är bättre att du svarar med låg `säkerhet` och en förklarande `"kommentar"`, än att bara rapportera nyckeltal med hög `säkerhet`.
+Välj `"explicit"` bara när det verkligen stämmer. Har du behövt räkna, tolka en
+rubrik eller välja mellan två tänkbara poster är svaret `"härledd"`, även om du
+är övertygad om att beloppet är rätt. Nivån beskriver hur du hittade värdet, inte
+hur säker du känner dig.
 
 ## Flera kassor eller år
 

@@ -75,12 +75,6 @@ select = ["E", "F", "W", "I", "UP", "B"]
 ignore = [
     "E501",   # line length is handled by the formatter
     "B008",   # FastAPI's Depends/File/Form defaults are the documented idiom
-    # Typing modernisation (List -> list, Union -> |) is deferred to the
-    # cleanup patch so it does not bury the packaging changes in this one.
-    "UP006",
-    "UP007",
-    "UP035",
-    "UP045",
 ]
 
 [tool.ruff.lint.per-file-ignores]

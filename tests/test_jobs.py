@@ -288,3 +288,42 @@ def test_masking_without_transformers_gives_an_actionable_error(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", blocked)
     with pytest.raises(RuntimeError, match=r"\[masking\]"):
         PDFMasker()
+
+
+# ------------------------------------------------------ cleanup: TTL sweeper
+def test_sweeper_expires_jobs_without_any_new_activity(tmp_path):
+    """Expiry used to run only inside create(), so an idle service kept
+    uploaded reports on disk indefinitely after the last run."""
+    reg = JobRegistry(root=tmp_path / "jobs", ttl_seconds=0, sweep_interval=0)
+    try:
+        job = reg.create()
+        (job.directory / "personuppgifter.pdf").write_bytes(b"x")
+        directory = job.directory
+
+        # Start the sweeper on a short interval and then leave it alone: no
+        # further create() calls, which is the scenario that used to leak.
+        reg.start_sweeper(interval=1)
+        deadline = time.time() + 6
+        while time.time() < deadline and directory.exists():
+            time.sleep(0.1)
+
+        assert not directory.exists(), "sweeper did not remove the expired job"
+        assert reg.get(job.id) is None
+    finally:
+        reg.shutdown()
+
+
+def test_sweeper_can_be_disabled(tmp_path):
+    reg = JobRegistry(root=tmp_path / "jobs", ttl_seconds=3600, sweep_interval=0)
+    try:
+        assert reg._sweeper is None
+    finally:
+        reg.shutdown()
+
+
+def test_shutdown_stops_the_sweeper(tmp_path):
+    reg = JobRegistry(root=tmp_path / "jobs", ttl_seconds=3600, sweep_interval=1)
+    assert reg._sweeper is not None and reg._sweeper.is_alive()
+    reg.shutdown()
+    reg._sweeper.join(timeout=5)
+    assert not reg._sweeper.is_alive()

@@ -1,7 +1,6 @@
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Tuple, Union
 
 from openai import (
     APIConnectionError,
@@ -56,7 +55,7 @@ class _ApproximateEncoder:
 
     CHARS_PER_TOKEN = 4
 
-    def encode(self, text: str) -> List[str]:
+    def encode(self, text: str) -> list[str]:
         step = self.CHARS_PER_TOKEN
         return [text[i:i + step] for i in range(0, len(text), step)]
 
@@ -89,6 +88,12 @@ class JBGAnnualReportAnalyzer:
     MAX_TOKEN_OVERLAP = 1000
     USE_PAGE_AWARE_CHUNKING = True
     USE_STRUCTURED_OUTPUT = True
+    VALIDATION_KEY = "_rimlighetskontroller"
+    # One extra, narrowly-scoped call per file when the first pass missed
+    # something. Skipped entirely when nothing is missing.
+    USE_SECOND_PASS_FOR_MISSING = True
+    SECOND_PASS_MAX_MISSING_RATIO = 0.5
+    SECOND_PASS_TAG = "[Riktad omsökning]"
     MAX_CONCURRENT_CHUNKS = 4
     OPENAI_SDK_MAX_RETRIES = 3
     OPENAI_TIMEOUT_SECONDS = 300.0
@@ -121,12 +126,12 @@ class JBGAnnualReportAnalyzer:
 
     def __init__(
         self,
-        upload_dir: Union[str, Path, List[Union[str, Path]]],
-        instruction_path: Union[str, Path],
-        metrics_path: Union[str, Path],
+        upload_dir: str | Path | list[str | Path],
+        instruction_path: str | Path,
+        metrics_path: str | Path,
         use_masking: bool = False,
         api_key: str = None,
-        fund_list_path: Union[str, Path] = None,
+        fund_list_path: str | Path = None,
     ):
         # Accept list of paths or a folder
         if isinstance(upload_dir, (list, tuple)):
@@ -208,7 +213,7 @@ class JBGAnnualReportAnalyzer:
             return self.PAGE_OFFSET
 
     @staticmethod
-    def _offset_from_page_labels(doc) -> Union[int, None]:
+    def _offset_from_page_labels(doc) -> int | None:
         """Derive the offset from the document's own /PageLabels tree.
 
         Returns None when the PDF carries no page labels, which is common.
@@ -248,7 +253,7 @@ class JBGAnnualReportAnalyzer:
         return best
 
     @staticmethod
-    def _offset_from_printed_numbers(doc) -> Union[int, None]:
+    def _offset_from_printed_numbers(doc) -> int | None:
         """Look for a bare page number printed in the bottom margin.
 
         Footer only, deliberately. Scanning the top margin as well produced
@@ -293,7 +298,7 @@ class JBGAnnualReportAnalyzer:
         return best
 
     @staticmethod
-    def _offset_from_trailing_lines(doc) -> Union[int, None]:
+    def _offset_from_trailing_lines(doc) -> int | None:
         """Position-independent variant of the footer scan.
 
         Some PDFs report unusable glyph positions ("Actualtext with no
@@ -388,7 +393,7 @@ class JBGAnnualReportAnalyzer:
             return self.FALLBACK_YEAR
 
     @staticmethod
-    def _year_from_text_patterns(doc) -> Union[int, None]:
+    def _year_from_text_patterns(doc) -> int | None:
         """Find the fiscal year using the phrasing Swedish annual reports use.
 
         Two passes. An explicit statement of the reporting period ("för
@@ -510,7 +515,7 @@ class JBGAnnualReportAnalyzer:
             logger.warning(f"Text extraction failed for {pdf_path.name}: {e}")
             return ""
 
-    def _ocr_text(self, pdf_path: Path, offset: int) -> Union[str, None]:
+    def _ocr_text(self, pdf_path: Path, offset: int) -> str | None:
         """OCR the pages that lack a text layer and return the combined text.
 
         Returns None when OCR is unavailable or fails, so the caller can fall
@@ -548,11 +553,6 @@ class JBGAnnualReportAnalyzer:
             logger.warning(f"Kunde inte läsa OCR-resultatet för {pdf_path.name}: {e}")
             return None
 
-    def _document_contains_retreivable_text(self, doc) -> bool:
-        for page in doc:
-            if page.get_text().strip():  # strip whitespace to be safe
-                return True
-        return False
 
     def _extract_text_from_pdf(self, doc, offset: int) -> str:
 
@@ -582,7 +582,7 @@ class JBGAnnualReportAnalyzer:
             for i, page in enumerate(doc)
         ])
 
-    def _merge_broken_key_number_lines(self, text: str, key_number_terms: List[str]=None) -> str:
+    def _merge_broken_key_number_lines(self, text: str, key_number_terms: list[str]=None) -> str:
 
         if not key_number_terms:
             key_number_terms = self._extract_key_number_terms()
@@ -616,7 +616,7 @@ class JBGAnnualReportAnalyzer:
 
         return "\n".join(merged)
 
-    def _extract_key_number_terms(self) -> List[str]:
+    def _extract_key_number_terms(self) -> list[str]:
         metrics = self._load_metrics(dump=False)
         key_number_terms = [metric.get(self.METRIC_KEY_NUMBER_KEY) for metric in metrics]
         for metric in metrics:
@@ -676,28 +676,14 @@ class JBGAnnualReportAnalyzer:
         enc = JBGAnnualReportAnalyzer._get_encoder_for_model(model)
         return len(enc.encode(text))
 
-    def _chunk_text(self, text: str, max_tokens: int, model: str) -> List[str]:
-        words = text.split()
-        chunks, current_chunk = [], []
-        token_count = 0
-        for word in words:
-            token_count += self._count_tokens(word + " ", model)
-            current_chunk.append(word)
-            if token_count >= max_tokens:
-                chunks.append(" ".join(current_chunk))
-                current_chunk = []
-                token_count = 0
-        if current_chunk:
-            chunks.append(" ".join(current_chunk))
-        return chunks
 
     def _chunk_text_with_overlap(
         self,
         text: str,
         max_tokens: int,
-        max_overlap_tokens: Union[int, float],
+        max_overlap_tokens: int | float,
         model: str = "gpt-4o"
-    ) -> List[str]:
+    ) -> list[str]:
 
         # Ladda rätt tokenisering beroende på modell
         enc = JBGAnnualReportAnalyzer._get_encoder_for_model(model)
@@ -737,8 +723,11 @@ class JBGAnnualReportAnalyzer:
 
         return self._adjust_chunks_borders_for_safe_breaks(chunks)
 
-    def _adjust_chunks_borders_for_safe_breaks(self, chunks: List[str]) -> List[str]:
-        break_patterns = ["\n\n", "\nSida ", "\nNot ", ":\n", "\n\n[A-Z]", r"\. [A-ZÅÄÖ]"]
+    def _adjust_chunks_borders_for_safe_breaks(self, chunks: list[str]) -> list[str]:
+        # Plain substrings only: these go to str.find/str.rfind. The list used
+        # to end with "\n\n[A-Z]" and r"\. [A-ZÅÄÖ]", which look like regexes
+        # and were matched literally, so they never fired.
+        break_patterns = ["\n\n", "\n[Sida ", "\nSida ", "\nNot ", ":\n"]
 
         def find_last_good_break_index(text: str) -> int:
             for pattern in break_patterns:
@@ -788,15 +777,34 @@ class JBGAnnualReportAnalyzer:
         """
         return request_text
 
-    def _build_system_prompt(self, the_year: int = None):
+    def _build_system_prompt(self, the_year: int = None, only_metrics: list[str] = None):
+        """Build the system prompt.
 
+        only_metrics restricts both the definitions and the instructions to a
+        subset, which is what the targeted second pass uses: sending all 18
+        definitions again would re-invite the model to re-answer what it
+        already got right.
+        """
         instruction = self._load_instruction()
-        metrics_json = self._load_metrics()
+        if only_metrics:
+            definitions = [
+                entry
+                for entry in self._load_metrics(dump=False)
+                if entry.get(schema.METRIC_KEY) in set(only_metrics)
+            ]
+            metrics_json = json.dumps(definitions, ensure_ascii=False, indent=2)
+        else:
+            metrics_json = self._load_metrics()
+
         if self.USE_STRUCTURED_OUTPUT:
             instruction = (
                 instruction
                 + "\n\n"
-                + schema.describe_for_prompt(schema.load_metric_names(self.metrics_path))
+                + (
+                    schema.describe_for_second_pass(only_metrics)
+                    if only_metrics
+                    else schema.describe_for_prompt(schema.load_metric_names(self.metrics_path))
+                )
             )
 
         if the_year:
@@ -825,19 +833,13 @@ class JBGAnnualReportAnalyzer:
             re.match(r"^o\d", name)
         )
 
-    @staticmethod
-    def get_permitted_temperature(gpt_model):
-        """Kept for backwards compatibility with external callers."""
-        if JBGAnnualReportAnalyzer._is_reasoning_model(gpt_model):
-            return JBGAnnualReportAnalyzer.GPT_5_TEMPERATURE
-        return JBGAnnualReportAnalyzer.DEFAULT_OPENAI_TEMPERATURE
 
     def _make_openai_api_call(
         self,
         system_prompt,
         request_text: str,
         model: str = "",
-        response_schema: Union[dict, None] = None,
+        response_schema: dict | None = None,
     ) -> str:
         model_used = model if model else self.DEFAULT_MODEL
         max_retries = 5
@@ -937,49 +939,8 @@ class JBGAnnualReportAnalyzer:
             presumed_prefixed_json = presumed_prefixed_json.removesuffix("```").strip()
         return presumed_prefixed_json
 
-    def _merge_json_objects(self, json_list: List[dict]) -> dict:
 
-        result = {}
-        for obj in json_list:
-            for key, value in obj.items():
-                if key not in result:
-                    result[key] = value
-                else:
-                    result[key].update(value if isinstance(value, dict) else {f"extra_{key}": value})
-
-        return result
-
-    def _deep_merge_json_objects_simple(self, json_list: List[dict]) -> dict:
-        """
-        Merge JSON object, but with risk of overwriting existing values with null values
-
-        Args:
-            json_list (List[dict]): _description_
-
-        Returns:
-            dict: _description_
-        """
-
-        def deep_merge(a: dict, b: dict) -> dict:
-            result = dict(a)
-            for k, v in b.items():
-                if (
-                    k in result
-                    and isinstance(result[k], Mapping)
-                    and isinstance(v, Mapping)
-                ):
-                    result[k] = deep_merge(result[k], v)
-                else:
-                    result[k] = v
-            return result
-
-        result = {}
-        for obj in json_list:
-            result = deep_merge(result, obj)
-
-        return result
-
-    def _deep_merge_json_objects(self, json_list: List[dict]) -> dict:
+    def _deep_merge_json_objects(self, json_list: list[dict]) -> dict:
         """
         Merge JSON object, but with less risk of overwriting existing values with null values
 
@@ -1091,11 +1052,14 @@ class JBGAnnualReportAnalyzer:
 
                         def _rank(item):
                             val, meta = item
-                            certainty = meta.get(self.FIELD_CERTAINTY)
-                            certainty = certainty if isinstance(certainty, (int, float)) else 0.0
+                            # certainty_rank handles both the named levels and
+                            # the floats older result files contain.
+                            certainty = schema.certainty_rank(
+                                meta.get(self.FIELD_CERTAINTY)
+                            )
                             # Certainty first, then corroborating sources. A model
-                            # that says "säkerhet 0.9, found in Not 12" should beat
-                            # one that says "säkerhet 0.7" from two vaguer places.
+                            # that says "explicit, found in Not 12" should beat
+                            # one that says "härledd" from two vaguer places.
                             return (val is not None, certainty, len(meta["sources"]))
 
                         best_val, best_meta = max(grouped.items(), key=_rank)
@@ -1146,16 +1110,6 @@ class JBGAnnualReportAnalyzer:
 
         return json_obj, num_consolidated
 
-    def _is_valid_numeric(self, val) -> bool:
-        if isinstance(val, (int, float)):
-            return True
-        if isinstance(val, str):
-            try:
-                float(val.replace(" ", "").replace("kr", "").replace(",", "."))
-                return True
-            except ValueError:
-                return False
-        return False
 
     def _prompt_instructions_pdf_page_offset(self):
 
@@ -1193,17 +1147,27 @@ class JBGAnnualReportAnalyzer:
         """
         return system_prompt
 
-    def _response_schema(self) -> Union[dict, None]:
-        """The strict schema for the extraction call, built once and cached."""
+    def _response_schema(self, only_metrics: list[str] = None) -> dict | None:
+        """The strict schema for an extraction call, built once per metric set.
+
+        Restricting the enum to the missing metrics makes it structurally
+        impossible for the second pass to answer about anything else.
+        """
         if not self.USE_STRUCTURED_OUTPUT:
             return None
-        if getattr(self, "_schema_cache", None) is None:
-            names = schema.load_metric_names(self.metrics_path)
-            self._schema_cache = schema.build_schema(names)
-            logger.debug(f"Byggde JSON-schema för {len(names)} nyckeltal.")
-        return self._schema_cache
+        if self._schema_cache is None:
+            self._schema_cache = {}
 
-    def _chunk_text_for_model(self, full_text: str, model: str = "") -> List[str]:
+        key = tuple(sorted(only_metrics)) if only_metrics else None
+        if key not in self._schema_cache:
+            names = list(only_metrics) if only_metrics else schema.load_metric_names(
+                self.metrics_path
+            )
+            self._schema_cache[key] = schema.build_schema(names)
+            logger.debug(f"Byggde JSON-schema för {len(names)} nyckeltal.")
+        return self._schema_cache[key]
+
+    def _chunk_text_for_model(self, full_text: str, model: str = "") -> list[str]:
         """Split the extracted text for the model.
 
         Page-aware splitting keeps whole pages together and repeats the
@@ -1211,19 +1175,24 @@ class JBGAnnualReportAnalyzer:
         split could cut a balance sheet in half and strip the page marker off
         the front of a chunk, which is what the "källa" field depends on.
         """
-        if not self.USE_PAGE_AWARE_CHUNKING:
-            if self.USE_TOKEN_OVERLAP:
-                return self._chunk_text_with_overlap(
-                    text=full_text,
-                    max_tokens=self.MAX_TOKENS,
-                    max_overlap_tokens=self.MAX_TOKEN_OVERLAP,
-                    model=model,
-                )
-            return self._chunk_text(full_text, max_tokens=self.MAX_TOKENS, model=model)
+        if self.USE_PAGE_AWARE_CHUNKING:
+            return self._chunk_text_by_pages(full_text, max_tokens=self.MAX_TOKENS, model=model)
 
-        return self._chunk_text_by_pages(full_text, max_tokens=self.MAX_TOKENS, model=model)
+        # Kept as an escape hatch if page markers are ever unavailable.
+        return self._chunk_text_with_overlap(
+            text=full_text,
+            max_tokens=self.MAX_TOKENS,
+            max_overlap_tokens=self.MAX_TOKEN_OVERLAP,
+            model=model,
+        )
 
-    def _chunk_text_by_pages(self, full_text: str, max_tokens: int, model: str = "") -> List[str]:
+    @staticmethod
+    def _page_marker(page_text: str) -> str:
+        """The leading "[Sida N]" header of a page block, or an empty string."""
+        match = re.match(r"\[Sida [^\]]+\]", page_text.lstrip())
+        return match.group(0) if match else ""
+
+    def _chunk_text_by_pages(self, full_text: str, max_tokens: int, model: str = "") -> list[str]:
         enc = self._get_encoder_for_model(model or self.DEFAULT_MODEL)
 
         # Split on the page markers written by _extract_text_from_pdf, keeping
@@ -1233,8 +1202,8 @@ class JBGAnnualReportAnalyzer:
         if not pages:
             pages = [full_text]
 
-        chunks: List[str] = []
-        current: List[str] = []
+        chunks: list[str] = []
+        current: list[str] = []
         current_tokens = 0
 
         for page in pages:
@@ -1253,13 +1222,19 @@ class JBGAnnualReportAnalyzer:
                     f"En sida överskrider chunkgränsen ({page_tokens} > {max_tokens} tokens). "
                     "Delar sidan med överlapp."
                 )
+                sub_chunks = self._chunk_text_with_overlap(
+                    text=page,
+                    max_tokens=max_tokens,
+                    max_overlap_tokens=overlap,
+                    model=model,
+                )
+                # Every sub-chunk after the first would otherwise start mid-page
+                # with no [Sida N] header, leaving the model nothing to cite.
+                marker = self._page_marker(page)
                 chunks.extend(
-                    self._chunk_text_with_overlap(
-                        text=page,
-                        max_tokens=max_tokens,
-                        max_overlap_tokens=overlap,
-                        model=model,
-                    )
+                    sub if index == 0 or not marker or sub.startswith(marker)
+                    else f"{marker}\n{sub}"
+                    for index, sub in enumerate(sub_chunks)
                 )
                 continue
 
@@ -1314,7 +1289,7 @@ class JBGAnnualReportAnalyzer:
         logger.info(f"Chunk {index + 1} gav {found} nyckeltal.")
         return result
 
-    def _analyse_chunks(self, chunks: List[str], the_year: int, model: str) -> List[dict]:
+    def _analyse_chunks(self, chunks: list[str], the_year: int, model: str) -> list[dict]:
         """Run the chunks, concurrently when there is more than one.
 
         Replaces the fixed time.sleep between calls. Rate limits are handled by
@@ -1326,7 +1301,7 @@ class JBGAnnualReportAnalyzer:
 
         workers = min(self.MAX_CONCURRENT_CHUNKS, len(chunks))
         logger.info(f"Analyserar {len(chunks)} chunkar med {workers} parallella anrop.")
-        indexed: List[Tuple[int, dict]] = []
+        indexed: list[tuple[int, dict]] = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
                 pool.submit(self._analyse_chunk, i, len(chunks), chunk, the_year, model): i
@@ -1340,6 +1315,117 @@ class JBGAnnualReportAnalyzer:
         # Merge in chunk order so the result does not depend on which call
         # happened to finish first.
         return [result for _, result in sorted(indexed, key=lambda pair: pair[0])]
+
+    def _missing_metrics(self, result: dict) -> list[str]:
+        """Metric names with no value anywhere in a single file's result."""
+        found = set()
+        for years in (result or {}).values():
+            if not isinstance(years, dict):
+                continue
+            for metrics in years.values():
+                if not isinstance(metrics, dict):
+                    continue
+                for name, entry in metrics.items():
+                    if isinstance(entry, dict) and entry.get(self.FIELD_VALUE) is not None:
+                        found.add(name)
+        return [n for n in schema.load_metric_names(self.metrics_path) if n not in found]
+
+    def _graft_metrics(self, result: dict, metrics: dict) -> int:
+        """Add metrics to a file's result without overwriting what is there.
+
+        The values are attached to the fund and year the first pass already
+        established, rather than to whatever name the second pass reported, so
+        a differently-worded fund name cannot split the result in two.
+        """
+        if not metrics or not result:
+            return 0
+        fund = next(iter(result))
+        years = result[fund]
+        if not isinstance(years, dict) or not years:
+            return 0
+        year = next(iter(years))
+        target = years[year]
+
+        added = 0
+        for name, entry in metrics.items():
+            if not isinstance(entry, dict) or entry.get(self.FIELD_VALUE) is None:
+                continue
+            existing = target.get(name)
+            if isinstance(existing, dict) and existing.get(self.FIELD_VALUE) is not None:
+                continue  # first pass already found it; leave it alone
+            enriched = dict(entry)
+            comment = enriched.get(self.FIELD_COMMENT) or ""
+            enriched[self.FIELD_COMMENT] = f"{self.SECOND_PASS_TAG} {comment}".strip()
+            target[name] = enriched
+            added += 1
+        return added
+
+    def _second_pass_for_missing(
+        self, result: dict, chunks: list[str], the_year: int, model: str
+    ) -> dict:
+        """Ask again for the metrics the first pass did not find.
+
+        Cheap by construction: it only fires when something is absent, asks
+        about nothing else, and stops as soon as the list is empty.
+        """
+        missing = self._missing_metrics(result)
+        if not missing:
+            return result
+
+        total = len(schema.load_metric_names(self.metrics_path))
+        if len(missing) > total * self.SECOND_PASS_MAX_MISSING_RATIO:
+            # Most of the metrics absent means the first pass went wrong rather
+            # than overlooked a line; re-reading the same text will not help.
+            logger.warning(
+                f"{len(missing)} av {total} nyckeltal saknas. Det tyder på ett "
+                "fel i första genomgången snarare än förbisedda poster. "
+                "Hoppar över riktad omsökning."
+            )
+            return result
+
+        logger.info(
+            f"{len(missing)} nyckeltal saknas efter första genomgången: "
+            f"{', '.join(missing)}. Gör en riktad omsökning."
+        )
+
+        for index, chunk in enumerate(chunks):
+            if not missing:
+                break
+            prompt = self._build_system_prompt(the_year=the_year, only_metrics=missing)
+            try:
+                response = self._make_openai_api_call(
+                    prompt,
+                    self._build_request_text(chunk),
+                    model,
+                    response_schema=self._response_schema(missing),
+                )
+            except Exception as ex:
+                logger.warning(f"Riktad omsökning misslyckades för chunk {index + 1}: {ex}")
+                continue
+
+            try:
+                payload = json.loads(response)
+            except json.JSONDecodeError as ex:
+                logger.warning(f"Kunde inte tolka svaret från riktad omsökning: {ex}")
+                continue
+
+            nested = schema.flat_to_nested(payload, fallback_year=the_year)
+            metrics = {}
+            for years in nested.values():
+                for per_year in years.values():
+                    metrics.update(per_year)
+
+            added = self._graft_metrics(result, metrics)
+            if added:
+                logger.info(f"Riktad omsökning hittade {added} ytterligare nyckeltal.")
+            missing = self._missing_metrics(result)
+
+        if missing:
+            logger.info(
+                f"Efter omsökning saknas fortfarande {len(missing)} nyckeltal: "
+                f"{', '.join(missing)}. De finns sannolikt inte i dokumentet."
+            )
+        return result
 
     def do_analysis(
         self,
@@ -1443,6 +1529,12 @@ class JBGAnnualReportAnalyzer:
                         logger.info(f"Merged {num_merged_values} duplicate values in appended JSON structure")
                     else:
                         logger.warning("No conclicts were merged.")
+
+                if self.USE_SECOND_PASS_FOR_MISSING:
+                    appended_result = self._second_pass_for_missing(
+                        appended_result, chunks, the_year=the_year, model=model
+                    )
+
                 total_result.append(appended_result)
 
         report(total_files, "")
@@ -1467,6 +1559,16 @@ class JBGAnnualReportAnalyzer:
             # the reader which figures to verify against the source document.
             self.validation_findings = validation.validate(final_result)
             validation.log_findings(self.validation_findings)
+            validation.log_certainty_histogram(final_result)
+
+            # The findings go into the JSON as well, not just the log and the
+            # Excel colour coding, so they survive whichever format is chosen.
+            # Keys starting with an underscore are metadata, not funds; the
+            # exporters skip them.
+            if self.validation_findings:
+                final_result[self.VALIDATION_KEY] = [
+                    finding.as_dict() for finding in self.validation_findings
+                ]
 
             output_path.write_text(json.dumps(final_result, ensure_ascii=False, indent=2), encoding=self.STANDARD_ENCODING)
             logger.info(f"Analysresultat sparat till: {output_path}")

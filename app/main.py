@@ -6,7 +6,6 @@ import zipfile
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -158,7 +157,7 @@ def _save_upload(file: UploadFile, target_dir: Path) -> Path:
     return destination
 
 
-def _prepare_job_input(file: UploadFile, job_dir: Path) -> Tuple[Path, int]:
+def _prepare_job_input(file: UploadFile, job_dir: Path) -> tuple[Path, int]:
     """Save the upload and expand it, returning (saved_path, pdf_count)."""
     saved_path = _save_upload(file, job_dir)
     file_ext = saved_path.name.lower().rsplit(".", 1)[-1]

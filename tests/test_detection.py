@@ -239,3 +239,59 @@ def test_masker_is_built_once_per_batch():
     finally:
         mod.PDFMasker = original
     assert len(built) == 1, f"NER model built {len(built)} times for one batch"
+
+
+# ------------------------------------------------- cleanup: chunk boundaries
+def test_oversized_page_keeps_its_marker_on_every_sub_chunk():
+    """Sub-chunks after the first used to start mid-page with no [Sida N]
+    header, leaving the model nothing to put in the källa field."""
+    analyzer = JBGAnnualReportAnalyzer.__new__(JBGAnnualReportAnalyzer)
+    huge = "[Sida 7]\n" + " ".join(f"rad{i}" for i in range(4000))
+    chunks = analyzer._chunk_text_by_pages(huge, max_tokens=400, model="gpt-4o")
+    assert len(chunks) > 1
+    for chunk in chunks:
+        assert chunk.lstrip().startswith("[Sida 7]"), chunk[:60]
+
+
+def test_page_marker_helper():
+    assert JBGAnnualReportAnalyzer._page_marker("[Sida 12]\ntext") == "[Sida 12]"
+    assert JBGAnnualReportAnalyzer._page_marker("  [Sida iv]\ntext") == "[Sida iv]"
+    assert JBGAnnualReportAnalyzer._page_marker("ingen markör här") == ""
+
+
+def test_break_patterns_actually_match_real_text():
+    """These strings go to str.find/str.rfind, so a regex among them is dead
+    code. The list used to end with "\\n\\n[A-Z]" and r"\\. [A-ZÅÄÖ]", which
+    never fired. Each pattern must be findable literally in ordinary text."""
+    import inspect
+
+    source = inspect.getsource(
+        JBGAnnualReportAnalyzer._adjust_chunks_borders_for_safe_breaks
+    )
+    patterns = eval(  # noqa: S307 - reading our own literal
+        source.split("break_patterns = ")[1].split("\n")[0]
+    )
+    # Pages are joined with a blank line, so a marker is preceded by a newline.
+    sample = (
+        "[Sida 8]\nFörvaltningsberättelse\n\n"
+        "[Sida 9]\nBALANSRÄKNING\n\nSumma tillgångar 63 853\n"
+        "Sida 10\nNot 12: Osäkra fordringar\nRubrik:\nText efter kolon.\n"
+    )
+    for pattern in patterns:
+        assert sample.find(pattern) != -1, f"{pattern!r} matches nothing"
+
+    # the two regex-shaped entries must be gone
+    assert not any("A-Z" in p for p in patterns)
+
+
+def test_removed_methods_are_actually_gone():
+    """These were unreachable after the structured-output switch."""
+    for name in [
+        "_chunk_text",
+        "_merge_json_objects",
+        "_deep_merge_json_objects_simple",
+        "_is_valid_numeric",
+        "_document_contains_retreivable_text",
+        "get_permitted_temperature",
+    ]:
+        assert not hasattr(JBGAnnualReportAnalyzer, name), name

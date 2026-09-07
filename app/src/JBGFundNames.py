@@ -17,7 +17,6 @@ import logging
 import re
 import unicodedata
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +61,12 @@ def _stem(text: str) -> str:
 
 
 class FundNameResolver:
-    def __init__(self, fund_list_path: Union[str, Path]):
+    def __init__(self, fund_list_path: str | Path):
         self.path = Path(fund_list_path)
         entries = json.loads(self.path.read_text(encoding="utf-8"))
 
-        self.entries: List[dict] = entries
-        self._by_stem: Dict[str, dict] = {}
+        self.entries: list[dict] = entries
+        self._by_stem: dict[str, dict] = {}
         self._ambiguous_stems: set = set()
 
         for entry in entries:
@@ -84,7 +83,7 @@ class FundNameResolver:
         self._stems = [s for s in self._by_stem if s not in self._ambiguous_stems]
 
     # ------------------------------------------------------------------
-    def resolve(self, reported_name: str) -> Tuple[Optional[dict], str]:
+    def resolve(self, reported_name: str) -> tuple[dict | None, str]:
         """Return (entry, how) for a reported name.
 
         `how` names the strategy that matched, or explains the failure, so the
@@ -135,8 +134,8 @@ class FundNameResolver:
 
 
 def normalise_result_fund_names(
-    result: dict, fund_list_path: Union[str, Path]
-) -> Tuple[dict, List[str]]:
+    result: dict, fund_list_path: str | Path
+) -> tuple[dict, list[str]]:
     """Rewrite the top-level fund keys of a result to canonical names.
 
     Unresolved names are kept as-is rather than dropped or guessed at: a wrong
@@ -149,7 +148,7 @@ def normalise_result_fund_names(
         return result, []
 
     normalised: dict = {}
-    unresolved: List[str] = []
+    unresolved: list[str] = []
 
     for reported, years in result.items():
         entry, how = resolver.resolve(reported)

@@ -97,3 +97,12 @@ Två regler är avgörande:
    ett nyckeltal ska du **utelämna det helt**. Lägg aldrig till det med
    `"värde": null` och låg `"säkerhet"` bara för att det efterfrågas.
 2. `"kommentar"` är obligatorisk för varje nyckeltal du tar med.
+3. `"säkerhet"` är inte en siffra utan exakt ett av tre värden:
+   - `"explicit"` – beloppet står ordagrant i dokumentet under en otvetydig
+     rubrik, för rätt år.
+   - `"härledd"` – du har räknat, lagt samman eller dragit bort poster, eller
+     tolkat vad en rubrik betyder.
+   - `"osäker"` – kvalificerad gissning som bör kontrolleras mot källan.
+
+   Nivån beskriver hur du hittade värdet, inte hur säker du känner dig. Har du
+   behövt räkna eller tolka är svaret `"härledd"` även om beloppet säkert är rätt.
