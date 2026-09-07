@@ -24,22 +24,29 @@ Du ska alltså i första hand extrahera det nyckeltal som gäller **det aktuella
 
 ## Svarstruktur
 
-För varje nyckeltal, returnera:
-```json
-{
-  "värde": <numeriskt värde>,
-  "källa": "<sidnummer eller rubrik>",
-  "säkerhet": <float mellan 0 och 1>,
-  "kommentar": "<kommentar eller tom sträng>"
-}
-```
-där:
-- `"säkerhet"`: GPT:s egen bedömning av precision (0–1)
-- `"kommentar"`: ange osäkerheter, antaganden eller tolkningsbeslut
+Svaret valideras mot ett JSON-schema. För varje nyckeltal du hittar anger du:
+
+- `"namn"`: nyckeltalets primära namn, exakt som det står i specifikationsfilen
+- `"värde"`: det numeriska värdet, utan tusenavgränsare
+- `"källa"`: sidnummer och rubrik där värdet hittades
+- `"säkerhet"`: din egen bedömning av precisionen (0-1)
+- `"kommentar"`: motivering, alltid obligatorisk
+
+Utöver listan anger du `"kassa"` (kassans namn) och `"år"` (räkenskapsåret).
+
+### Utelämna det du inte hittar
+
+Du får **endast** ta med nyckeltal som faktiskt återfinns i det utdrag du fått.
+Hittar du inte ett nyckeltal ska du **utelämna det helt** ur listan. Lägg aldrig
+till ett nyckeltal med `"värde": null` och låg `"säkerhet"` bara för att det
+efterfrågas. Utdraget är en del av en längre årsredovisning, och en post du inte
+ser finns nästan alltid på en sida som ingår i ett annat utdrag. Ett `null`-svar
+från dig konkurrerar då med det korrekta värdet från ett annat utdrag.
 
 ### Kommentar är alltid obligatorisk
 
-Kommentarfältet får inte vara tomt. Skriv alltid en motivering till hur värdet hittats eller varför du är säker eller osäker.
+Kommentarfältet får inte vara tomt. Skriv alltid en motivering till hur värdet
+hittats eller varför du är säker eller osäker.
 
 ## Hantera osäkerhet och kvalificerade tolkningar
 
@@ -64,22 +71,11 @@ Använd följande tumregler för att ange `"säkerhet"`:
 
 Det är bättre att du svarar med låg `säkerhet` och en förklarande `"kommentar"`, än att bara rapportera nyckeltal med hög `säkerhet`.
 
-## Format på utdata
-Utgå från att flera a-kassor och år förekommer i texten och strukturera svaret enligt:
-```json
-{
-  "Namnet på a-kassan": {
-    "Årtal 1": {
-      "Nyckeltal A": { ... },
-      "Nyckeltal B": { ... }
-    },
-    "Årtal 2": {
-      "Nyckeltal A": { ... },
-      "Nyckeltal B": { ... }
-    }
-  }
-}
-```
+## Flera kassor eller år
+
+Ett utdrag avser normalt en enda kassa och ett enda räkenskapsår. Ange den kassa
+och det år som utdraget faktiskt handlar om i `"kassa"` och `"år"`. Blanda inte
+in värden som gäller en annan kassa, till exempel i jämförande tabeller.
 
 ## Tilläggsinstruktioner:
 - Använd `"Specifika instruktioner"` från JSON-filen för att hantera nyanser eller få hjälp var du ska leta.

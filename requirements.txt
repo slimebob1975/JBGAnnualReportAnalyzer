@@ -1,21 +1,34 @@
-fastapi
-jinja2
-aiofiles
-python-multipart
-pydantic
-beautifulsoup4
-pdfminer.six
-openpyxl
-python-docx
-requests
-pandas
-lxml
-ocrmypdf
-pytesseract
-tf-keras
-openai
-uvicorn[standard]
-PyMuPDF # Includes fitz
-transformers
-tiktoken
-torch
+# Pinned versions for reproducible Docker builds.
+#
+# For development, prefer:  pip install -e ".[masking,ocr,dev]"
+# which uses the ranges in pyproject.toml instead of these exact pins.
+#
+# These pins are the versions the current test suite was verified against.
+# Regenerate with:  pip-compile pyproject.toml --extra masking --extra ocr
+
+# --- core service -----------------------------------------------------------
+fastapi==0.141.1
+uvicorn[standard]==0.38.0
+starlette==1.6.0
+jinja2==3.1.6
+python-multipart==0.0.32
+
+# --- model access -----------------------------------------------------------
+openai==3.8.0
+tiktoken==0.14.0
+
+# --- PDF and output ---------------------------------------------------------
+PyMuPDF==1.28.2
+openpyxl==3.1.5
+
+# --- optional: name masking (also installs torch, ~2 GB) --------------------
+# Drop this line, and set use_masking=no, for a slim deployment.
+transformers==4.57.1
+
+# --- optional: OCR for scanned reports --------------------------------------
+# Requires the system packages tesseract-ocr, tesseract-ocr-swe, ghostscript.
+ocrmypdf==17.11.0
+
+# Removed: aiofiles, beautifulsoup4, lxml, requests, python-docx, pytesseract,
+# tf-keras, pdfminer.six, pandas. Nothing in the codebase imports the first
+# eight; pandas is now only needed for the optional [analysis] extra.

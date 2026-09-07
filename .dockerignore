@@ -1,4 +1,22 @@
+.git/
+.gitignore
+.github/
+.pytest_cache/
 __pycache__/
 *.pyc
+*.pyo
 *.db
 *.env
+.venv/
+venv/
+
+# Runtime artefacts and personal data: never bake these into an image.
+app/log/
+app/uploads/
+app/config/masking_extra_names.json
+
+# Not needed at runtime.
+tests/
+start_local_service_template.ps1
+*.md
+!README.md

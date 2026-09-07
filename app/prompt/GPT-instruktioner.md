@@ -84,3 +84,16 @@ Exempel på hur utdata ska se ut:
 ## 3. Övrigt
 - Arbeta på svenska
 - Utgå från att dokumenten är årsredovisningar för svenska arbetslöshetskassor
+
+## Svarsformat (uppdaterat)
+
+Svaret valideras mot ett JSON-schema med fälten `"kassa"`, `"år"` och en lista
+`"nyckeltal"`. Varje post i listan har `"namn"`, `"värde"`, `"källa"`,
+`"säkerhet"` och `"kommentar"`. Du behöver inte återge strukturen själv.
+
+Två regler är avgörande:
+
+1. Ta **endast** med nyckeltal som faktiskt återfinns i utdraget. Hittar du inte
+   ett nyckeltal ska du **utelämna det helt**. Lägg aldrig till det med
+   `"värde": null` och låg `"säkerhet"` bara för att det efterfrågas.
+2. `"kommentar"` är obligatorisk för varje nyckeltal du tar med.

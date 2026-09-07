@@ -1,0 +1,10 @@
+{
+  "_kommentar": [
+    "Extra namn som alltid ska maskeras, utöver vad NER-modellen hittar.",
+    "Kopiera denna fil till masking_extra_names.json och fyll i era namn.",
+    "Den riktiga filen är gitignorerad: den innehåller personuppgifter och",
+    "ska inte versionshanteras."
+  ],
+  "fornamn": [],
+  "efternamn": []
+}
