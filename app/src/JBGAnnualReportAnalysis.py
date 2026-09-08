@@ -26,9 +26,10 @@ RETRYABLE_OPENAI_ERRORS = (
 import logging
 
 from app.src import JBGMetricSchema as schema
+from app.src import JBGUsage as usage
 from app.src import JBGValidation as validation
 from app.src.JBGAnnualReportExceptions import FileTypeException
-from app.src.JBGFundNames import normalise_result_fund_names
+from app.src.JBGFundNames import FundNameResolver, normalise_result_fund_names
 from app.src.masking.JBGPDFMasking import PDFMasker
 
 try:  # PyMuPDF >= 1.24.3 ships the package under its real name
@@ -137,9 +138,20 @@ class JBGAnnualReportAnalyzer:
     USE_STRUCTURED_OUTPUT = True
     VALIDATION_KEY = "_rimlighetskontroller"
     SKIPPED_KEY = "_ejanalyserade"
+    USAGE_KEY = "_modellanvandning"
     # One extra, narrowly-scoped call per file when the first pass missed
     # something. Skipped entirely when nothing is missing.
     USE_SECOND_PASS_FOR_MISSING = True
+    # Extract a second time and compare, for documents that went through OCR.
+    # Every unstable result observed so far has been on an OCR-ed file: one
+    # report moved seven of its eighteen values between two runs of an
+    # unchanged document, including reading the same figure under two
+    # different headings. Repeating the extraction turns "the number moved"
+    # into "the tool flagged a disagreement".
+    VERIFY_OCR_EXTRACTION = True
+    VERIFY_ALL_EXTRACTIONS = False
+    STABILITY_RULE = "Instabil avläsning"
+    SECOND_PASS_MIN_MISSING = 2
     SECOND_PASS_MAX_MISSING_RATIO = 0.5
     SECOND_PASS_TAG = "[Riktad omsökning]"
     MAX_CONCURRENT_CHUNKS = 4
@@ -164,9 +176,13 @@ class JBGAnnualReportAnalyzer:
     TRAILING_LINES_TO_CHECK = 3
     STRONG_YEAR_WEIGHT = 5
     MIN_YEAR_AGREEMENT_RATE_LOCAL = 0.4
-    # Local detection handles most documents, but some carry no extractable
-    # page numbers at all. The fallback is capped and breaks early.
-    USE_LLM_FALLBACK_FOR_PAGE_OFFSET = True
+    # Off by default. On a 24-document corpus the fallback made 105 calls -
+    # 72% of every call in the run - and returned offset 0 on 14 of the 17
+    # documents that reached it, which is the default anyway. Three documents
+    # got a better answer. The offset only affects the page numbers quoted in
+    # "källa", so the trade is a possible off-by-one citation against roughly
+    # two minutes and most of the call volume.
+    USE_LLM_FALLBACK_FOR_PAGE_OFFSET = False
     USE_LLM_FALLBACK_FOR_YEAR = True
     # OCR is only worth its cost when the text layer is actually missing
     MIN_TEXT_PAGE_RATIO = 0.8
@@ -204,6 +220,8 @@ class JBGAnnualReportAnalyzer:
         )
         self.validation_findings = []
         self.skipped_files: list[tuple[str, str]] = []
+        self.usage = usage.UsageTracker()
+        self.stability_findings: list = []
         self._masker = None
         self._schema_cache = None
         # max_retries lets the SDK handle rate limits with proper jitter, which
@@ -320,17 +338,28 @@ class JBGAnnualReportAnalyzer:
             margin = rect.height * JBGAnnualReportAnalyzer.MARGIN_FRACTION
             footer = pymupdf.Rect(rect.x0, rect.y1 - margin, rect.x1, rect.y1)
 
-            text = " ".join(page.get_text("text", clip=footer).split())
-            # A footer holding a page number is short. Anything longer is a
-            # table spilling into the margin, or a footnote.
-            if not text or len(text) > JBGAnnualReportAnalyzer.MAX_FOOTER_TEXT_CHARS:
-                continue
+            raw = page.get_text("text", clip=footer)
+            text = " ".join(raw.split())
+            tokens = raw.split()
+            printed = None
 
-            candidates = re.findall(r"(?<![\d\-/.])(\d{1,3})(?![\d\-/.])", text)
-            if len(candidates) != 1:
-                continue
-            printed = int(candidates[0])
-            if printed == 0:
+            # A footer holding nothing but the page number.
+            if text and len(text) <= JBGAnnualReportAnalyzer.MAX_FOOTER_TEXT_CHARS:
+                candidates = re.findall(r"(?<![\d\-/.])(\d{1,3})(?![\d\-/.])", text)
+                if len(candidates) == 1:
+                    printed = int(candidates[0])
+
+            # Otherwise the number sits at one end of the footer line, with a
+            # signing URL or a note beside it: "7 https://sign.visma.net/...",
+            # "MA u.l 7". Requiring a short footer found only 4 of 24 real
+            # documents; allowing either end finds 9.
+            if printed is None and tokens:
+                for token in (tokens[0], tokens[-1]):
+                    if re.fullmatch(r"\d{1,3}", token):
+                        printed = int(token)
+                        break
+
+            if not printed:
                 continue
 
             offset = (index + 1) - printed
@@ -397,7 +426,10 @@ class JBGAnnualReportAnalyzer:
                 # retry logic, and five 1-second sleeps per document was
                 # measurable in the logs for no benefit.
                 response = self._make_openai_api_call(
-                    prompt, f"[Sida {i + 1}]:\n" + doc[i].get_text(), model=model
+                    prompt,
+                    f"[Sida {i + 1}]:\n" + doc[i].get_text(),
+                    model=model,
+                    purpose=usage.PURPOSE_PAGE_OFFSET,
                 )
                 try:
                     new_offset = int(response.strip())
@@ -536,7 +568,9 @@ class JBGAnnualReportAnalyzer:
         prompt = self._prompt_instructions_pdf_actual_year()
 
         for i, page in enumerate(pages[: self.MAX_PAGES_FOR_LLM_VOTE]):
-            response = self._make_openai_api_call(prompt, page, model=model)
+            response = self._make_openai_api_call(
+                prompt, page, model=model, purpose=usage.PURPOSE_YEAR
+            )
             try:
                 extracted_year = int(response.strip())
             except (TypeError, ValueError):
@@ -566,7 +600,10 @@ class JBGAnnualReportAnalyzer:
 
             for i in range(max_pages):
                 response = self._make_openai_api_call(
-                    prompt, f"[Sida {i + 1}]:\n{doc[i].get_text()}", model=model
+                    prompt,
+                    f"[Sida {i + 1}]:\n{doc[i].get_text()}",
+                    model=model,
+                    purpose=usage.PURPOSE_YEAR,
                 )
                 try:
                     extracted_year = int(response.strip())
@@ -970,6 +1007,7 @@ class JBGAnnualReportAnalyzer:
         request_text: str,
         model: str = "",
         response_schema: dict | None = None,
+        purpose: str = usage.PURPOSE_OTHER,
     ) -> str:
         model_used = model if model else self.DEFAULT_MODEL
         max_retries = 5
@@ -1000,14 +1038,15 @@ class JBGAnnualReportAnalyzer:
 
                 response = self.openai_client.chat.completions.create(**kwargs)
 
-                # Token usage is informational only. The previous hard-coded
-                # MODEL_TOKEN_LIMITS table had no entry for gpt-5.x, so it fell
-                # back to 8192 and warned about every normal-sized call.
-                usage = getattr(response, "usage", None)
-                if usage:
+                # Recorded per model and per purpose, so a run's cost can be
+                # attributed rather than reconstructed from the log by hand.
+                call_usage = getattr(response, "usage", None)
+                self.usage.record(model_used, purpose, call_usage)
+                if call_usage:
                     logger.debug(
-                        f"Tokens för '{model_used}': prompt={usage.prompt_tokens}, "
-                        f"svar={usage.completion_tokens}, totalt={usage.total_tokens}"
+                        f"Tokens för '{model_used}' ({purpose}): "
+                        f"prompt={call_usage.prompt_tokens}, "
+                        f"svar={call_usage.completion_tokens}"
                     )
 
                 choice = response.choices[0]
@@ -1381,14 +1420,26 @@ class JBGAnnualReportAnalyzer:
             chunks.append("\n\n".join(current))
         return chunks
 
-    def _analyse_chunk(self, index: int, total: int, chunk: str, the_year: int, model: str):
+    def _analyse_chunk(
+        self,
+        index: int,
+        total: int,
+        chunk: str,
+        the_year: int,
+        model: str,
+        purpose: str = usage.PURPOSE_EXTRACTION,
+    ):
         """Send one chunk and return the parsed nested result, or None."""
         prompt = self._build_system_prompt(the_year=the_year)
         request = self._build_request_text(chunk)
         logger.info(f"Skickar chunk {index + 1}/{total} till GPT...")
         try:
             response = self._make_openai_api_call(
-                prompt, request, model, response_schema=self._response_schema()
+                prompt,
+                request,
+                model,
+                response_schema=self._response_schema(),
+                purpose=purpose,
             )
         except Exception as e:
             logger.error(f"Fel vid GPT-anrop chunk {index + 1}: {e}")
@@ -1421,14 +1472,23 @@ class JBGAnnualReportAnalyzer:
         logger.info(f"Chunk {index + 1} gav {found} nyckeltal.")
         return result
 
-    def _analyse_chunks(self, chunks: list[str], the_year: int, model: str) -> list[dict]:
+    def _analyse_chunks(
+        self,
+        chunks: list[str],
+        the_year: int,
+        model: str,
+        purpose: str = usage.PURPOSE_EXTRACTION,
+    ) -> list[dict]:
         """Run the chunks, concurrently when there is more than one.
 
         Replaces the fixed time.sleep between calls. Rate limits are handled by
         the retry logic in _make_openai_api_call, which is what it is for.
         """
         if len(chunks) <= 1:
-            results = [self._analyse_chunk(0, len(chunks), c, the_year, model) for c in chunks]
+            results = [
+                self._analyse_chunk(0, len(chunks), c, the_year, model, purpose)
+                for c in chunks
+            ]
             return [r for r in results if r]
 
         workers = min(self.MAX_CONCURRENT_CHUNKS, len(chunks))
@@ -1436,7 +1496,9 @@ class JBGAnnualReportAnalyzer:
         indexed: list[tuple[int, dict]] = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
-                pool.submit(self._analyse_chunk, i, len(chunks), chunk, the_year, model): i
+                pool.submit(
+                    self._analyse_chunk, i, len(chunks), chunk, the_year, model, purpose
+                ): i
                 for i, chunk in enumerate(chunks)
             }
             for future in as_completed(futures):
@@ -1492,6 +1554,124 @@ class JBGAnnualReportAnalyzer:
             added += 1
         return added
 
+    def _canonicalise_finding_funds(self) -> None:
+        if not self.stability_findings:
+            return
+        try:
+            resolver = FundNameResolver(self.fund_list_path)
+        except Exception as ex:  # pragma: no cover - register already validated
+            logger.warning(f"Kunde inte normalisera kassanamn i anmärkningar: {ex}")
+            return
+        for finding in self.stability_findings:
+            finding.fund = resolver.canonical_name(finding.fund)
+
+    @staticmethod
+    def _comparable(value):
+        """Numbers that differ only by type or formatting are not a change."""
+        if isinstance(value, bool) or value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return round(float(value), 2)
+        if isinstance(value, str):
+            cleaned = value.replace("\u00a0", "").replace(" ", "").replace(",", ".")
+            try:
+                return round(float(cleaned), 2)
+            except ValueError:
+                return value.strip().casefold()
+        return value
+
+    def _check_extraction_stability(
+        self, result: dict, chunks: list[str], the_year: int, model: str, source_name: str
+    ) -> list:
+        """Run the extraction again and report values that did not survive it.
+
+        The first reading is kept: a disagreement says the figure is uncertain,
+        not that the second attempt is better. Findings go through the same
+        channel as the arithmetic checks, so an unstable cell is coloured in
+        Excel, named in the CSV and recorded in the JSON without any new
+        plumbing.
+        """
+        if not result:
+            return []
+
+        logger.info(f"Kontrollerar avläsningens stabilitet för {source_name}...")
+        repeat = self._analyse_chunks(
+            chunks, the_year=the_year, model=model, purpose=usage.PURPOSE_STABILITY
+        )
+        if not repeat:
+            logger.warning(
+                f"Stabilitetskontrollen för {source_name} gav inget svar. "
+                "Värdena kunde inte jämföras."
+            )
+            return []
+
+        second, _ = self._merge_json_fund_data(self._deep_merge_json_objects(repeat))
+
+        fund = next(iter(result))
+        years = result[fund]
+        if not isinstance(years, dict) or not years:
+            return []
+        year = next(iter(years))
+        first_metrics = years[year]
+
+        second_metrics = {}
+        for other_years in second.values():
+            for per_year in other_years.values():
+                second_metrics.update(per_year)
+
+        findings, agreed = [], 0
+        for name, entry in first_metrics.items():
+            if not isinstance(entry, dict):
+                continue
+            first_value = self._comparable(entry.get(self.FIELD_VALUE))
+            other = second_metrics.get(name)
+            second_value = (
+                self._comparable(other.get(self.FIELD_VALUE))
+                if isinstance(other, dict)
+                else None
+            )
+
+            if first_value == second_value:
+                agreed += 1
+                continue
+
+            if second_value is None:
+                message = (
+                    f"Vid en omkörning av samma dokument hittades inget värde alls "
+                    f"för detta nyckeltal (första avläsningen gav {entry.get(self.FIELD_VALUE)}). "
+                    "Kontrollera mot källdokumentet."
+                )
+            else:
+                message = (
+                    f"Två avläsningar av samma dokument gav olika värden: "
+                    f"{entry.get(self.FIELD_VALUE)} respektive "
+                    f"{other.get(self.FIELD_VALUE)}. Det första värdet har behållits. "
+                    "Kontrollera mot källdokumentet."
+                )
+
+            findings.append(
+                validation.Finding(
+                    fund=fund,
+                    year=str(year),
+                    rule=self.STABILITY_RULE,
+                    message=message,
+                    severity=validation.SEVERITY_WARNING,
+                    metrics=[name],
+                )
+            )
+
+        if findings:
+            logger.warning(
+                f"{len(findings)} av {len(first_metrics)} nyckeltal i {source_name} "
+                "ändrades mellan två avläsningar av samma dokument."
+            )
+        else:
+            logger.info(
+                f"Stabilitetskontroll: alla {agreed} nyckeltal i {source_name} "
+                "gav samma värde vid omkörning."
+            )
+        return findings
+
     def _second_pass_for_missing(
         self, result: dict, chunks: list[str], the_year: int, model: str
     ) -> dict:
@@ -1502,6 +1682,17 @@ class JBGAnnualReportAnalyzer:
         """
         missing = self._missing_metrics(result)
         if not missing:
+            return result
+
+        if len(missing) < self.SECOND_PASS_MIN_MISSING:
+            # Measured over a full corpus: 13 of 17 second passes were chasing a
+            # single absent metric and recovered nothing, at about 15 000 tokens
+            # each. A lone gap is usually a metric the report does not contain.
+            logger.info(
+                f"{len(missing)} nyckeltal saknas ({', '.join(missing)}), vilket är "
+                f"färre än {self.SECOND_PASS_MIN_MISSING}. Hoppar över riktad "
+                "omsökning; posten saknas sannolikt i dokumentet."
+            )
             return result
 
         total = len(schema.load_metric_names(self.metrics_path))
@@ -1530,6 +1721,7 @@ class JBGAnnualReportAnalyzer:
                     self._build_request_text(chunk),
                     model,
                     response_schema=self._response_schema(missing),
+                    purpose=usage.PURPOSE_SECOND_PASS,
                 )
             except Exception as ex:
                 logger.warning(f"Riktad omsökning misslyckades för chunk {index + 1}: {ex}")
@@ -1578,6 +1770,7 @@ class JBGAnnualReportAnalyzer:
 
         total_result = []
         self.skipped_files = []
+        self.stability_findings = []
         log_ocr_availability()
 
 
@@ -1605,6 +1798,7 @@ class JBGAnnualReportAnalyzer:
             # name it was supposed to remove.
             try:
                 readable_path = self._ensure_readable_pdf(_pdf_path)
+                was_ocred = readable_path != _pdf_path
 
                 if self.use_masking:
                     masker = self._get_masker()
@@ -1688,9 +1882,24 @@ class JBGAnnualReportAnalyzer:
                         appended_result, chunks, the_year=the_year, model=model
                     )
 
+                if self.VERIFY_ALL_EXTRACTIONS or (
+                    self.VERIFY_OCR_EXTRACTION and was_ocred
+                ):
+                    self.stability_findings.extend(
+                        self._check_extraction_stability(
+                            appended_result,
+                            chunks,
+                            the_year=the_year,
+                            model=model,
+                            source_name=_pdf_path.name,
+                        )
+                    )
+
                 total_result.append(appended_result)
 
         report(total_files, "")
+
+        usage.log_summary(self.usage, files_analysed=len(total_result))
 
         if self.skipped_files:
             # Ten files vanished from a 24-file run with nothing but a warning
@@ -1719,7 +1928,14 @@ class JBGAnnualReportAnalyzer:
 
             # Arithmetic sanity checks. These do not change the data; they tell
             # the reader which figures to verify against the source document.
-            self.validation_findings = validation.validate(final_result)
+            # Stability findings are raised per file, before the fund names are
+            # canonicalised, so their fund key has to follow the rename or the
+            # Excel export cannot match them to a cell.
+            self._canonicalise_finding_funds()
+
+            self.validation_findings = (
+                validation.validate(final_result) + self.stability_findings
+            )
             validation.log_findings(self.validation_findings)
             validation.log_certainty_histogram(final_result)
 
@@ -1731,6 +1947,8 @@ class JBGAnnualReportAnalyzer:
                 final_result[self.VALIDATION_KEY] = [
                     finding.as_dict() for finding in self.validation_findings
                 ]
+
+            final_result[self.USAGE_KEY] = self.usage.as_dict(usage.load_prices())
 
             if self.skipped_files:
                 final_result[self.SKIPPED_KEY] = [

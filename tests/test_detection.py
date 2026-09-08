@@ -136,7 +136,7 @@ def test_year_falls_back_when_no_year_present(tmp_path, monkeypatch):
     analyzer = JBGAnnualReportAnalyzer.__new__(JBGAnnualReportAnalyzer)
     calls = []
 
-    def fake_call(prompt, request, model=""):
+    def fake_call(prompt, request, model="", **kwargs):
         calls.append(model)
         return "-1"
 

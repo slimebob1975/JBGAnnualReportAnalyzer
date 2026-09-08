@@ -143,6 +143,7 @@ att tjänsten ska fungera.
 | `JBG_SWEEP_INTERVAL_SECONDS` | `300` | Hur ofta utgångna jobb städas bort. |
 | `JBG_MAX_CONCURRENT_JOBS` | `2` | Antal analyser som körs samtidigt. |
 | `JBG_MAX_UPLOAD_MB` | `200` | Största tillåtna uppladdning. |
+| `JBG_MODEL_PRICES` | `app/config/model_prices.json` | Sökväg till prislistan för kostnadsuppskattning. |
 | `JBG_MASKING_EXTRA_NAMES` | `app/config/masking_extra_names.json` | Sökväg till filen med extra namn att maskera. |
 | `JBG_NER_MODEL` | `KBLab/bert-base-swedish-cased-ner` | Modell för namnigenkänning. Läses vid bygget. |
 | `TIKTOKEN_CACHE_DIR` | – | Bör pekas mot en förhämtad katalog i miljöer utan utgående nätverk. |
@@ -184,6 +185,20 @@ enbart frågar efter de saknade. Värden från omsökningen märks med
 `[Riktad omsökning]` i kommentarsfältet. Saknas ett nyckeltal även efter det
 finns posten med största sannolikhet inte i dokumentet.
 
+### Stabilitetskontroll av inskannade rapporter
+
+Dokument som gått genom OCR läses av två gånger och resultaten jämförs. Ett
+värde som skiljer sig mellan de två avläsningarna märks som **Instabil
+avläsning** och behöver kontrolleras mot källdokumentet. Den första
+avläsningen behålls: att de skiljer sig säger att siffran är osäker, inte att
+det andra försöket är bättre.
+
+Kontrollen görs bara på OCR-tolkade dokument, där skevt inskannade sidor ger
+osäker teckentolkning. Den dubblar extraktionskostnaden för de dokumenten och
+redovisas separat som `stabilitetskontroll` i tokenrapporten. Stängs av med
+`VERIFY_OCR_EXTRACTION = False`, eller utökas till alla dokument med
+`VERIFY_ALL_EXTRACTIONS = True`, i `JBGAnnualReportAnalysis.py`.
+
 Anmärkningarna finns i alla tre formaten:
 
 * **Excel** – lila celler, texten i cellkommentaren och en samlad lista på
@@ -196,6 +211,28 @@ Anmärkningarna finns i alla tre formaten:
 Loggen visar också fördelningen av angiven säkerhet efter varje körning. Om
 nästan alla värden får 1,0 skiljer skalan inte mellan säkra och osäkra värden,
 och färgkodningen säger då lite.
+
+### Kostnad per körning
+
+Efter varje körning loggas antal anrop och tokens, uppdelat både per modell och
+per ändamål – nyckeltalsextraktion, riktad omsökning, årtolkning och
+sidnummeroffset. Samma uppgifter finns under nyckeln `_modellanvandning` i
+JSON-filen.
+
+Någon kostnad visas inte förrän priser fyllts i, eftersom priser ändras och
+skiljer sig mellan konton. Lägg in aktuella priser per miljon tokens i
+`app/config/model_prices.json`:
+
+```json
+{
+  "gpt-5.2-2025-12-11": { "in": 1.25, "ut": 10.00 },
+  "_valuta": "USD"
+}
+```
+
+Modellnamnet ska vara det som API:et rapporterar tillbaka, vilket syns i
+loggen. Saknas priset för någon använd modell rapporteras bara tokens – aldrig
+en halv kostnad.
 
 ## API
 

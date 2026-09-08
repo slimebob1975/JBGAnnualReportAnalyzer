@@ -1,0 +1,19 @@
+{
+  "_kommentar": [
+    "Priser per miljon tokens, för att kunna uppskatta kostnaden för en körning.",
+    "Tomt som standard: priser ändras, skiljer sig mellan konton, och en gissad",
+    "siffra är sämre än ingen alls eftersom den hamnar i en rapport.",
+    "",
+    "Fyll i aktuella priser från https://openai.com/api/pricing/ enligt mönstret",
+    "nedan. Modellnamnet ska vara det som API:et rapporterar tillbaka, t.ex.",
+    "'gpt-5.2-2025-12-11' och inte 'gpt-5.2' - det syns i loggen.",
+    "",
+    "Exempel:",
+    "  \"gpt-5.2-2025-12-11\": { \"in\": 1.25, \"ut\": 10.00 },",
+    "  \"gpt-4o-2024-08-06\":  { \"in\": 2.50, \"ut\": 10.00 }",
+    "",
+    "Saknas priset för någon använd modell rapporteras bara tokens, aldrig en",
+    "halv kostnad."
+  ],
+  "_valuta": "USD"
+}

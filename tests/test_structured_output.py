@@ -173,7 +173,7 @@ def test_chunks_are_merged_in_order_not_completion_order():
     a = _analyzer(MAX_CONCURRENT_CHUNKS=4)
     order = []
 
-    def fake(index, total, chunk, the_year, model):
+    def fake(index, total, chunk, the_year, model, purpose=None):
         # deliberately finish in reverse order
         _time.sleep(0.05 * (total - index))
         order.append(index)
@@ -189,7 +189,7 @@ def test_chunks_are_merged_in_order_not_completion_order():
 def test_failed_chunks_do_not_sink_the_batch():
     a = _analyzer(MAX_CONCURRENT_CHUNKS=2)
 
-    def fake(index, total, chunk, the_year, model):
+    def fake(index, total, chunk, the_year, model, purpose=None):
         if index == 1:
             return None  # simulates a parse failure or API error
         return {"K": {"2023": {"Eget kapital": {"värde": index, "källa": "",

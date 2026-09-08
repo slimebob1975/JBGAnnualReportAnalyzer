@@ -74,11 +74,11 @@ def test_no_extra_call_when_nothing_is_missing():
 
 def test_second_pass_recovers_a_missed_metric():
     a = _analyzer()
-    present = [n for n in ALL_METRICS if n != "Eftergift"]
+    present = [n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")]
     result = _result(present)
     seen = {}
 
-    def fake(system_prompt, request_text, model="", response_schema=None):
+    def fake(system_prompt, request_text, model="", response_schema=None, **kwargs):
         seen["enum"] = response_schema["schema"]["properties"]["nyckeltal"]["items"][
             "properties"
         ]["namn"]["enum"]
@@ -95,17 +95,17 @@ def test_second_pass_recovers_a_missed_metric():
     metrics = result["Kommunalarbetarnas"]["2024"]
     assert metrics["Eftergift"]["värde"] == 4211
     # the schema makes it structurally impossible to answer about anything else
-    assert seen["enum"] == ["Eftergift"]
+    assert set(seen["enum"]) == {"Eftergift", "Skulder"}
     # and the prompt carries exactly one metric definition, not all 18
     # (the base instruction text mentions some metric names as examples, so
     # count definition entries rather than bare occurrences)
-    assert seen["prompt"].count('"Nyckeltal":') == 1
+    assert seen["prompt"].count('"Nyckeltal":') == 2
     assert '"Nyckeltal": "Eftergift"' in seen["prompt"]
 
 
 def test_recovered_values_are_tagged():
     a = _analyzer()
-    result = _result([n for n in ALL_METRICS if n != "Eftergift"])
+    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
     a._make_openai_api_call = lambda *args, **kwargs: json.dumps({
         "kassa": "K", "år": 2024,
         "nyckeltal": [{"namn": "Eftergift", "värde": 1, "källa": "s",
@@ -122,7 +122,7 @@ def test_first_pass_values_are_never_overwritten():
     """A second pass that re-answers a metric it was not asked about must not
     clobber a value the first pass already established."""
     a = _analyzer()
-    result = _result([n for n in ALL_METRICS if n != "Eftergift"])
+    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
     original = dict(result["Kommunalarbetarnas"]["2024"]["Balansomslutning"])
 
     a._make_openai_api_call = lambda *args, **kwargs: json.dumps({
@@ -142,7 +142,7 @@ def test_values_are_grafted_onto_the_existing_fund_and_year():
     """The second pass may word the fund name differently. That must not split
     the file's result into two funds."""
     a = _analyzer()
-    result = _result([n for n in ALL_METRICS if n != "Eftergift"])
+    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
     a._make_openai_api_call = lambda *args, **kwargs: json.dumps({
         "kassa": "Kommunalarbetarnas Arbetslöshetskassa", "år": 2023,
         "nyckeltal": [{"namn": "Eftergift", "värde": 7, "källa": "s",
@@ -169,21 +169,25 @@ def test_stops_early_once_nothing_is_missing():
     """With several chunks, the pass must not keep asking after the last gap
     has been filled."""
     a = _analyzer()
-    result = _result([n for n in ALL_METRICS if n != "Eftergift"])
+    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
     calls = []
 
-    def fake(system_prompt, request_text, model="", response_schema=None):
+    def fake(system_prompt, request_text, model="", response_schema=None, **kwargs):
         calls.append(request_text)
         return json.dumps({
             "kassa": "K", "år": 2024,
-            "nyckeltal": [{"namn": "Eftergift", "värde": 1, "källa": "s",
-                           "säkerhet": 0.8, "kommentar": "c"}],
+            "nyckeltal": [
+                {"namn": "Eftergift", "värde": 1, "källa": "s",
+                 "säkerhet": 0.8, "kommentar": "c"},
+                {"namn": "Skulder", "värde": 2, "källa": "s",
+                 "säkerhet": 0.8, "kommentar": "c"},
+            ],
         }, ensure_ascii=False)
 
     a._make_openai_api_call = fake
     a._second_pass_for_missing(result, ["chunk a", "chunk b", "chunk c"],
                                the_year=2024, model="m")
-    assert len(calls) == 1, "should stop after the gap is filled"
+    assert len(calls) == 1, "should stop after the gaps are filled"
 
 
 def test_a_failed_second_pass_leaves_the_result_intact():
@@ -202,7 +206,7 @@ def test_a_failed_second_pass_leaves_the_result_intact():
 
 def test_unparsable_second_pass_response_is_survived():
     a = _analyzer()
-    result = _result([n for n in ALL_METRICS if n != "Eftergift"])
+    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
     a._make_openai_api_call = lambda *args, **kwargs: "inte JSON alls"
     a._second_pass_for_missing(result, ["t"], the_year=2024, model="m")
     assert "Eftergift" not in result["Kommunalarbetarnas"]["2024"]
@@ -242,3 +246,35 @@ def test_flag_controls_whether_the_pass_runs(flag, monkeypatch):
     a = _analyzer()
     monkeypatch.setattr(JBGAnnualReportAnalyzer, "USE_SECOND_PASS_FOR_MISSING", flag)
     assert a.USE_SECOND_PASS_FOR_MISSING is flag
+
+
+# ------------------------------------------------------- when it does not run
+def test_a_single_missing_metric_does_not_trigger_a_pass():
+    """Measured over a corpus: 13 of 17 passes chased one absent metric and
+    recovered nothing, at roughly 15 000 tokens each."""
+    a = _analyzer()
+    calls = []
+    a._make_openai_api_call = lambda *args, **kwargs: calls.append(1) or "{}"
+
+    result = _result([n for n in ALL_METRICS if n != "Eftergift"])
+    a._second_pass_for_missing(result, ["text"], the_year=2024, model="gpt-5.2")
+    assert calls == []
+
+
+def test_two_missing_metrics_do_trigger_a_pass():
+    a = _analyzer()
+    calls = []
+
+    def fake(system_prompt, request_text, model="", response_schema=None, **kwargs):
+        calls.append(1)
+        return json.dumps({"kassa": "K", "år": 2024, "nyckeltal": []}, ensure_ascii=False)
+
+    a._make_openai_api_call = fake
+    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
+    a._second_pass_for_missing(result, ["text"], the_year=2024, model="gpt-5.2")
+    assert len(calls) == 1
+
+
+def test_the_page_offset_fallback_is_off_by_default():
+    """105 calls in one run, 14 of 17 answers equal to the default."""
+    assert JBGAnnualReportAnalyzer.USE_LLM_FALLBACK_FOR_PAGE_OFFSET is False
