@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 OFFICIAL_KEY = "Officiellt namn"
 SHORT_KEY = "Kort namn"
 NUMBER_KEY = "KassaNummer"
+ALIAS_KEY = "Alternativa namn"
 
 # Words that carry no distinguishing information: every fund is an
 # arbetslöshetskassa, and the cover page may write it a dozen ways.
@@ -70,7 +71,13 @@ class FundNameResolver:
         self._ambiguous_stems: set = set()
 
         for entry in entries:
-            for candidate in (entry.get(OFFICIAL_KEY), entry.get(SHORT_KEY)):
+            # Optional aliases live in the register as data, so a new spelling
+            # is a one-line change to kassor.json rather than code. A real
+            # report wrote "Industrifacket Metalls arbetslöshetskassa" where
+            # the register has "IF Metalls arbetslöshetskassa".
+            candidates = [entry.get(OFFICIAL_KEY), entry.get(SHORT_KEY)]
+            candidates.extend(entry.get(ALIAS_KEY) or [])
+            for candidate in candidates:
                 stem = _stem(candidate or "")
                 if not stem:
                     continue

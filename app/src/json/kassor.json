@@ -102,7 +102,10 @@
   {
     "Kort namn": "IF Metalls",
     "Officiellt namn": "IF Metalls arbetslöshetskassa",
-    "KassaNummer": 67
+    "KassaNummer": 67,
+    "Alternativa namn": [
+      "Industrifacket Metalls arbetslöshetskassa"
+    ]
   },
   {
     "Kort namn": "Lärarnas",

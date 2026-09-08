@@ -21,9 +21,14 @@ tiktoken==0.14.0
 PyMuPDF==1.28.2
 openpyxl==3.1.5
 
-# --- optional: name masking (also installs torch, ~2 GB) --------------------
-# Drop this line, and set use_masking=no, for a slim deployment.
+# --- optional: name masking -------------------------------------------------
+# transformers does NOT depend on torch: torch is an optional backend that has
+# to be named explicitly. Leaving it out gave
+#   "None of PyTorch, TensorFlow >= 2.0, or Flax have been found"
+# followed by NameError: name 'torch' is not defined, at the first masking call.
+# Drop both lines, and set use_masking=no, for a slim deployment (~2 GB less).
 transformers==4.57.1
+torch==2.14.0
 
 # --- optional: OCR for scanned reports --------------------------------------
 # Requires the system packages tesseract-ocr, tesseract-ocr-swe, ghostscript.

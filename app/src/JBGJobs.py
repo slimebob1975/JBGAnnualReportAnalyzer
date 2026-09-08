@@ -52,6 +52,7 @@ class Job:
     done_files: int = 0
     current_file: str = ""
     output_name: str | None = None
+    skipped_files: int = 0
     error: str | None = None
 
     @property
@@ -71,6 +72,8 @@ class Job:
             "current_file": self.current_file,
             "duration_seconds": round(self.duration, 1),
         }
+        if self.skipped_files:
+            payload["skipped_files"] = self.skipped_files
         if self.status == STATUS_DONE:
             payload["download_url"] = f"/api/jobs/{self.id}/download"
             payload["download_filename"] = self.output_name
@@ -175,13 +178,27 @@ class JobRegistry:
     def _completion_message(cls, job: Job) -> str:
         elapsed = cls.format_duration(job.duration)
         count = job.total_files or job.done_files
+        skipped = ""
+        if job.skipped_files:
+            # Ten of 24 files silently produced nothing in a real run. The
+            # browser should say so, not just the log.
+            analysed = max(count - job.skipped_files, 0)
+            skipped = (
+                f" {job.skipped_files} fil(er) kunde inte läsas och hoppades över "
+                f"– se loggen. "
+            )
+            count = analysed
+
         if count > 1:
             per_file = job.duration / count
             return (
                 f"{count} fil(er) analyserade på {elapsed} "
-                f"({per_file:.0f} s/fil). Nedladdningen startar automatiskt."
+                f"({per_file:.0f} s/fil).{skipped} Nedladdningen startar automatiskt."
             )
-        return f"{count} fil(er) analyserade på {elapsed}. Nedladdningen startar automatiskt."
+        return (
+            f"{count} fil(er) analyserade på {elapsed}.{skipped} "
+            "Nedladdningen startar automatiskt."
+        )
 
     def progress_callback(self, job: Job) -> Callable[[int, int, str], None]:
         def report(done: int, total: int, filename: str):

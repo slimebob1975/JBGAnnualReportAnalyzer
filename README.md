@@ -18,10 +18,40 @@ arbetslöshetskassors årsredovisningar med hjälp av en språkmodell.
 
 * Python 3.10 eller senare.
 * En OpenAI API-nyckel, som anges i formuläret.
-* För maskning: `transformers` (drar in torch, ca 2 GB).
+* För maskning: `transformers` **och** `torch` (ca 2 GB). Båda behövs:
+  transformers importeras utan backend och fallerar först när modellen ska
+  köras. `/health` visar vilket paket som saknas.
 * För OCR av inskannade dokument: `ocrmypdf` plus systempaketen
-  `tesseract-ocr`, `tesseract-ocr-swe` och `ghostscript`. Utan språkpaketet för
-  svenska fungerar inte OCR:en.
+  `tesseract-ocr`, `tesseract-ocr-swe` och `ghostscript`. Dessa installeras
+  **inte** av pip. Saknas de hoppas inskannade rapporter över, och `/health`
+  talar om varför.
+
+  * **Windows:** installeraren för tesseract finns på
+    <https://github.com/UB-Mannheim/tesseract/wiki> – kryssa i språkpaketet
+    *Swedish* under installationen och lägg installationskatalogen i `PATH`.
+    Ghostscript finns på <https://ghostscript.com/releases/gsdnld.html>.
+  * **Debian/Ubuntu:** `apt install tesseract-ocr tesseract-ocr-swe ghostscript`
+  * **macOS:** `brew install tesseract tesseract-lang ghostscript`
+
+  Kontrollera efter installationen att båda finns i `PATH`:
+
+  ```
+  tesseract --list-langs      # ska innehålla "swe"
+  gs --version
+  ```
+
+  I Docker-avbilden ingår allt detta redan. På Windows sköts det av
+  `scripts\\Ensure-OcrTools.ps1`, som startskriptet anropar. Det installerar
+  det som saknas via winget, hämtar språkpaketet för svenska och lägger
+  katalogerna i `PATH` för sessionen. Lyckas det inte skrivs en förklaring
+  ut och tjänsten startar ändå, men inskannade rapporter hoppas över.
+
+  Skriptet går också att köra fristende, vilket är enklaste sättet att
+  felsöka en installation:
+
+  ```powershell
+  .\\scripts\\Ensure-OcrTools.ps1
+  ```
 
 ## Installation
 
@@ -40,6 +70,17 @@ pip install -r requirements.txt
 `requirements.txt` innehåller exakta versioner för reproducerbara
 Docker-byggen. För utveckling är `pip install -e ".[...]"` att föredra,
 eftersom `pyproject.toml` anger versionsintervall i stället.
+
+### Så fungerar maskningen
+
+Ordningen är **OCR först, sedan maskning, sedan textutdrag**. En inskannad
+sida innehåller ingen text att hitta, så en maskning som körs före OCR
+svärtar inget alls – och namnen dyker upp igen när OCR körs.
+
+Efter maskningen kontrolleras resultatet: den maskerade filen läses tillbaka
+och varje känslig term söks igen, även över radbrytande bindestreck. Hittas
+någon term kvar skrivs ett fel i loggen, den maskerade filen tas bort och
+dokumentet analyseras inte. Omaskerad text ska inte lämna maskinen.
 
 ### Namn som alltid ska maskeras
 
@@ -129,6 +170,11 @@ anmärkningar.
 Ett nyckeltal som saknas i utdata har inte hittats i dokumentet. Modellen är
 instruerad att utelämna det den inte hittar hellre än att gissa.
 
+En fil som inte går att läsa – en inskannad rapport utan OCR, till exempel –
+hoppas över med en tydlig förklaring i loggen, i webbgränssnittets
+slutmeddelande och under nyckeln `_ejanalyserade` i JSON-filen. Övriga filer
+analyseras som vanligt.
+
 Tomma rader är därför ett normalt och förväntat resultat. Vissa nyckeltal redovisas helt enkelt inte av alla kassor: i ett testmaterial med sju
 årsredovisningar saknade fem stycken 'Kortfristiga placeringar' även efter
 riktad omsökning. Det är ett riktigare svar än en gissning, och tjänsten innehåller medvetet inga särregler för enskilda nyckeltal.
@@ -205,7 +251,9 @@ JBGAnnualReportAnalyzer/
 │   │   └── masking/JBGPDFMasking.py     # maskning av PDF
 │   ├── static/
 │   └── templates/
-├── scripts/prefetch_models.py      # hämtar modeller vid bygget
+├── scripts/
+│   ├── prefetch_models.py           # hämtar modeller vid bygget
+│   └── Ensure-OcrTools.ps1          # installerar tesseract och ghostscript
 ├── run_checks.ps1                  # lint och tester lokalt (Windows)
 ├── tests/
 ├── pyproject.toml

@@ -26,6 +26,12 @@ def _analyzer() -> JBGAnnualReportAnalyzer:
     return a
 
 
+def _long_body(prefix: str, lines: int = 30) -> str:
+    """A page body that actually fits. insert_text clips a single long line at
+    the page edge, which silently produced ~100 characters per page."""
+    return "\n".join(f"{prefix} rad {n}: belopp {1000 + n} tkr" for n in range(lines))
+
+
 def _report(tmp_path, pages, page_labels=None, name="ar.pdf"):
     """Build a PDF whose pages contain the given (body, footer) text."""
     doc = pymupdf.open()
@@ -143,30 +149,90 @@ def test_year_falls_back_when_no_year_present(tmp_path, monkeypatch):
 def test_ocr_skipped_when_text_layer_present(tmp_path):
     """The whole corpus in the sample log has a text layer, so OCR must not
     even be attempted."""
-    pdf = _report(tmp_path, [(f"Text pa sida {i}", None) for i in range(5)])
+    pdf = _report(tmp_path, [(_long_body(f"Text pa sida {i}"), None) for i in range(5)])
     analyzer = _analyzer()
 
     def boom(*args, **kwargs):  # pragma: no cover
         raise AssertionError("OCR should not run on a document that has text")
 
-    analyzer._ocr_text = boom
-    text = analyzer._extract_text_from_pdf_from_pdf(pdf)
+    analyzer._run_ocr = boom
+    text = analyzer._extract_text_from_pdf_from_pdf(analyzer._ensure_readable_pdf(pdf))
     assert "Text pa sida 0" in text
+    assert len(text) >= JBGAnnualReportAnalyzer.MIN_USABLE_TEXT_CHARS
 
 
-def test_ocr_attempted_when_pages_lack_text(tmp_path):
-    pdf = _report(tmp_path, [("Endast forsta sidan har text", None)] + [("", None)] * 9)
+def test_scanned_document_is_refused_when_ocr_is_unavailable(tmp_path, monkeypatch):
+    """Ten scanned reports in a 24-file run each burned model calls before
+    anyone discovered there was no text to read."""
+    from app.src import JBGAnnualReportAnalysis as mod
+    from app.src.JBGAnnualReportExceptions import FileTypeException
+
+    pdf = _report(tmp_path, [("", None)] * 10)
+    monkeypatch.setattr(mod, "ocr_availability", lambda: (False, "tesseract saknas i PATH"))
+
     analyzer = _analyzer()
-    attempted = []
+    with pytest.raises(FileTypeException) as excinfo:
+        analyzer._ensure_readable_pdf(pdf)
+    assert "saknar textlager" in excinfo.value.message
+    assert "tesseract" in excinfo.value.message
 
-    def fake_ocr(path, offset):
-        attempted.append(path)
-        return "x" * 10_000  # a big text gain, so it should be preferred
 
-    analyzer._ocr_text = fake_ocr
-    text = analyzer._extract_text_from_pdf_from_pdf(pdf)
-    assert attempted, "OCR should run when most pages have no text layer"
-    assert text == "x" * 10_000
+def test_no_model_calls_are_made_on_an_unreadable_scan(tmp_path, monkeypatch):
+    """_analyzer() raises if the model is called at all."""
+    from app.src import JBGAnnualReportAnalysis as mod
+    from app.src.JBGAnnualReportExceptions import FileTypeException
+
+    pdf = _report(tmp_path, [("", None)] * 10)
+    monkeypatch.setattr(mod, "ocr_availability", lambda: (False, "tesseract saknas"))
+    with pytest.raises(FileTypeException):
+        _analyzer()._ensure_readable_pdf(pdf)
+
+
+def test_ocr_output_is_used_when_it_succeeds(tmp_path, monkeypatch):
+    from app.src import JBGAnnualReportAnalysis as mod
+
+    scan = _report(tmp_path, [("", None)] * 10, name="scan.pdf")
+    # a stand-in for what OCR would have produced
+    readable = _report(
+        tmp_path,
+        [(_long_body(f"Arsredovisning rakenskapsaret 2025-12-31 sida {i}"), None) for i in range(10)],
+        name="scan_ocr.pdf",
+    )
+    monkeypatch.setattr(mod, "ocr_availability", lambda: (True, "ok"))
+
+    analyzer = _analyzer()
+    analyzer._run_ocr = lambda path: readable
+    # OCR now happens in _ensure_readable_pdf, before masking, so extraction
+    # runs against whatever that returns.
+    text = analyzer._extract_text_from_pdf_from_pdf(analyzer._ensure_readable_pdf(scan))
+    assert "Arsredovisning" in text
+    assert len(text) >= JBGAnnualReportAnalyzer.MIN_USABLE_TEXT_CHARS
+
+
+def test_a_text_layer_of_scanning_artefacts_is_refused(tmp_path, monkeypatch):
+    """The scans in the corpus yielded 240-400 characters of noise, which used
+    to be sent to the model as if it were a report."""
+    from app.src import JBGAnnualReportAnalysis as mod
+    from app.src.JBGAnnualReportExceptions import FileTypeException
+
+    pdf = _report(tmp_path, [("x", None)] * 20)
+    monkeypatch.setattr(mod, "ocr_availability", lambda: (True, "ok"))
+    analyzer = _analyzer()
+    analyzer._run_ocr = lambda path: pdf
+    with pytest.raises(FileTypeException) as excinfo:
+        analyzer._extract_text_from_pdf_from_pdf(analyzer._ensure_readable_pdf(pdf))
+    assert "för lite" in excinfo.value.message
+
+
+def test_year_is_derived_from_ocr_text_not_the_blank_original():
+    """A latent bug: the year was read from the original scanned PDF, so it
+    would have failed even with tesseract working perfectly."""
+    analyzer = _analyzer()
+    ocr_text = (
+        "[Sida 1]\nArsredovisning for rakenskapsaret 2025-01-01 - 2025-12-31\n\n"
+        "[Sida 2]\nBalansrakning\nSumma tillgangar 42 561"
+    )
+    assert analyzer._find_primary_year_from_text(ocr_text) == 2025
 
 
 # ------------------------------------------------- follow-up: offset accuracy
@@ -295,3 +361,39 @@ def test_removed_methods_are_actually_gone():
         "get_permitted_temperature",
     ]:
         assert not hasattr(JBGAnnualReportAnalyzer, name), name
+
+
+# ----------------------------------------------------- OCR availability
+def test_ocr_availability_explains_a_missing_tesseract(monkeypatch):
+    """The failure a real run hit ten times, with no hint about the fix."""
+    from app.src import JBGAnnualReportAnalysis as mod
+
+    mod.ocr_availability.cache_clear()
+    monkeypatch.setattr(mod.shutil, "which", lambda name: None)
+    available, reason = mod.ocr_availability()
+    mod.ocr_availability.cache_clear()
+
+    assert available is False
+    assert "tesseract" in reason
+    # actionable on every platform the team might use
+    assert "PATH" in reason and "apt install" in reason and "brew" in reason
+
+
+def test_ocr_availability_notices_a_missing_ghostscript(monkeypatch):
+    from app.src import JBGAnnualReportAnalysis as mod
+
+    mod.ocr_availability.cache_clear()
+    monkeypatch.setattr(mod.shutil, "which", lambda name: "/usr/bin/tesseract" if name == "tesseract" else None)
+    available, reason = mod.ocr_availability()
+    mod.ocr_availability.cache_clear()
+
+    assert available is False
+    assert "ghostscript" in reason
+
+
+def test_ocr_availability_is_cached():
+    from app.src import JBGAnnualReportAnalysis as mod
+
+    mod.ocr_availability.cache_clear()
+    first = mod.ocr_availability()
+    assert mod.ocr_availability() is first

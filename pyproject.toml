@@ -24,10 +24,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Name masking. Pulls in torch, which is roughly 2 GB, so a deployment that
-# runs with masking disabled should not have to install it.
+# Name masking. torch is roughly 2 GB, so a deployment that runs with masking
+# disabled should not have to install it. It must be listed explicitly:
+# transformers has no dependency on torch, it only uses it when present.
 masking = [
     "transformers>=4.40,<6.0",
+    "torch>=2.2",
 ]
 
 # OCR for scanned reports. Also needs the system packages tesseract-ocr,
@@ -61,9 +63,9 @@ app = ["prompt/**/*", "src/json/*.json", "templates/*", "static/**/*", "config/*
 # ---------------------------------------------------------------------------
 # Removed from the old requirements.txt because nothing in the codebase
 # imports them: aiofiles, beautifulsoup4, lxml, requests, python-docx,
-# pytesseract, tf-keras, pdfminer.six. pydantic and torch are still installed,
-# but as transitive dependencies of fastapi and transformers respectively,
-# so they do not need declaring.
+# pytesseract, tf-keras, pdfminer.six. pydantic is still installed, but as a
+# transitive dependency of fastapi, so it does not need declaring. torch is
+# NOT transitive: see the masking extra above.
 # ---------------------------------------------------------------------------
 
 [tool.ruff]

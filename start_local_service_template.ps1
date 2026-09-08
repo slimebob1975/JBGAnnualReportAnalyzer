@@ -59,9 +59,30 @@ Invoke-InDir -Path $DevRoot -ScriptBlock {
     & $Pip install -r $VenvRequirements
 }
 
-Invoke-InDir -Path $DevRoot -ScriptBlock {
-    & $Pip install --upgrade uvicorn[standard]
+# NOTE: an unconditional "pip install --upgrade uvicorn[standard]" used to sit
+# here. requirements.txt now pins uvicorn, so the upgrade immediately undid the
+# pin on every start: the log showed 0.38.0 being installed and then replaced
+# by 0.52.4 seconds later. Change the pin in requirements.txt instead.
+
+# ===================== OCR TOOLS (tesseract + ghostscript) ==================
+# Dot-sourced so that the PATH and TESSDATA_PREFIX it sets apply to this
+# session, and uvicorn inherits them.
+#
+# The logic lives in its own file on purpose. This start script is meant to be
+# copied and filled in locally, so a fix to the OCR setup would otherwise only
+# reach the template and never your working copy. Keeping it separate means a
+# git pull is enough.
+#
+# It can also be run on its own to install or diagnose:
+#     .\scripts\Ensure-OcrTools.ps1
+
+$OcrSetup = Join-Path $DevRoot 'scripts\Ensure-OcrTools.ps1'
+if (Test-Path $OcrSetup) {
+    . $OcrSetup -TempDir $TempDir
+} else {
+    Write-Host "Hittade inte $OcrSetup - hoppar over OCR-kontrollen." -ForegroundColor Yellow
 }
+# ===================== END OCR TOOLS ========================================
 
 # --- Launch uvicorn ---
 Invoke-InDir -Path $DevRoot -ScriptBlock {

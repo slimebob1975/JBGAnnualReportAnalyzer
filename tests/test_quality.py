@@ -483,3 +483,47 @@ def test_skulder_definition_states_the_exclusive_convention():
     assert "Summa avsättningar och skulder" in instructions
     assert "MINUS" in instructions
     assert "Summa avsättningar och skulder" in skulder["Alternativa benämningar"]
+
+
+# ------------------------------------------------- fund aliases as data
+def test_alias_from_the_register_resolves():
+    """A real report wrote "Industrifacket Metalls arbetslöshetskassa" where
+    the register has "IF Metalls arbetslöshetskassa"."""
+    resolver = FundNameResolver(KASSOR)
+    assert resolver.short_name("Industrifacket Metalls arbetslöshetskassa") == "IF Metalls"
+    assert resolver.canonical_name("IF Metalls a-kassa") == "IF Metalls arbetslöshetskassa"
+
+
+def test_aliases_live_in_the_register_not_in_code():
+    """Adding a spelling must be a data change, so the mechanism has to be
+    generic rather than a per-fund branch."""
+    entries = json.loads(KASSOR.read_text(encoding="utf-8"))
+    with_alias = [e for e in entries if e.get("Alternativa namn")]
+    assert with_alias, "expected at least one alias in kassor.json"
+    for entry in with_alias:
+        assert isinstance(entry["Alternativa namn"], list)
+
+    # No fund name may appear as a string literal in the executable code of
+    # the resolver: comments and docstrings are fine, branches are not.
+    import ast
+
+    tree = ast.parse((ROOT / "app" / "src" / "JBGFundNames.py").read_text(encoding="utf-8"))
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef)):
+            doc = ast.get_docstring(node, clean=False)
+            if doc:
+                docstrings.add(doc)
+
+    literals = [
+        n.value for n in ast.walk(tree)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value not in docstrings
+    ]
+    for entry in entries:
+        for name in [entry["Officiellt namn"], entry["Kort namn"]]:
+            assert not any(name in lit for lit in literals), name
+
+
+def test_entries_without_aliases_still_work():
+    resolver = FundNameResolver(KASSOR)
+    assert resolver.short_name("Byggnadsarbetarnas arbetslöshetskassa") == "Byggnadsarbetarnas"

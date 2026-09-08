@@ -1,5 +1,6 @@
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 from pathlib import Path
 
 from openai import (
@@ -35,6 +36,7 @@ try:  # PyMuPDF >= 1.24.3 ships the package under its real name
 except ImportError:  # pragma: no cover - older PyMuPDF only exposes "fitz"
     import fitz as pymupdf
 import re
+import shutil
 import time
 from collections.abc import Mapping
 
@@ -43,6 +45,51 @@ import tiktoken
 logger = logging.getLogger(__name__)
 # Inherit the level configured by the application (JBG_LOG_LEVEL) rather than
 # forcing DEBUG, which wrote full report text and full GPT responses to disk.
+
+@lru_cache(maxsize=1)
+def ocr_availability() -> tuple[bool, str]:
+    """Whether OCR can actually run, and why not if it cannot.
+
+    ocrmypdf shells out to tesseract, so having the Python package installed
+    proves nothing. A real run of 24 reports hit
+    "Could not find program 'tesseract' on the PATH" ten times, once per
+    scanned document, with no hint anywhere about what to install.
+    """
+    try:
+        import ocrmypdf  # noqa: F401
+    except ImportError:
+        return False, "ocrmypdf är inte installerat. Installera med: pip install '.[ocr]'"
+
+    if shutil.which("tesseract") is None:
+        return False, (
+            "tesseract hittas inte i PATH. "
+            "Windows: installeraren finns på "
+            "https://github.com/UB-Mannheim/tesseract/wiki - välj språkpaketet "
+            "'Swedish' och lägg installationskatalogen i PATH. "
+            "Debian/Ubuntu: apt install tesseract-ocr tesseract-ocr-swe ghostscript. "
+            "macOS: brew install tesseract tesseract-lang ghostscript."
+        )
+
+    if shutil.which("gs") is None and shutil.which("gswin64c") is None:
+        return False, (
+            "ghostscript hittas inte i PATH. ocrmypdf behöver det för att skriva "
+            "PDF-utdata. Windows: https://ghostscript.com/releases/gsdnld.html"
+        )
+
+    return True, "tesseract och ghostscript hittades"
+
+
+def log_ocr_availability() -> bool:
+    available, reason = ocr_availability()
+    if available:
+        logger.info(f"OCR tillgängligt: {reason}")
+    else:
+        logger.warning(
+            f"OCR är INTE tillgängligt: {reason} "
+            "Inskannade årsredovisningar hoppas över."
+        )
+    return available
+
 
 class _ApproximateEncoder:
     """Stand-in for a tiktoken encoder when the real one cannot be fetched.
@@ -89,6 +136,7 @@ class JBGAnnualReportAnalyzer:
     USE_PAGE_AWARE_CHUNKING = True
     USE_STRUCTURED_OUTPUT = True
     VALIDATION_KEY = "_rimlighetskontroller"
+    SKIPPED_KEY = "_ejanalyserade"
     # One extra, narrowly-scoped call per file when the first pass missed
     # something. Skipped entirely when nothing is missing.
     USE_SECOND_PASS_FOR_MISSING = True
@@ -123,6 +171,8 @@ class JBGAnnualReportAnalyzer:
     # OCR is only worth its cost when the text layer is actually missing
     MIN_TEXT_PAGE_RATIO = 0.8
     OCR_LANGUAGE = "swe"
+    # Below this, a "text layer" is a scanning artefact, not a report.
+    MIN_USABLE_TEXT_CHARS = 2000
 
     def __init__(
         self,
@@ -153,6 +203,7 @@ class JBGAnnualReportAnalyzer:
             else Path(__file__).resolve().parent / "json" / "kassor.json"
         )
         self.validation_findings = []
+        self.skipped_files: list[tuple[str, str]] = []
         self._masker = None
         self._schema_cache = None
         # max_retries lets the SDK handle rate limits with proper jitter, which
@@ -394,6 +445,15 @@ class JBGAnnualReportAnalyzer:
 
     @staticmethod
     def _year_from_text_patterns(doc) -> int | None:
+        """Convenience wrapper for a PyMuPDF document."""
+        pages = [
+            doc[i].get_text()
+            for i in range(min(doc.page_count, JBGAnnualReportAnalyzer.MAX_PAGES_FOR_YEAR_SCAN))
+        ]
+        return JBGAnnualReportAnalyzer._year_from_pages(pages)
+
+    @staticmethod
+    def _year_from_pages(pages: list[str]) -> int | None:
         """Find the fiscal year using the phrasing Swedish annual reports use.
 
         Two passes. An explicit statement of the reporting period ("för
@@ -404,6 +464,10 @@ class JBGAnnualReportAnalyzer:
 
         Matches on earlier pages weigh more, because the reporting year is
         stated on the cover while comparison years appear deeper in the report.
+
+        Works on page strings rather than a document, so the same logic can be
+        applied to OCR-derived text. Reading the year off the original scanned
+        file found nothing no matter how good the OCR was.
         """
         # Accent-tolerant: OCR and some PDF encodings turn å/ä/ö into a/o or
         # drop them entirely, and the whole point of this scan is to work on
@@ -419,10 +483,10 @@ class JBGAnnualReportAnalyzer:
         weak = re.compile(r"\b(20\d{2})\b")
 
         strong_scores, weak_scores = {}, {}
-        pages_to_read = min(doc.page_count, JBGAnnualReportAnalyzer.MAX_PAGES_FOR_YEAR_SCAN)
+        pages_to_read = min(len(pages), JBGAnnualReportAnalyzer.MAX_PAGES_FOR_YEAR_SCAN)
 
         for index in range(pages_to_read):
-            text = doc[index].get_text()
+            text = pages[index]
             page_weight = pages_to_read - index  # front pages count for more
             for match in strong.finditer(text):
                 year = int(next(g for g in match.groups() if g))
@@ -444,6 +508,53 @@ class JBGAnnualReportAnalyzer:
             logger.debug(f"{label} matchning gav ingen dominans: {scores}")
 
         return None
+
+    def _find_primary_year_from_text(self, full_text: str, model: str = "") -> int:
+        """Derive the fiscal year from already-extracted text.
+
+        Used instead of re-reading the PDF, so a scanned report that has been
+        through OCR gets its year from the OCR output rather than from the
+        blank original.
+        """
+        pages = self._split_pages(full_text)
+        year = self._year_from_pages(pages)
+        if year:
+            logger.info(f"Räkenskapsår {year} härlett ur dokumentets text.")
+            return year
+
+        if not self.USE_LLM_FALLBACK_FOR_YEAR:
+            logger.warning("Kunde inte härleda räkenskapsår lokalt. Sätter år okänt.")
+            return self.FALLBACK_YEAR
+
+        logger.info("Kunde inte härleda räkenskapsår lokalt. Frågar modellen.")
+        return self._year_from_llm_pages(pages, model=model)
+
+    def _year_from_llm_pages(self, pages: list[str], model: str = "") -> int:
+        """Per-page LLM vote over already-extracted text. Fallback, and capped."""
+        year_counts = {}
+        most_likely_year = -1
+        prompt = self._prompt_instructions_pdf_actual_year()
+
+        for i, page in enumerate(pages[: self.MAX_PAGES_FOR_LLM_VOTE]):
+            response = self._make_openai_api_call(prompt, page, model=model)
+            try:
+                extracted_year = int(response.strip())
+            except (TypeError, ValueError):
+                logger.warning(f"Kunde inte tolka år från GPT-svar: {response} på sida {i + 1}")
+                continue
+            if extracted_year < 2000:
+                continue  # -1 / -2 sentinels
+
+            year_counts[extracted_year] = year_counts.get(extracted_year, 0) + 1
+            most_likely_year = max(year_counts, key=year_counts.get)
+            dominance = year_counts[most_likely_year] / sum(year_counts.values())
+            if dominance >= self.MIN_YEAR_AGREEMENT_RATE and (i + 1) >= self.MIN_CHECK_YEARS:
+                logger.info(
+                    f"Bryter årtolkningsloop vid sida {i + 1} med {round(dominance, 2)} dominans."
+                )
+                break
+
+        return most_likely_year if most_likely_year > 0 else self.FALLBACK_YEAR
 
     def _year_from_llm(self, pdf_path: Path, model: str = "") -> int:
         """Original per-page LLM vote. Now a fallback, and capped."""
@@ -476,83 +587,102 @@ class JBGAnnualReportAnalyzer:
 
             return most_likely_year if most_likely_year > 0 else self.FALLBACK_YEAR
 
-    def _extract_text_from_pdf_from_pdf(self, pdf_path: Path, model: str = "") -> str:
-        try:
-            # The offset is derived once and reused for the OCR copy: ocrmypdf
-            # preserves page order, and rebuilding it cost a second full scan.
-            offset = max(self._find_page_number_offset(pdf_path, model=model), 0)
+    def _ensure_readable_pdf(self, pdf_path: Path) -> Path:
+        """Return a path to a version of the document that has a text layer.
 
-            with pymupdf.open(pdf_path) as original_doc:
-                original_text = self._extract_text_from_pdf(original_doc, offset).strip()
-                pages_with_text = sum(1 for page in original_doc if page.get_text().strip())
-                page_count = original_doc.page_count
+        OCR-ing a scan produces a new file; a document that already has text is
+        returned unchanged. This runs BEFORE masking, because masking a
+        scanned page finds no text to redact: the NER model sees nothing, and
+        the personal data reappears the moment OCR runs. On a real corpus that
+        meant zero terms masked on every one of ten scanned reports while the
+        native ones averaged 49.
+        """
+        with pymupdf.open(pdf_path) as doc:
+            pages_with_text = sum(1 for page in doc if page.get_text().strip())
+            page_count = doc.page_count
+        ratio = (pages_with_text / page_count) if page_count else 0.0
+        logger.info(f"{pages_with_text}/{page_count} sidor har textlager.")
 
-            original_len = len(original_text)
-            text_page_ratio = (pages_with_text / page_count) if page_count else 0.0
+        if ratio >= self.MIN_TEXT_PAGE_RATIO:
             logger.info(
-                f"Original text length: {original_len} "
-                f"({pages_with_text}/{page_count} sidor med textlager)"
+                f"Textlager finns på {round(ratio * 100)}% av sidorna. Hoppar över OCR."
+            )
+            return pdf_path
+
+        available, reason = ocr_availability()
+        if not available:
+            raise FileTypeException(
+                message=(
+                    f"{pdf_path.name} saknar textlager "
+                    f"({pages_with_text}/{page_count} sidor) och OCR kan "
+                    f"inte köras: {reason}"
+                )
             )
 
-            if text_page_ratio >= self.MIN_TEXT_PAGE_RATIO:
-                logger.info(
-                    f"Textlager finns på {round(text_page_ratio * 100)}% av sidorna. Hoppar över OCR."
+        ocr_path = self._run_ocr(pdf_path)
+        if ocr_path is None:
+            raise FileTypeException(
+                message=(
+                    f"{pdf_path.name} saknar textlager och OCR misslyckades. "
+                    "Se loggen för detaljer."
                 )
-                return original_text
+            )
+        return ocr_path
 
-            ocr_text = self._ocr_text(pdf_path, offset)
-            if ocr_text is None:
-                return original_text
+    def _extract_text_from_pdf_from_pdf(self, pdf_path: Path, model: str = "") -> str:
+        """Extract the text of a document that is already readable."""
+        try:
+            offset = max(self._find_page_number_offset(pdf_path, model=model), 0)
+            with pymupdf.open(pdf_path) as doc:
+                text = self._extract_text_from_pdf(doc, offset).strip()
 
-            logger.info(f"OCR text length: {len(ocr_text)}")
-            if len(ocr_text) > original_len * self.TEXT_GAIN_FOR_OCR_CONVERSION:
-                logger.info(f"Using OCR-enhanced version of {pdf_path.name}")
-                return ocr_text
-
-            logger.info("OCR did not significantly improve content. Using original.")
-            return original_text
+            logger.info(f"Extraherad textlängd: {len(text)} tecken")
+            if len(text) < self.MIN_USABLE_TEXT_CHARS:
+                raise FileTypeException(
+                    message=(
+                        f"{pdf_path.name} gav bara {len(text)} tecken text, "
+                        "vilket är för lite för en årsredovisning."
+                    )
+                )
+            return text
+        except FileTypeException:
+            raise
         except Exception as e:
             logger.warning(f"Text extraction failed for {pdf_path.name}: {e}")
             return ""
 
-    def _ocr_text(self, pdf_path: Path, offset: int) -> str | None:
-        """OCR the pages that lack a text layer and return the combined text.
+    def _run_ocr(self, pdf_path: Path) -> Path | None:
+        """OCR the pages lacking a text layer; return the new file's path.
 
-        Returns None when OCR is unavailable or fails, so the caller can fall
-        back to whatever the original text layer offered.
+        Returns None when OCR fails, so the caller can report the file as
+        unreadable instead of passing an empty string down the pipeline.
         """
         ocr_path = pdf_path.with_name(f"{pdf_path.stem}_ocr.pdf")
         try:
-            # Imported lazily: ocrmypdf needs tesseract and ghostscript to be
-            # present, which we do not want to require just to import this module.
             import ocrmypdf
 
-            # NOTE: the first parameter is positional. ocrmypdf 17 renamed it from
-            # `input_file` to `input_file_or_options`, so the previous keyword call
-            # raised TypeError on every single document and was silently swallowed.
+            logger.info(f"Kör OCR på {pdf_path.name} (språk: {self.OCR_LANGUAGE})...")
+            # NOTE: the first parameter is positional. ocrmypdf 17 renamed it
+            # from `input_file` to `input_file_or_options`, so a keyword call
+            # raised TypeError on every document and was silently swallowed.
             ocrmypdf.ocr(
                 str(pdf_path),
                 str(ocr_path),
                 language=self.OCR_LANGUAGE,
                 deskew=True,
-                # Only rasterise and OCR pages that have no text of their own.
+                # Only rasterise pages that have no text of their own.
                 skip_text=True,
                 progress_bar=False,
             )
-        except ImportError:
-            logger.warning("ocrmypdf är inte installerat. Hoppar över OCR.")
-            return None
         except Exception as ocr_err:
-            logger.warning(f"OCR failed for {pdf_path.name}: {ocr_err}")
+            logger.error(f"OCR misslyckades för {pdf_path.name}: {ocr_err}")
             return None
 
-        try:
-            with pymupdf.open(ocr_path) as ocr_doc:
-                return self._extract_text_from_pdf(ocr_doc, offset).strip()
-        except Exception as e:
-            logger.warning(f"Kunde inte läsa OCR-resultatet för {pdf_path.name}: {e}")
+        if not ocr_path.is_file():
+            logger.error(f"OCR gav ingen utdatafil för {pdf_path.name}.")
             return None
-
+        logger.info(f"OCR klar: {ocr_path.name}")
+        return ocr_path
 
     def _extract_text_from_pdf(self, doc, offset: int) -> str:
 
@@ -1187,6 +1317,13 @@ class JBGAnnualReportAnalyzer:
         )
 
     @staticmethod
+    def _split_pages(full_text: str) -> list[str]:
+        """Split extracted text back into pages on the [Sida N] markers."""
+        parts = re.split(r"(?=\[Sida [^\]]+\]\n)", full_text)
+        pages = [part for part in (p.strip() for p in parts) if part]
+        return pages or ([full_text] if full_text.strip() else [])
+
+    @staticmethod
     def _page_marker(page_text: str) -> str:
         """The leading "[Sida N]" header of a page block, or an empty string."""
         match = re.match(r"\[Sida [^\]]+\]", page_text.lstrip())
@@ -1195,12 +1332,7 @@ class JBGAnnualReportAnalyzer:
     def _chunk_text_by_pages(self, full_text: str, max_tokens: int, model: str = "") -> list[str]:
         enc = self._get_encoder_for_model(model or self.DEFAULT_MODEL)
 
-        # Split on the page markers written by _extract_text_from_pdf, keeping
-        # each marker attached to the page it introduces.
-        parts = re.split(r"(?=\[Sida [^\]]+\]\n)", full_text)
-        pages = [part for part in (p.strip() for p in parts) if part]
-        if not pages:
-            pages = [full_text]
+        pages = self._split_pages(full_text)
 
         chunks: list[str] = []
         current: list[str] = []
@@ -1445,6 +1577,8 @@ class JBGAnnualReportAnalyzer:
             raise ValueError("No valid PDF files found.")
 
         total_result = []
+        self.skipped_files = []
+        log_ocr_availability()
 
 
         total_files = len(self.upload_files)
@@ -1464,36 +1598,55 @@ class JBGAnnualReportAnalyzer:
             # currently being worked on rather than the one that just finished.
             report(file_index, _pdf_path.name)
 
-            # Use masking if required
-            if self.use_masking:
-                masker = self._get_masker()
-                pdf_output_path = Path(_pdf_path.with_name(_pdf_path.stem + "_masked.pdf"))
-                pdf_path = masker.do_masking(_pdf_path, pdf_output_path, logger=logger)
-
-                if pdf_path is None:
-                    logger.error(f"Maskering misslyckades för fil: {_pdf_path.name}. Hoppar över denna fil i analysen.")
-                    continue
-            else:
-                pdf_path = _pdf_path
-
-            # Get the current year for the analysis
+            # Order matters: OCR, then mask, then extract.
+            #
+            # Masking first meant the redactor ran against an image-only page,
+            # found no text, redacted nothing, and OCR then recovered every
+            # name it was supposed to remove.
             try:
-                the_year = self._find_primary_year_from_pdf(pdf_path, model=model)
-                logger.info(f"Extraherade aktuellt år från: {pdf_path.name} som: {the_year}")
-                if the_year < 0:
-                    raise RuntimeError(f"Could not extract main year from {pdf_path} to be used in system prompt.")
-            except RuntimeError as ex:
-                logger.warning(f"{str(ex)}. Setting year unknown.")
-                the_year = None
+                readable_path = self._ensure_readable_pdf(_pdf_path)
 
-            # Get the full text of the pdf
-            logger.info(f"Extraherar text från: {pdf_path.name}")
-            try:
+                if self.use_masking:
+                    masker = self._get_masker()
+                    pdf_output_path = Path(
+                        readable_path.with_name(readable_path.stem + "_masked.pdf")
+                    )
+                    pdf_path = masker.do_masking(
+                        readable_path, pdf_output_path, logger=logger
+                    )
+                    if pdf_path is None:
+                        raise FileTypeException(
+                            message=(
+                                f"Maskeringen av {_pdf_path.name} misslyckades. "
+                                "Filen analyseras inte, eftersom omaskerad text "
+                                "inte får skickas vidare."
+                            )
+                        )
+                else:
+                    pdf_path = readable_path
+
+                logger.info(f"Extraherar text från: {pdf_path.name}")
                 full_text = self._extract_text_from_pdf_from_pdf(pdf_path, model=model)
-                #logger.debug(f"The full text for {pdf_path} is: {full_text}")
-            except FileTypeException:
-                logger.warning(f"Skipping file {pdf_path} since I could not extract any text from it (perhaps it was scanned?)")
+            except FileTypeException as ex:
+                logger.error(f"Hoppar över {_pdf_path.name}: {ex.message}")
+                self.skipped_files.append((_pdf_path.name, ex.message))
+                report(file_index + 1, _pdf_path.name)
                 continue
+
+            if not full_text:
+                message = f"Ingen text kunde extraheras ur {_pdf_path.name}."
+                logger.error(message)
+                self.skipped_files.append((_pdf_path.name, message))
+                report(file_index + 1, _pdf_path.name)
+                continue
+
+            # The year comes from the extracted text, so an OCR-ed scan is read
+            # from its OCR output rather than from the blank original.
+            the_year = self._find_primary_year_from_text(full_text, model=model)
+            logger.info(f"Extraherade aktuellt år från: {pdf_path.name} som: {the_year}")
+            if the_year is not None and the_year < 0:
+                logger.warning(f"Could not determine the year for {pdf_path.name}. Setting year unknown.")
+                the_year = None
 
             # Try to fix broken lines that can contain key numbers and values
             if self.FIX_BROKEN_LINES_WITH_KEY_NUMBERS:
@@ -1539,6 +1692,15 @@ class JBGAnnualReportAnalyzer:
 
         report(total_files, "")
 
+        if self.skipped_files:
+            # Ten files vanished from a 24-file run with nothing but a warning
+            # per file buried mid-log. Say it once, at the end, in full.
+            logger.warning(
+                f"{len(self.skipped_files)} av {total_files} filer kunde inte analyseras:"
+            )
+            for name, reason in self.skipped_files:
+                logger.warning(f"  - {name}: {reason}")
+
         # Write result to JSON output
         if total_result:
             final_result = self._deep_merge_json_objects(total_result)
@@ -1568,6 +1730,11 @@ class JBGAnnualReportAnalyzer:
             if self.validation_findings:
                 final_result[self.VALIDATION_KEY] = [
                     finding.as_dict() for finding in self.validation_findings
+                ]
+
+            if self.skipped_files:
+                final_result[self.SKIPPED_KEY] = [
+                    {"fil": name, "orsak": reason} for name, reason in self.skipped_files
                 ]
 
             output_path.write_text(json.dumps(final_result, ensure_ascii=False, indent=2), encoding=self.STANDARD_ENCODING)

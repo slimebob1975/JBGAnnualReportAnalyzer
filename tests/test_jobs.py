@@ -198,7 +198,11 @@ def test_page_has_no_result_box_and_no_download_button(client):
 
 def test_analyze_returns_a_job_id_immediately(client, monkeypatch):
     c, main = client
-    monkeypatch.setattr(main, "_run_analysis", lambda *a, **k: "r.json")
+    # _run_analysis returns (output_name, skipped_count) since unreadable files
+    # started being reported. A stub returning a bare string made the worker
+    # fail on unpacking, so whether this test passed depended on whether the
+    # request or the background thread finished first.
+    monkeypatch.setattr(main, "_run_analysis", lambda *a, **k: ("r.json", 0))
 
     pdf = b"%PDF-1.4\n%%EOF\n"
     r = c.post(
@@ -212,6 +216,19 @@ def test_analyze_returns_a_job_id_immediately(client, monkeypatch):
     assert body["ok"] is True
     assert body["job_id"]
     assert body["status"] in ("queued", "running", "done")
+
+    job = _wait(main.jobs.get(body["job_id"]))
+    assert job.status == STATUS_DONE, job.message
+
+
+def test_run_analysis_contract_is_a_pair():
+    """Guard the signature the job worker unpacks."""
+    import inspect
+
+    import app.main as main
+
+    source = inspect.getsource(main._run_analysis)
+    assert "return output_path.name, len(analys.skipped_files)" in source
 
 
 def test_unknown_job_is_404_not_500(client):
@@ -266,8 +283,14 @@ def test_health_endpoint_reports_optional_components(client):
     body = r.json()
     assert body["status"] == "ok"
     assert set(body) >= {
-        "status", "masking_available", "ocr_available", "job_dir_writable", "active_jobs"
+        "status", "masking_available", "ocr_available", "ocr_detail",
+        "job_dir_writable", "active_jobs",
     }
+    # the detail must explain *why*, not just report a boolean: a real run
+    # failed OCR ten times with no hint about what to install
+    assert isinstance(body["ocr_detail"], str) and body["ocr_detail"]
+    if not body["ocr_available"]:
+        assert "tesseract" in body["ocr_detail"] or "ocrmypdf" in body["ocr_detail"]
     assert body["job_dir_writable"] is True
 
 
@@ -327,3 +350,52 @@ def test_shutdown_stops_the_sweeper(tmp_path):
     reg.shutdown()
     reg._sweeper.join(timeout=5)
     assert not reg._sweeper.is_alive()
+
+
+def test_masking_without_torch_names_the_missing_backend(monkeypatch):
+    """transformers imports fine with no backend and then fails deep inside
+    pipeline() with "NameError: name 'torch' is not defined". A real run lost
+    a whole 24-file job to that traceback."""
+    import builtins
+    import sys as _sys
+
+    from app.src.masking.JBGPDFMasking import PDFMasker
+
+    real_import = builtins.__import__
+
+    def blocked(name, *args, **kwargs):
+        if name == "torch":
+            raise ImportError("No module named 'torch'", name="torch")
+        return real_import(name, *args, **kwargs)
+
+    if "transformers" not in _sys.modules:
+        pytest.skip("transformers not installed in this environment")
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+    with pytest.raises(RuntimeError, match="PyTorch"):
+        PDFMasker()
+
+
+def test_health_explains_why_masking_is_unavailable(client):
+    c, _ = client
+    body = c.get("/health").json()
+    assert "masking_detail" in body
+    assert isinstance(body["masking_detail"], str) and body["masking_detail"]
+    if not body["masking_available"]:
+        # must name the package, not just say "unavailable"
+        assert "torch" in body["masking_detail"] or "transformers" in body["masking_detail"]
+
+
+def test_requirements_declare_a_transformers_backend():
+    """transformers has no dependency on torch, so leaving it out of the
+    pinned requirements silently breaks masking."""
+    root = Path(__file__).resolve().parents[1]
+    requirements = (root / "requirements.txt").read_text(encoding="utf-8")
+    lines = [ln.split("#")[0].strip() for ln in requirements.splitlines()]
+    packages = {ln.split("==")[0].split(">=")[0].lower() for ln in lines if ln}
+    assert "transformers" in packages
+    assert "torch" in packages, "transformers needs an explicit backend"
+
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    masking = pyproject.split("masking = [")[1].split("]")[0]
+    assert "torch" in masking

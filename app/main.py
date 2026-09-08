@@ -49,8 +49,16 @@ logging.basicConfig(
 
 # Third-party libraries log one INFO line per HTTP request, which buried the
 # application's own messages. Raise their threshold.
+# ocrmypdf emits an empty ERROR record alongside the exception we already
+# catch and log ourselves, which produced ten blank "[ERROR]" lines in a run.
+logging.getLogger("ocrmypdf").setLevel(logging.CRITICAL)
+
+# ocrmypdf pulls in fontTools, pikepdf and img2pdf, which together emit
+# several hundred INFO lines per OCR-ed document (every glyph name, twice).
 for noisy in ("httpx", "httpcore", "openai", "urllib3", "filelock",
-              "transformers", "huggingface_hub", "ocrmypdf", "PIL"):
+              "transformers", "huggingface_hub", "PIL",
+              "fontTools", "fontTools.subset", "fontTools.ttLib",
+              "pikepdf", "img2pdf", "pdfminer"):
     logging.getLogger(noisy).setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
@@ -101,23 +109,27 @@ def health():
     as a warning buried in the log.
     """
     try:
+        # Both are needed: transformers imports without a backend and only
+        # fails when a pipeline is actually built.
+        import torch  # noqa: F401
         from transformers import pipeline  # noqa: F401
 
         masking_available = True
-    except ImportError:
+        masking_detail = "transformers och torch hittades"
+    except ImportError as ex:
         masking_available = False
+        masking_detail = f"{ex.name} saknas. Installera med: pip install '.[masking]'"
 
-    try:
-        import ocrmypdf  # noqa: F401
+    from app.src.JBGAnnualReportAnalysis import ocr_availability
 
-        ocr_available = True
-    except ImportError:
-        ocr_available = False
+    ocr_available, ocr_reason = ocr_availability()
 
     return {
         "status": "ok",
         "masking_available": masking_available,
+        "masking_detail": masking_detail,
         "ocr_available": ocr_available,
+        "ocr_detail": ocr_reason,
         "job_dir_writable": os.access(jobs.root, os.W_OK),
         "active_jobs": len(
             [j for j in jobs._jobs.values() if j.status in ("queued", "running")]
@@ -263,7 +275,12 @@ def _run_analysis(
     else:  # json, already written by do_analysis
         output_path = json_output_path
 
-    return output_path.name
+    if analys.skipped_files:
+        # Surface this in the browser, not only in the log.
+        names = ", ".join(name for name, _ in analys.skipped_files)
+        logger.warning(f"Filer som hoppades över: {names}")
+
+    return output_path.name, len(analys.skipped_files)
 
 
 @app.post("/api/analyze")
@@ -299,9 +316,8 @@ def api_analyze(
     job.total_files = pdf_count
     stem = Path(saved_path).stem
 
-    jobs.submit(
-        job,
-        lambda j: _run_analysis(
+    def work(j):
+        output_name, skipped = _run_analysis(
             j.directory,
             stem,
             model,
@@ -310,8 +326,11 @@ def api_analyze(
             sources,
             use_masking,
             progress_callback=jobs.progress_callback(j),
-        ),
-    )
+        )
+        j.skipped_files = skipped
+        return output_name
+
+    jobs.submit(job, work)
 
     return {"ok": True, **job.as_dict()}
 
@@ -366,7 +385,7 @@ def upload_file(
         saved_path, pdf_count = _prepare_job_input(file, job.directory)
         job.total_files = pdf_count
         job.started_at = time.time()
-        job.output_name = _run_analysis(
+        job.output_name, _ = _run_analysis(
             job.directory,
             Path(saved_path).stem,
             model,
