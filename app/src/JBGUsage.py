@@ -33,6 +33,7 @@ PURPOSE_OTHER = "övrigt"
 
 PRICES_FILENAME = "model_prices.json"
 ROLES_FILENAME = "model_roles.json"
+ROLES_EXAMPLE_FILENAME = "model_roles.example.json"
 
 # Maps a purpose to the key used in model_roles.json.
 ROLE_KEYS = {
@@ -110,10 +111,18 @@ def save_roles(roles: dict, config_dir: Path = None) -> bool:
     Merged rather than rewritten: the comment block explains the format, and
     the roles that are not offered in the form must keep whatever they had.
     """
+    # Always write the real file, never the committed example.
     override = os.getenv("JBG_MODEL_ROLES")
     path = Path(override) if override else (
         (config_dir or Path(__file__).resolve().parents[1] / "config") / ROLES_FILENAME
     )
+    if not path.is_file():
+        example = path.with_name(ROLES_EXAMPLE_FILENAME)
+        if example.is_file():
+            try:
+                path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+            except OSError:
+                pass
 
     existing = {}
     if path.is_file():
@@ -141,10 +150,7 @@ def save_roles(roles: dict, config_dir: Path = None) -> bool:
 
 def selected_roles(config_dir: Path = None) -> dict:
     """What the form should show as selected, per role key."""
-    override = os.getenv("JBG_MODEL_ROLES")
-    path = Path(override) if override else (
-        (config_dir or Path(__file__).resolve().parents[1] / "config") / ROLES_FILENAME
-    )
+    path = _roles_path(config_dir)
     saved = {}
     if path.is_file():
         try:
@@ -297,6 +303,21 @@ def load_prices(config_dir: Path = None) -> dict:
     )
 
 
+def _roles_path(config_dir: Path = None) -> Path:
+    """Where the chosen models live.
+
+    The real file is written by the application on every run, so it is
+    gitignored and an example ships alongside it. Falling back to the example
+    means a fresh checkout starts with every role unset rather than crashing.
+    """
+    override = os.getenv("JBG_MODEL_ROLES")
+    if override:
+        return Path(override)
+    directory = config_dir or Path(__file__).resolve().parents[1] / "config"
+    real = directory / ROLES_FILENAME
+    return real if real.is_file() else directory / ROLES_EXAMPLE_FILENAME
+
+
 def load_roles(config_dir: Path = None) -> dict:
     """Which model to use for which part of the analysis.
 
@@ -304,10 +325,7 @@ def load_roles(config_dir: Path = None) -> dict:
     a different model per role is how the trade-off between cost and coverage
     can be measured rather than guessed at.
     """
-    override = os.getenv("JBG_MODEL_ROLES")
-    path = Path(override) if override else (
-        (config_dir or Path(__file__).resolve().parents[1] / "config") / ROLES_FILENAME
-    )
+    path = _roles_path(config_dir)
     if not path.is_file():
         return {}
     try:

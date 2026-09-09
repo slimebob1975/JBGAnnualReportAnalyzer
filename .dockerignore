@@ -20,3 +20,4 @@ tests/
 start_local_service_template.ps1
 *.md
 !README.md
+app/config/model_roles.json

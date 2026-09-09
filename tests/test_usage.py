@@ -191,13 +191,31 @@ def test_a_broken_roles_file_falls_back_to_the_selected_model(tmp_path, monkeypa
     assert usage.load_roles() == {}
 
 
-def test_shipped_roles_file_is_empty():
-    """Ships neutral: every role uses the model chosen in the form until
-    somebody deliberately configures otherwise."""
+def test_the_committed_example_is_neutral():
+    """The real file is written on every run and therefore gitignored; only
+    the example is committed, and it configures nothing."""
     root = Path(__file__).resolve().parents[1]
-    data = json.loads((root / "app" / "config" / "model_roles.json").read_text(encoding="utf-8"))
-    configured = {k: v for k, v in data.items() if not k.startswith("_") and v}
-    assert configured == {}
+    config = root / "app" / "config"
+    data = json.loads((config / "model_roles.example.json").read_text(encoding="utf-8"))
+    assert {k: v for k, v in data.items() if not k.startswith("_") and v} == {}
+
+
+def test_the_written_roles_file_is_not_tracked():
+    """It changes on every analysis; committing it makes git permanently dirty
+    and conflicts on every pull."""
+    root = Path(__file__).resolve().parents[1]
+    ignored = (root / ".gitignore").read_text(encoding="utf-8")
+    assert "app/config/model_roles.json" in ignored
+
+
+def test_a_fresh_checkout_falls_back_to_the_example(tmp_path, monkeypatch):
+    monkeypatch.delenv("JBG_MODEL_ROLES", raising=False)
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "model_roles.example.json").write_text(
+        json.dumps({"extraktion": "", "omsokning": ""}), encoding="utf-8")
+    assert usage.load_roles(config) == {}
+    assert usage.selected_roles(config)["extraktion"] == usage.DEFAULT_MODEL
 
 
 def test_a_role_overrides_the_selected_model(tmp_path, monkeypatch):

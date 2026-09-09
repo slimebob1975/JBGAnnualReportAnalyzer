@@ -1,0 +1,30 @@
+{
+  "_kommentar": [
+    "Vilken modell som ska användas för respektive del av analysen.",
+    "",
+    "Tomt värde betyder 'använd modellen som valts i formuläret'.",
+    "",
+    "  extraktion   första genomgången, där de flesta nyckeltalen hittas",
+    "  omsokning    riktad omsökning efter det som saknas efter första passet",
+    "  stabilitet   omläsning av OCR-tolkade dokument för att upptäcka",
+    "               instabila värden",
+    "  aar          tolkning av räkenskapsår när det inte går att läsa lokalt",
+    "  sidnummer    tolkning av sidnummeroffset (avstängd som standard)",
+    "",
+    "Två tankar värda att prova:",
+    "  * en dyrare modell för extraktion och en billigare för omsökningen,",
+    "    eftersom omsökningen är en smalare uppgift med färre nyckeltal,",
+    "  * en ANNAN modell för stabilitetskontrollen. Två läsningar med samma",
+    "    modell mäter modellens egen spridning. Två läsningar med olika",
+    "    modeller mäter något starkare: om båda är överens är värdet troligen",
+    "    rätt. Skillnaderna blir då fler, men mer meningsfulla.",
+    "",
+    "Modellnamnen loggas per roll, så det syns i tokenrapporten vilken modell",
+    "som stod för vilken del av kostnaden."
+  ],
+  "extraktion": "",
+  "omsokning": "",
+  "stabilitet": "",
+  "aar": "",
+  "sidnummer": ""
+}

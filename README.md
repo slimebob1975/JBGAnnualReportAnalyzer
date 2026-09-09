@@ -253,8 +253,10 @@ och stabilitetskontroll. Valen sparas i `app/config/model_roles.json` när
 analysen startas och är förvalda nästa gång. Priset per miljon tokens står i
 varje alternativ.
 
-Filen kan också redigeras direkt, vilket är enda sättet att sätta rollerna
-`aar` och `sidnummer` som inte finns i formuläret:
+Filen skrivs av tjänsten och är därför gitignorerad; `model_roles.example.json`
+ligger bredvid och kopieras vid första körningen. Den kan också redigeras
+direkt, vilket är enda sättet att sätta rollerna `aar` och `sidnummer` som inte
+finns i formuläret:
 
 ```json
 {

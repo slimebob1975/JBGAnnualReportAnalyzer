@@ -8,3 +8,4 @@ app/log/
 app/uploads/
 .pytest_cache/
 app/config/masking_extra_names.json
+app/config/model_roles.json
