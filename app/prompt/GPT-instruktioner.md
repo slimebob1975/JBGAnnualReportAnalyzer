@@ -106,3 +106,15 @@ Två regler är avgörande:
 
    Nivån beskriver hur du hittade värdet, inte hur säker du känner dig. Har du
    behövt räkna eller tolka är svaret `"härledd"` även om beloppet säkert är rätt.
+
+## Omfattning (uppdaterat)
+
+Nyckeltalen följer IAF:s föreskrift, bilaga 1 (resultaträkning, balansräkning
+och noterna 1-10) samt bilaga 2. Redovisningsprinciperna ingår inte.
+
+- Lägg inte till poster utöver specifikationen, även om kassan redovisar fler.
+- Rapportera endast innevarande räkenskapsår. Jämförelseårets kolumn ignoreras.
+- Notposter heter `Not N: <post>` och ska inte förväxlas med balans- eller
+  resultaträkningens rader med liknande namn.
+- `Årets avstående från återkrav` kallas ibland *eftergift*; tolka det som
+  samma sak.

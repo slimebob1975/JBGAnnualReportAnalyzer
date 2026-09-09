@@ -151,10 +151,19 @@ class JBGAnnualReportAnalyzer:
     VERIFY_OCR_EXTRACTION = True
     VERIFY_ALL_EXTRACTIONS = False
     STABILITY_RULE = "Instabil avläsning"
+    # A subtotal the report omits can be computed from its components.
+    DERIVE_MISSING_SUBTOTALS = True
+    MAX_DERIVATION_PASSES = 5
+    DERIVED_TAG = "[Beräknad]"
     SECOND_PASS_MIN_MISSING = 2
-    SECOND_PASS_MAX_MISSING_RATIO = 0.5
+    # Raised when the specification grew from 18 metrics to 107. A report that
+    # does not include bilaga 2 is legitimately missing a fifth of the list,
+    # and several funds omit further items, so half the list being absent no
+    # longer means the first pass failed.
+    SECOND_PASS_MAX_MISSING_RATIO = 0.8
     SECOND_PASS_TAG = "[Riktad omsökning]"
     MAX_CONCURRENT_CHUNKS = 4
+    MAX_COMPLETION_TOKENS = 32000
     OPENAI_SDK_MAX_RETRIES = 3
     OPENAI_TIMEOUT_SECONDS = 300.0
     MAX_TOKEN_OVERLAP_REDUCTION = 200
@@ -221,6 +230,7 @@ class JBGAnnualReportAnalyzer:
         self.validation_findings = []
         self.skipped_files: list[tuple[str, str]] = []
         self.usage = usage.UsageTracker()
+        self.model_roles = usage.load_roles()
         self.stability_findings: list = []
         self._masker = None
         self._schema_cache = None
@@ -715,6 +725,17 @@ class JBGAnnualReportAnalyzer:
             logger.error(f"OCR misslyckades för {pdf_path.name}: {ocr_err}")
             return None
 
+        finally:
+            # ocrmypdf installs its own logging configuration, which resets the
+            # levels set at startup. Put them back or every later model call
+            # logs an HTTP line.
+            try:
+                from app.main import quieten_third_party_loggers
+
+                quieten_third_party_loggers()
+            except Exception:  # pragma: no cover - main may not be importable
+                pass
+
         if not ocr_path.is_file():
             logger.error(f"OCR gav ingen utdatafil för {pdf_path.name}.")
             return None
@@ -1009,7 +1030,9 @@ class JBGAnnualReportAnalyzer:
         response_schema: dict | None = None,
         purpose: str = usage.PURPOSE_OTHER,
     ) -> str:
-        model_used = model if model else self.DEFAULT_MODEL
+        # A role configured for this purpose wins over the model chosen in the
+        # form, so the parts of the pipeline can be measured separately.
+        model_used = self.model_roles.get(purpose) or model or self.DEFAULT_MODEL
         max_retries = 5
         initial_delay = 1.5
         backoff_factor = 2.0
@@ -1035,6 +1058,11 @@ class JBGAnnualReportAnalyzer:
                         "type": "json_schema",
                         "json_schema": response_schema,
                     }
+                    # 107 metrics with a source, a certainty and a mandatory
+                    # comment each is a far larger reply than the 18 this was
+                    # built for. Ask for room explicitly rather than discovering
+                    # the ceiling as a truncated answer.
+                    kwargs["max_completion_tokens"] = self.MAX_COMPLETION_TOKENS
 
                 response = self.openai_client.chat.completions.create(**kwargs)
 
@@ -1056,9 +1084,14 @@ class JBGAnnualReportAnalyzer:
                     raise RuntimeError(f"Modellen avvisade förfrågan: {choice.message.refusal}")
 
                 if choice.finish_reason == "length":
+                    # Retrying the same request hits the same ceiling.
+                    logger.error(
+                        f"GPT-svaret nådde tokengränsen ({self.MAX_COMPLETION_TOKENS}) "
+                        "och är trunkerat. Höj MAX_COMPLETION_TOKENS eller minska "
+                        "MAX_TOKENS så att varje chunk blir mindre."
+                    )
                     raise RuntimeError(
-                        "GPT-svaret nådde tokengränsen och är trunkerat. "
-                        "Minska MAX_TOKENS eller höj modellens svarsgräns."
+                        "GPT-svaret nådde tokengränsen och är trunkerat."
                     )
                 if choice.finish_reason != "stop":
                     raise RuntimeError(
@@ -1082,7 +1115,7 @@ class JBGAnnualReportAnalyzer:
                 )
                 time.sleep(delay)
             except RuntimeError as ex:
-                if "avvisade" in str(ex):
+                if "avvisade" in str(ex) or "tokengränsen" in str(ex):
                     raise
                 # Raised above for a truncated / non-"stop" completion. Worth one
                 # more attempt, since it is often caused by a transient hiccup.
@@ -1580,6 +1613,82 @@ class JBGAnnualReportAnalyzer:
                 return value.strip().casefold()
         return value
 
+    def _derive_missing_subtotals(self, result: dict) -> int:
+        """Compute a subtotal the report does not state, from its components.
+
+        The föreskrift's layout has headers, component rows and a summing row:
+        FINANSIELLA POSTER is only a heading, Finansiella intäkter and
+        Finansiella kostnader are the figures to find, and SUMMA FINANSIELLA
+        POSTER follows from them. A fund that omits the summing row still
+        supplies everything needed to produce it.
+
+        Runs repeatedly, because subtotals build on each other: Summa tillgångar
+        needs Summa anläggningstillgångar, which needs its own components.
+        Derived values are labelled so they are never mistaken for something
+        read off the page.
+        """
+        if not self.DERIVE_MISSING_SUBTOTALS:
+            return 0
+
+        try:
+            definitions = json.loads(
+                Path(self.metrics_path).read_text(encoding=self.STANDARD_ENCODING)
+            )
+        except (OSError, json.JSONDecodeError) as ex:
+            logger.warning(f"Kunde inte läsa nyckeltalsdefinitionerna: {ex}")
+            return 0
+
+        sums = [
+            (entry["Nyckeltal"], entry["Delposter"], entry.get("Formel", ""))
+            for entry in definitions
+            if entry.get("Delposter")
+        ]
+
+        derived_total = 0
+        for _ in range(self.MAX_DERIVATION_PASSES):
+            derived_here = 0
+            for years in result.values():
+                if not isinstance(years, dict):
+                    continue
+                for metrics in years.values():
+                    if not isinstance(metrics, dict):
+                        continue
+                    for name, components, formula in sums:
+                        existing = metrics.get(name)
+                        if isinstance(existing, dict) and existing.get(self.FIELD_VALUE) is not None:
+                            continue
+
+                        values = {}
+                        for component, coefficient in components.items():
+                            entry = metrics.get(component)
+                            number = (
+                                validation._numeric(entry) if isinstance(entry, dict) else None
+                            )
+                            if number is None:
+                                break
+                            values[component] = number * coefficient
+                        else:
+                            total = sum(values.values())
+                            metrics[name] = {
+                                self.FIELD_VALUE: round(total, 2),
+                                self.FIELD_SOURCE: "Beräknad ur delposter",
+                                self.FIELD_CERTAINTY: schema.CERTAINTY_DERIVED,
+                                self.FIELD_COMMENT: (
+                                    f"{self.DERIVED_TAG} Posten saknades i dokumentet och "
+                                    f"har beräknats som {formula}."
+                                ),
+                            }
+                            derived_here += 1
+            derived_total += derived_here
+            if not derived_here:
+                break
+
+        if derived_total:
+            logger.info(
+                f"Beräknade {derived_total} delsummor som saknades i dokumentet."
+            )
+        return derived_total
+
     def _check_extraction_stability(
         self, result: dict, chunks: list[str], the_year: int, model: str, source_name: str
     ) -> list:
@@ -1771,6 +1880,7 @@ class JBGAnnualReportAnalyzer:
         total_result = []
         self.skipped_files = []
         self.stability_findings = []
+        usage.log_roles(self.model_roles, model or self.DEFAULT_MODEL)
         log_ocr_availability()
 
 
@@ -1882,6 +1992,8 @@ class JBGAnnualReportAnalyzer:
                         appended_result, chunks, the_year=the_year, model=model
                     )
 
+                self._derive_missing_subtotals(appended_result)
+
                 if self.VERIFY_ALL_EXTRACTIONS or (
                     self.VERIFY_OCR_EXTRACTION and was_ocred
                 ):
@@ -1934,7 +2046,7 @@ class JBGAnnualReportAnalyzer:
             self._canonicalise_finding_funds()
 
             self.validation_findings = (
-                validation.validate(final_result) + self.stability_findings
+                validation.validate(final_result, self.metrics_path) + self.stability_findings
             )
             validation.log_findings(self.validation_findings)
             validation.log_certainty_histogram(final_result)

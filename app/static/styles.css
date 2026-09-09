@@ -156,3 +156,36 @@ pre {
 .message {
     color: #1e7e34;
 }
+
+.status-actions {
+    margin-top: 0.6rem;
+}
+.status-actions:empty {
+    margin-top: 0;
+}
+/* The one control left live once the interface locks. */
+.reload-link {
+    display: inline-block;
+    padding: 0.4rem 0.8rem;
+    background-color: #e0e0e0;
+    border-radius: 4px;
+    text-decoration: none;
+    color: #222;
+}
+.reload-link:hover {
+    background-color: #cfcfcf;
+}
+/* Make the locked state visible, not just non-responsive. */
+body[data-locked="true"] .tab-button,
+body[data-locked="true"] label {
+    opacity: 0.55;
+}
+
+/* One model dropdown per analysis step. */
+.model-role {
+    display: inline-block;
+    min-width: 11rem;
+    margin-top: 0.35rem;
+    color: #444;
+    font-size: 0.92rem;
+}

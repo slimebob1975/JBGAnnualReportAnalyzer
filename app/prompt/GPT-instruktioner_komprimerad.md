@@ -79,6 +79,59 @@ rubrik eller välja mellan två tänkbara poster är svaret `"härledd"`, även 
 är övertygad om att beloppet är rätt. Nivån beskriver hur du hittade värdet, inte
 hur säker du känner dig.
 
+## Omfattning: föreskriften, inget mer
+
+Nyckeltalen följer IAF:s föreskrift (bilaga 1 och bilaga 2) och specifikationen
+i medföljande JSON-fil. Håll dig till den listan.
+
+- **Lägg inte till egna poster.** Föreskriften är ett minimum och en kassa får
+  redovisa fler rader än så. Sådana extraposter ska inte rapporteras.
+- **Endast innevarande räkenskapsår.** Bilagornas uppställningar har en kolumn
+  för jämförelseår. Den ska ignoreras helt. Hämtar du ett belopp ur en tabell
+  med två kolumner, ta alltid kolumnen för räkenskapsåret.
+- **Alla poster finns inte hos alla kassor.** Saknas en post ska nyckeltalet
+  utelämnas, inte gissas fram.
+
+## Summeringsrader
+
+Uppställningarna har rubrikrader, postrader och summeringsrader. Rubriker som
+FINANSIELLA POSTER eller FORDRINGAR är bara överskrifter och ska inte
+rapporteras. Leta i första hand efter postraderna.
+
+Versaler säger ingenting om vad en rad är. Kassorna skriver samma post olika:
+'IMMATERIELLA ANLÄGGNINGSTILLGÅNGAR', 'Immateriella anläggningstillgångar'
+och 'Immateriella tillgångar' är samma sak. Utgå från att varje rad mellan en
+rubrik och dess SUMMA-rad är en postrad med ett belopp, oavsett hur den är
+skriven.
+
+Anges en summeringsrad i dokumentet ska du rapportera den som den står, även om
+den inte stämmer med delposterna. Saknas den räknas den ut automatiskt ur
+delposterna efteråt, så du behöver inte räkna själv.
+
+## Poster med samma namn på flera ställen
+
+Flera benämningar återkommer i olika delar av årsredovisningen. Nyckeltalen är
+därför namngivna så att de går isär, och notposter har notnumret först:
+
+- `Övriga fordringar` är balansräkningens totalpost.
+  `Not 8: Övriga fordringar` är delposten inne i not 8.
+- `Övriga skulder` är balansräkningens totalpost.
+  `Not 10: Övriga skulder` är delposten inne i not 10.
+- `Övriga externa kostnader` är resultaträkningens rad.
+  `Not 3: Övriga externa kostnader` är delposten inne i not 3.
+- `Not 7: Årets avstående från återkrav` och
+  `Not 9: Årets avstående från återkrav` är två olika poster i två olika noter.
+
+Läs alltid namnet noga innan du fyller i ett belopp. Ett belopp som hör hemma i
+en not ska inte rapporteras som balansräkningens totalpost, eller tvärtom.
+
+## Avstående och eftergift
+
+Några kassor kallar `Årets avstående från återkrav` för *eftergift*. Begreppet
+är utfasat i den nya försäkringen men ska tolkas som synonymt. Hittar du
+"eftergift" i not 7 eller not 9, rapportera det som avstående från återkrav i
+motsvarande not, och nämn i kommentaren vilket ord dokumentet använder.
+
 ## Flera kassor eller år
 
 Ett utdrag avser normalt en enda kassa och ett enda räkenskapsår. Ange den kassa

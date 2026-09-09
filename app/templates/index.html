@@ -36,13 +36,26 @@
                     Din API-nyckel sparas endast i din webbläsare (lokalt) för bekvämlighet.
                 </small>
 
-                <label for="model">Välj GPT-modell:</label><br>
-                <select name="model" id="model" required>
-                    <option value="gpt-5.2" selected>gpt-5.2</option>
-                    <option value="gpt-5.1">gpt-5.1</option>
-                    <option value="gpt-5">gpt-5</option>
-                    <option value="gpt-5-mini">gpt-5-mini</option>
+                <label>Välj GPT-modell per steg:</label><br>
+                {% for key, title, _purpose in form_roles %}
+                <label class="model-role" for="model-{{ key }}">{{ title }}</label>
+                <select id="model-{{ key }}"
+                        name="{% if key == 'extraktion' %}model{% else %}model_{{ key }}{% endif %}"
+                        required>
+                    {% for group, options in model_groups %}
+                    <optgroup label="{{ group }}">
+                        {% for value, text in options %}
+                        <option value="{{ value }}"{% if value == model_roles[key] %} selected{% endif %}>{{ text }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    {% endfor %}
                 </select><br>
+                {% endfor %}
+                <small class="hint">
+                    Sparas i <code>app/config/model_roles.json</code> när analysen
+                    startas, och används som förval nästa gång. Kostnaden per
+                    modell och steg redovisas i loggen efter körningen.
+                </small>
 
                 <label>Svarsformat:</label><br>
                 <div id="download-options">
@@ -62,6 +75,7 @@
                     <span data-role="message"></span>
                     <span class="status-elapsed" data-role="elapsed" hidden></span>
                 </p>
+                <div data-role="actions" class="status-actions"></div>
             </div>
 
             <!-- Shown only by the no-JavaScript form fallback. -->
@@ -93,6 +107,7 @@
                     <span data-role="message"></span>
                     <span class="status-elapsed" data-role="elapsed" hidden></span>
                 </p>
+                <div data-role="actions" class="status-actions"></div>
             </div>
 
             <noscript>

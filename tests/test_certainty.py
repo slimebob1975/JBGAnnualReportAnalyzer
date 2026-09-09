@@ -26,7 +26,7 @@ KEY_DEFS = ROOT / "app" / "prompt" / "json" / "nyckeltalsdefinitioner.json"
 
 # ------------------------------------------------------------------ schema
 def test_certainty_is_a_closed_enum_of_three_levels():
-    built = schema.build_schema(["Skulder"])
+    built = schema.build_schema(["Summa skulder"])
     field = built["schema"]["properties"]["nyckeltal"]["items"]["properties"][
         schema.FIELD_CERTAINTY
     ]
@@ -37,7 +37,7 @@ def test_certainty_is_a_closed_enum_of_three_levels():
 
 
 def test_each_level_is_described_in_the_schema():
-    field = schema.build_schema(["Skulder"])["schema"]["properties"]["nyckeltal"][
+    field = schema.build_schema(["Summa skulder"])["schema"]["properties"]["nyckeltal"][
         "items"
     ]["properties"][schema.FIELD_CERTAINTY]
     for level in schema.CERTAINTY_LEVELS:
@@ -45,7 +45,7 @@ def test_each_level_is_described_in_the_schema():
 
 
 def test_prompt_addendum_states_the_three_values():
-    text = schema.describe_for_prompt(["Skulder"])
+    text = schema.describe_for_prompt(["Summa skulder"])
     assert "explicit" in text and "härledd" in text and "osäker" in text
     assert "inte en siffra" in text
 
@@ -84,7 +84,7 @@ def test_ranks_are_ordered():
 def test_conflicts_prefer_the_more_explicit_value():
     analyzer = JBGAnnualReportAnalyzer.__new__(JBGAnnualReportAnalyzer)
     data = {
-        "K": {"2023": {"Skulder": [
+        "K": {"2023": {"Summa skulder": [
             {"värde": 42401, "källa": "Sida 14", "säkerhet": "explicit",
              "kommentar": "Summa skulder."},
             {"värde": 7147, "källa": "Sida 3, Sida 9", "säkerhet": "osäker",
@@ -92,7 +92,7 @@ def test_conflicts_prefer_the_more_explicit_value():
         ]}}
     }
     merged, _ = analyzer._merge_conflicted_values_json_objects(data)
-    entry = merged["K"]["2023"]["Skulder"]
+    entry = merged["K"]["2023"]["Summa skulder"]
     # explicit wins despite the alternative citing two pages
     assert entry["värde"] == 42401
     assert entry["säkerhet"] == "explicit"
@@ -101,25 +101,25 @@ def test_conflicts_prefer_the_more_explicit_value():
 def test_conflict_ranking_still_works_with_legacy_floats():
     analyzer = JBGAnnualReportAnalyzer.__new__(JBGAnnualReportAnalyzer)
     data = {
-        "K": {"2023": {"Osäkra fordringar": [
+        "K": {"2023": {"Not 7: Osäkra fordringar": [
             {"värde": 1965, "källa": "Not 12", "säkerhet": 0.9, "kommentar": "a"},
             {"värde": 477, "källa": "Sida 3, Sida 9", "säkerhet": 0.7, "kommentar": "b"},
         ]}}
     }
     merged, _ = analyzer._merge_conflicted_values_json_objects(data)
-    assert merged["K"]["2023"]["Osäkra fordringar"]["värde"] == 1965
+    assert merged["K"]["2023"]["Not 7: Osäkra fordringar"]["värde"] == 1965
 
 
 def test_mixed_levels_and_floats_compare_sensibly():
     analyzer = JBGAnnualReportAnalyzer.__new__(JBGAnnualReportAnalyzer)
     data = {
-        "K": {"2023": {"Skulder": [
+        "K": {"2023": {"Summa skulder": [
             {"värde": 100, "källa": "s", "säkerhet": "osäker", "kommentar": "a"},
             {"värde": 200, "källa": "s", "säkerhet": 0.95, "kommentar": "b"},
         ]}}
     }
     merged, _ = analyzer._merge_conflicted_values_json_objects(data)
-    assert merged["K"]["2023"]["Skulder"]["värde"] == 200
+    assert merged["K"]["2023"]["Summa skulder"]["värde"] == 200
 
 
 # --------------------------------------------------------- Excel shading
@@ -139,9 +139,9 @@ def test_excel_shades_by_level(tmp_path):
     from app.src.JBGJSONConverter import JsonConverter
 
     path = _write(tmp_path, {
-        "Balansomslutning": "explicit",
-        "Eget kapital": "härledd",
-        "Skulder": "osäker",
+        "Summa tillgångar": "explicit",
+        "Summa eget kapital": "härledd",
+        "Summa skulder": "osäker",
     })
     out = tmp_path / "out.xlsx"
     JsonConverter(path, include_sources=True).to_excel_by_year(
@@ -149,10 +149,10 @@ def test_excel_shades_by_level(tmp_path):
     )
     ws = openpyxl.load_workbook(out)["2024"]
     cells = {r[0].value: r[1] for r in ws.iter_rows(min_row=2)}
-    assert cells["Balansomslutning"].fill.start_color.rgb.endswith("C6EFCE")
-    assert cells["Eget kapital"].fill.start_color.rgb.endswith("FFEB9C")
-    assert cells["Skulder"].fill.start_color.rgb.endswith("FFC7CE")
-    assert "Säkerhet: explicit" in cells["Balansomslutning"].comment.text
+    assert cells["Summa tillgångar"].fill.start_color.rgb.endswith("C6EFCE")
+    assert cells["Summa eget kapital"].fill.start_color.rgb.endswith("FFEB9C")
+    assert cells["Summa skulder"].fill.start_color.rgb.endswith("FFC7CE")
+    assert "Säkerhet: explicit" in cells["Summa tillgångar"].comment.text
 
 
 def test_excel_still_shades_an_older_result_file(tmp_path):
@@ -160,24 +160,24 @@ def test_excel_still_shades_an_older_result_file(tmp_path):
     openpyxl = pytest.importorskip("openpyxl")
     from app.src.JBGJSONConverter import JsonConverter
 
-    path = _write(tmp_path, {"Balansomslutning": 1.0, "Eget kapital": 0.6,
-                             "Skulder": 0.3})
+    path = _write(tmp_path, {"Summa tillgångar": 1.0, "Summa eget kapital": 0.6,
+                             "Summa skulder": 0.3})
     out = tmp_path / "out.xlsx"
     JsonConverter(path, include_sources=True).to_excel_by_year(
         out, key_def_path=KEY_DEFS, fund_names=KASSOR, findings=[]
     )
     ws = openpyxl.load_workbook(out)["2024"]
     cells = {r[0].value: r[1] for r in ws.iter_rows(min_row=2)}
-    assert cells["Balansomslutning"].fill.start_color.rgb.endswith("C6EFCE")
-    assert cells["Eget kapital"].fill.start_color.rgb.endswith("FFEB9C")
-    assert cells["Skulder"].fill.start_color.rgb.endswith("FFC7CE")
+    assert cells["Summa tillgångar"].fill.start_color.rgb.endswith("C6EFCE")
+    assert cells["Summa eget kapital"].fill.start_color.rgb.endswith("FFEB9C")
+    assert cells["Summa skulder"].fill.start_color.rgb.endswith("FFC7CE")
 
 
 def test_legend_describes_the_levels(tmp_path):
     openpyxl = pytest.importorskip("openpyxl")
     from app.src.JBGJSONConverter import JsonConverter
 
-    path = _write(tmp_path, {"Balansomslutning": "explicit"})
+    path = _write(tmp_path, {"Summa tillgångar": "explicit"})
     out = tmp_path / "out.xlsx"
     JsonConverter(path, include_sources=True).to_excel_by_year(
         out, key_def_path=KEY_DEFS, fund_names=KASSOR, findings=[]
@@ -193,7 +193,7 @@ def test_legend_describes_the_levels(tmp_path):
 def test_csv_carries_the_level_verbatim(tmp_path):
     from app.src.JBGJSONConverter import JsonConverter
 
-    path = _write(tmp_path, {"Balansomslutning": "härledd"})
+    path = _write(tmp_path, {"Summa tillgångar": "härledd"})
     out = tmp_path / "out.csv"
     JsonConverter(path, include_sources=True).to_csv(out)
     row = out.read_text(encoding="utf-8-sig").splitlines()[1]

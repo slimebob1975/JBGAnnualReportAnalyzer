@@ -178,6 +178,8 @@ def test_successful_work_exposes_a_scoped_download_url(registry):
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("JBG_JOB_DIR", str(tmp_path / "httpjobs"))
+    # the endpoints persist the chosen models; keep that out of the repo
+    monkeypatch.setenv("JBG_MODEL_ROLES", str(tmp_path / "roles.json"))
     fastapi_testclient = pytest.importorskip("fastapi.testclient")
     import importlib
 
@@ -399,3 +401,88 @@ def test_requirements_declare_a_transformers_backend():
     pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
     masking = pyproject.split("masking = [")[1].split("]")[0]
     assert "torch" in masking
+
+
+# ------------------------------------------------------------- frontend
+def _script() -> str:
+    return (
+        Path(__file__).resolve().parents[1]
+        / "app" / "static" / "javascript" / "script.js"
+    ).read_text(encoding="utf-8")
+
+
+def test_the_form_is_read_before_the_interface_is_locked():
+    """A disabled control is omitted from FormData. Locking first sent an
+    empty request and the server answered 422 with every field missing."""
+    src = _script()
+    read = src.index("new FormData(form)")
+    lock = src.index("lockInterface();", src.index("async function submitForm"))
+    assert read < lock, "FormData must be built before the controls are disabled"
+
+
+def test_the_interface_is_not_re_enabled():
+    """It stays locked until the page is reloaded, by design."""
+    src = _script()
+    body = src[src.index("async function submitForm"):src.index("document.addEventListener")]
+    assert "disabled = false" not in body
+    assert "addReloadLink" in body, "a reload link is the only way forward"
+
+
+def test_validation_errors_are_rendered_readably():
+    """FastAPI reports them as a list of objects, which used to print as
+    "[object Object],[object Object],..."."""
+    src = _script()
+    assert "function errorMessage" in src
+    assert "Array.isArray(detail)" in src
+    # the raw concatenation that produced the unreadable message is gone
+    assert "started.detail ||" not in src
+
+
+def test_third_party_logging_can_be_re_applied():
+    """ocrmypdf reconfigures logging when it runs, undoing the levels set at
+    startup: every model call after the first OCR job logged an HTTP line."""
+    import logging as _logging
+
+    import app.main as main
+
+    assert callable(main.quieten_third_party_loggers)
+    _logging.getLogger("httpx").setLevel(_logging.DEBUG)
+    main.quieten_third_party_loggers()
+    assert _logging.getLogger("httpx").level == _logging.WARNING
+
+
+def test_the_form_offers_a_model_per_step(client):
+    c, _ = client
+    body = c.get("/").text
+    for name in ('name="model"', 'name="model_omsokning"', 'name="model_stabilitet"'):
+        assert name in body, name
+    assert body.count('value="gpt-5.2" selected') == 3
+
+
+def test_submitting_stores_the_chosen_models(client, monkeypatch):
+    c, main = client
+    monkeypatch.setattr(main, "_run_analysis", lambda *a, **k: ("r.json", 0))
+    r = c.post(
+        "/api/analyze",
+        data={"model": "gpt-5.6-solar", "model_omsokning": "gpt-5.4-mini",
+              "model_stabilitet": "gpt-5.6-terra", "apikey": "sk-x",
+              "format": "json", "sources": "yes", "use_masking": "no"},
+        files={"file": ("r.pdf", b"%PDF-1.4\n", "application/pdf")},
+    )
+    assert r.status_code == 200
+
+    from app.src import JBGUsage as usage
+
+    assert usage.selected_roles()["omsokning"] == "gpt-5.4-mini"
+
+
+def test_an_unknown_model_is_rejected(client):
+    c, _ = client
+    r = c.post(
+        "/api/analyze",
+        data={"model": "gpt-9-imaginary", "apikey": "sk-x", "format": "json",
+              "sources": "yes", "use_masking": "no"},
+        files={"file": ("r.pdf", b"%PDF-1.4\n", "application/pdf")},
+    )
+    assert r.status_code == 400
+    assert "Okänd modell" in r.text

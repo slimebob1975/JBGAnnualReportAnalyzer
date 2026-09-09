@@ -7,8 +7,11 @@ arbetslöshetskassors årsredovisningar med hjälp av en språkmodell.
 
 * Ladda upp en PDF eller en ZIP-fil med flera årsredovisningar.
 * Maskera personnamn och andra känsliga uppgifter innan texten skickas vidare.
-* Extrahera 18 definierade nyckeltal, med sidhänvisning, säkerhetsbedömning och
-  motivering för varje värde.
+* Extrahera de poster som anges i IAF:s föreskrift IAFFS 2026:1, bilaga 1
+  (resultaträkning, balansräkning och noterna 1–10) samt bilaga 2, med
+  sidhänvisning, säkerhetsbedömning och motivering för varje värde.
+  Redovisningsprinciperna ingår inte, och poster som en kassa lägger till
+  utöver föreskriften rapporteras inte. Endast innevarande räkenskapsår.
 * Rimlighetskontroller som flaggar värden som inte går ihop aritmetiskt.
 * Resultat som JSON, CSV eller Excel, där Excel färgkodas efter modellens
   angivna säkerhet.
@@ -168,6 +171,15 @@ betyder att värdet ingår i en rimlighetskontroll som inte gick ihop. Håll pek
 Fliken **Läsanvisning** innehåller färgförklaring och en lista över samtliga
 anmärkningar.
 
+Notposter heter `Not N: <post>` så att de inte förväxlas med balans- eller
+resultaträkningens rader med liknande namn. Flera kassor kallar
+`Not 7: Årets avstående från återkrav` för *eftergift*; det tolkas som samma
+sak.
+
+Varje delsumma i föreskriften kontrolleras aritmetiskt mot sina delposter.
+Kontrollerna byggs ur `Delposter` i nyckeltalsdefinitionerna, så ett nytt
+nyckeltal med delposter ger en ny kontroll utan kodändring.
+
 Ett nyckeltal som saknas i utdata har inte hittats i dokumentet. Modellen är
 instruerad att utelämna det den inte hittar hellre än att gissa.
 
@@ -219,20 +231,48 @@ per ändamål – nyckeltalsextraktion, riktad omsökning, årtolkning och
 sidnummeroffset. Samma uppgifter finns under nyckeln `_modellanvandning` i
 JSON-filen.
 
-Någon kostnad visas inte förrän priser fyllts i, eftersom priser ändras och
-skiljer sig mellan konton. Lägg in aktuella priser per miljon tokens i
-`app/config/model_prices.json`:
+Priser per miljon tokens ligger i `app/config/model_prices.json` och täcker
+modellerna i formuläret. Varje post har tre satser:
+
+```json
+"gpt-5.2": { "in": 1.75, "cachad": 0.175, "ut": 14.00 }
+```
+
+Cachade prompt-tokens debiteras separat, ofta en tiondel av `in`. Det är ingen
+detalj: i en verklig körning var 88 procent av alla prompt-tokens cachade.
+
+Ett modellnamn med datumsuffix matchar sin nyckel, så `gpt-5.2-2025-12-11`
+prissätts som `gpt-5.2`. Saknas priset för någon använd modell rapporteras bara
+tokens – aldrig en halv kostnad. Kontrollera priserna mot aktuell prislista;
+de gäller standardnivån och korta kontext.
+
+### Modell per roll
+
+Formuläret har en modellväljare per steg: första genomgången, riktad omsökning
+och stabilitetskontroll. Valen sparas i `app/config/model_roles.json` när
+analysen startas och är förvalda nästa gång. Priset per miljon tokens står i
+varje alternativ.
+
+Filen kan också redigeras direkt, vilket är enda sättet att sätta rollerna
+`aar` och `sidnummer` som inte finns i formuläret:
 
 ```json
 {
-  "gpt-5.2-2025-12-11": { "in": 1.25, "ut": 10.00 },
-  "_valuta": "USD"
+  "extraktion": "gpt-5.6-solar",
+  "omsokning":  "gpt-5.4-mini",
+  "stabilitet": "gpt-5.2"
 }
 ```
 
-Modellnamnet ska vara det som API:et rapporterar tillbaka, vilket syns i
-loggen. Saknas priset för någon använd modell rapporteras bara tokens – aldrig
-en halv kostnad.
+Tomt värde betyder att formulärets val används. Tokenrapporten redovisar
+förbrukningen per modell och per roll, så en kombination går att mäta i stället
+för att gissas.
+
+Två uppslag värda att pröva: en dyrare modell för extraktionen och en billigare
+för omsökningen, som är en smalare uppgift; och en **annan** modell för
+stabilitetskontrollen, eftersom två läsningar med samma modell mäter modellens
+egen spridning medan två modeller som är överens är ett starkare belägg för att
+värdet stämmer.
 
 ## API
 

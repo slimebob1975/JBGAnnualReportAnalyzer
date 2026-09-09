@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.src import JBGUsage as usage
 from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
 from app.src.JBGAnnualReportExceptions import EmptyOutputException, FileTypeException
 from app.src.JBGJobs import STATUS_DONE, STATUS_ERROR, JobRegistry, purge_old_logs
@@ -55,11 +56,26 @@ logging.getLogger("ocrmypdf").setLevel(logging.CRITICAL)
 
 # ocrmypdf pulls in fontTools, pikepdf and img2pdf, which together emit
 # several hundred INFO lines per OCR-ed document (every glyph name, twice).
-for noisy in ("httpx", "httpcore", "openai", "urllib3", "filelock",
-              "transformers", "huggingface_hub", "PIL",
-              "fontTools", "fontTools.subset", "fontTools.ttLib",
-              "pikepdf", "img2pdf", "pdfminer"):
-    logging.getLogger(noisy).setLevel(logging.WARNING)
+NOISY_LOGGERS = (
+    "httpx", "httpcore", "openai", "urllib3", "filelock",
+    "transformers", "huggingface_hub", "PIL",
+    "fontTools", "fontTools.subset", "fontTools.ttLib",
+    "pikepdf", "img2pdf", "pdfminer",
+)
+
+
+def quieten_third_party_loggers() -> None:
+    """Third-party libraries log one INFO line per HTTP request.
+
+    Re-applicable, because ocrmypdf reconfigures logging when it runs: the
+    levels set at import were undone by the first OCR job, and every model
+    call after it printed a "HTTP Request: POST ..." line again.
+    """
+    for name in NOISY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
+quieten_third_party_loggers()
 
 logger = logging.getLogger(__name__)
 logger.info(f"Loggnivå: {LOG_LEVEL} (styrs av miljövariabeln JBG_LOG_LEVEL)")
@@ -87,6 +103,9 @@ def render_page(request: Request, active_tab: str = "analysis", **extra):
     """Render index.html with the constant page chrome always filled in."""
     context = {
         "request": request,
+        "model_groups": usage.model_choices(),
+        "model_roles": usage.selected_roles(),
+        "form_roles": usage.FORM_ROLES,
         "title": TITLE,
         "subtitle": SUBTITLE,
         "title_masking": TITLE_MASKING,
@@ -198,6 +217,27 @@ def _prepare_job_input(file: UploadFile, job_dir: Path) -> tuple[Path, int]:
     )
 
 
+def _store_model_roles(extraction: str, second_pass: str, stability: str) -> None:
+    """Remember the three choices so the form comes back with them selected.
+
+    Written from a form field, so only names the form itself offers are
+    accepted; anything else is refused rather than persisted.
+    """
+    for label, value in (
+        ("extraktion", extraction),
+        ("omsokning", second_pass),
+        ("stabilitet", stability),
+    ):
+        if value and not usage.is_known_model(value):
+            raise HTTPException(
+                status_code=400, detail=f"Okänd modell för {label}: {value!r}"
+            )
+
+    usage.save_roles(
+        {"extraktion": extraction, "omsokning": second_pass, "stabilitet": stability}
+    )
+
+
 def _validate_options(format: str, sources: str, use_masking: str) -> None:
     if use_masking not in ("yes", "no"):
         raise HTTPException(
@@ -287,6 +327,8 @@ def _run_analysis(
 def api_analyze(
     file: UploadFile = File(...),
     model: str = Form(...),
+    model_omsokning: str = Form(""),
+    model_stabilitet: str = Form(""),
     apikey: str = Form(...),
     format: str = Form(...),
     sources: str = Form(...),
@@ -299,6 +341,7 @@ def api_analyze(
     every other request while it ran.
     """
     _validate_options(format, sources, use_masking)
+    _store_model_roles(model, model_omsokning, model_stabilitet)
 
     job = jobs.create()
     try:
@@ -373,6 +416,8 @@ def upload_file(
     request: Request,
     file: UploadFile = File(...),
     model: str = Form(...),
+    model_omsokning: str = Form(""),
+    model_stabilitet: str = Form(""),
     apikey: str = Form(...),
     format: str = Form(...),
     sources: str = Form(...),
@@ -380,6 +425,7 @@ def upload_file(
 ):
     """Synchronous form fallback for browsers without JavaScript."""
     _validate_options(format, sources, use_masking)
+    _store_model_roles(model, model_omsokning, model_stabilitet)
     job = jobs.create()
     try:
         saved_path, pdf_count = _prepare_job_input(file, job.directory)

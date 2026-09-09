@@ -11,9 +11,11 @@ to the krona, and the seventh was out by 2 867 tkr in two consecutive runs.
 That is a real extraction error, and nothing in the pipeline noticed it.
 """
 
+import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from app.src import JBGMetricSchema as schema
@@ -81,22 +83,22 @@ def _fmt(amount: float) -> str:
 
 
 def _provisions_counted_twice(values: dict[str, float]) -> bool:
-    """True when Eget kapital + Skulder alone equals the balance sheet total.
+    """True when equity plus debt alone equals the balance sheet total.
 
-    A real pattern in the corpus: most funds satisfy
-    EK + Skulder + Avsättningar = BO, but where a report presents no separate
-    "Summa skulder" one of the two figures ends up containing the provisions.
+    Where a report presents no separate "Summa skulder", one of the two
+    figures ends up containing the provisions. Seen on the same fund in three
+    consecutive years.
     """
-    total = values["Balansomslutning"]
-    without = values["Eget kapital"] + values["Skulder"]
-    return values["Utgående avsättningar"] > 0 and abs(total - without) <= _tolerance(total)
+    total = values["Summa tillgångar"]
+    without = values["Summa eget kapital"] + values["Summa skulder"]
+    return values["Summa avsättningar"] > 0 and abs(total - without) <= _tolerance(total)
 
 
 def _balance_identity(values: dict[str, float]) -> str | None:
-    total = values["Balansomslutning"]
-    equity = values["Eget kapital"]
-    debt = values["Skulder"]
-    provisions = values["Utgående avsättningar"]
+    total = values["Summa tillgångar"]
+    equity = values["Summa eget kapital"]
+    debt = values["Summa skulder"]
+    provisions = values["Summa avsättningar"]
     parts = equity + debt + provisions
     diff = total - parts
 
@@ -104,46 +106,25 @@ def _balance_identity(values: dict[str, float]) -> str | None:
         return None
 
     message = (
-        f"Balansomslutning {_fmt(total)} stämmer inte med "
-        f"Eget kapital + Skulder + Utgående avsättningar = {_fmt(parts)} "
+        f"Summa tillgångar {_fmt(total)} stämmer inte med "
+        f"Summa eget kapital + Summa skulder + Summa avsättningar = {_fmt(parts)} "
         f"(differens {_fmt(diff) if diff < 0 else '+' + _fmt(diff)})."
     )
 
     if _provisions_counted_twice(values):
         # Both figures are equally consistent with the arithmetic, so name
-        # both rather than blaming one. An earlier version pointed at Skulder,
-        # and on the one real case the culprit was more likely Eget kapital.
+        # both rather than blaming one.
         message += (
-            f" Eget kapital + Skulder = {_fmt(equity + debt)} är däremot exakt "
-            f"lika med balansomslutningen, vilket tyder på att avsättningarna "
-            f"{_fmt(provisions)} räknats med två gånger. Antingen ingår de redan "
-            f"i Eget kapital, som då borde vara {_fmt(total - debt - provisions)} "
-            f"i stället för {_fmt(equity)}, eller i Skulder, som då borde vara "
+            f" Summa eget kapital + Summa skulder = {_fmt(equity + debt)} är däremot "
+            f"exakt lika med balansomslutningen, vilket tyder på att avsättningarna "
+            f"{_fmt(provisions)} räknats med två gånger. Antingen ingår de redan i "
+            f"eget kapital, som då borde vara {_fmt(total - debt - provisions)} i "
+            f"stället för {_fmt(equity)}, eller i skulderna, som då borde vara "
             f"{_fmt(total - equity - provisions)} i stället för {_fmt(debt)}. "
             "Kontrollera vilket mot balansräkningen."
         )
 
     return message
-
-
-def _current_assets_within_total(values: dict[str, float]) -> str | None:
-    current, total = values["Omsättningstillgångar"], values["Balansomslutning"]
-    if current <= total + _tolerance(total):
-        return None
-    return (
-        f"Omsättningstillgångar {_fmt(current)} är större än "
-        f"Balansomslutning {_fmt(total)}"
-    )
-
-
-def _cash_within_current_assets(values: dict[str, float]) -> str | None:
-    cash, current = values["Kassa och bank"], values["Omsättningstillgångar"]
-    if cash <= current + _tolerance(current):
-        return None
-    return (
-        f"Kassa och bank {_fmt(cash)} är större än "
-        f"Omsättningstillgångar {_fmt(current)}"
-    )
 
 
 def _non_negative(metric: str) -> Callable[[dict[str, float]], str | None]:
@@ -163,42 +144,80 @@ RULES: list[Rule] = [
     Rule(
         name="Balansräkningen balanserar",
         description=(
-            "Balansomslutning ska vara lika med summan av eget kapital, "
-            "skulder och avsättningar."
+            "Summa tillgångar ska vara lika med summan av eget kapital, "
+            "avsättningar och skulder."
         ),
-        metrics=["Balansomslutning", "Eget kapital", "Skulder", "Utgående avsättningar"],
+        metrics=["Summa tillgångar", "Summa eget kapital", "Summa skulder",
+                 "Summa avsättningar"],
         check=_balance_identity,
-        severity=SEVERITY_ERROR,
-    ),
-    Rule(
-        name="Omsättningstillgångar ryms i balansomslutningen",
-        description="Omsättningstillgångar kan inte överstiga balansomslutningen.",
-        metrics=["Omsättningstillgångar", "Balansomslutning"],
-        check=_current_assets_within_total,
-        severity=SEVERITY_ERROR,
-    ),
-    Rule(
-        name="Kassa och bank ryms i omsättningstillgångarna",
-        description="Kassa och bank är en del av omsättningstillgångarna.",
-        metrics=["Kassa och bank", "Omsättningstillgångar"],
-        check=_cash_within_current_assets,
         severity=SEVERITY_ERROR,
     ),
     Rule(
         name="Balansomslutning är positiv",
         description="En balansomslutning ska vara ett positivt belopp.",
-        metrics=["Balansomslutning"],
-        check=_non_negative("Balansomslutning"),
+        metrics=["Summa tillgångar"],
+        check=_non_negative("Summa tillgångar"),
         severity=SEVERITY_WARNING,
     ),
     Rule(
         name="Administrationskostnader anges positivt",
         description="Kostnader rapporteras som positiva belopp, inte med minustecken.",
-        metrics=["Administrationskostnader"],
-        check=_non_negative("Administrationskostnader"),
+        metrics=["Summa administrationskostnader"],
+        check=_non_negative("Summa administrationskostnader"),
         severity=SEVERITY_WARNING,
     ),
 ]
+
+
+def _sum_check(target: str, components: dict[str, float]):
+    """Build a check for one subtotal from the specification."""
+
+    def check(values: dict[str, float]) -> str | None:
+        total = values[target]
+        parts = sum(values[name] * coefficient for name, coefficient in components.items())
+        diff = total - parts
+        if abs(diff) <= _tolerance(total or parts):
+            return None
+        terms = " ".join(
+            f"{'+' if c > 0 else '-'} {name}" for name, c in components.items()
+        ).lstrip("+ ")
+        return (
+            f"{target} {_fmt(total)} stämmer inte med {terms} = {_fmt(parts)} "
+            f"(differens {_fmt(diff) if diff < 0 else '+' + _fmt(diff)})."
+        )
+
+    return check
+
+
+def rules_from_definitions(metrics_path) -> list[Rule]:
+    """Turn every "Delposter" in the metric definitions into a check.
+
+    The föreskrift states each subtotal explicitly, so the arithmetic is data
+    rather than code: adding a metric with components adds a check, and no
+    rule has to be written by hand.
+    """
+    try:
+        definitions = json.loads(Path(metrics_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError) as ex:
+        logger.warning(f"Kunde inte läsa nyckeltalsdefinitionerna: {ex}")
+        return []
+
+    built = []
+    for entry in definitions:
+        components = entry.get("Delposter")
+        if not components:
+            continue
+        target = entry["Nyckeltal"]
+        built.append(
+            Rule(
+                name=f"Delsummering: {target}",
+                description=entry.get("Formel", ""),
+                metrics=[target, *components],
+                check=_sum_check(target, components),
+                severity=SEVERITY_WARNING,
+            )
+        )
+    return built
 
 
 def _numeric(entry: Any) -> float | None:
@@ -219,13 +238,14 @@ def _numeric(entry: Any) -> float | None:
     return None
 
 
-def validate(result: dict) -> list[Finding]:
+def validate(result: dict, metrics_path=None) -> list[Finding]:
     """Run every rule over every fund and year that has the needed metrics.
 
     A rule is skipped, not failed, when a metric it needs is missing: the model
     is told to omit what it cannot find, so absence is expected.
     """
     findings: list[Finding] = []
+    rules = RULES + (rules_from_definitions(metrics_path) if metrics_path else [])
 
     for fund, years in (result or {}).items():
         if not isinstance(years, dict):
@@ -233,7 +253,7 @@ def validate(result: dict) -> list[Finding]:
         for year, metrics in years.items():
             if not isinstance(metrics, dict):
                 continue
-            for rule in RULES:
+            for rule in rules:
                 values = {}
                 missing = False
                 for name in rule.metrics:

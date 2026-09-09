@@ -81,7 +81,7 @@ def test_conflicting_values_keep_their_own_metadata():
     data = {
         "Handels a-kassa": {
             "2023": {
-                "Balansomslutning": [
+                "Summa tillgångar": [
                     {
                         "värde": 12244267,
                         "källa": "Sida 7, Sida 9",
@@ -99,7 +99,7 @@ def test_conflicting_values_keep_their_own_metadata():
         }
     }
     merged, num = analyzer._merge_conflicted_values_json_objects(data)
-    entry = merged["Handels a-kassa"]["2023"]["Balansomslutning"]
+    entry = merged["Handels a-kassa"]["2023"]["Summa tillgångar"]
 
     # The better-supported value wins, and it keeps *its own* metadata rather
     # than inheriting the last loop iteration's certainty and comment.

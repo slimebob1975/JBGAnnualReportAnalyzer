@@ -49,6 +49,7 @@ class StatusPanel {
         this.root = root;
         this.message = root.querySelector("[data-role=message]");
         this.elapsed = root.querySelector("[data-role=elapsed]");
+        this.actions = root.querySelector("[data-role=actions]");
         this.timer = null;
     }
 
@@ -59,6 +60,7 @@ class StatusPanel {
         this.message.textContent = text;
         this.elapsed.hidden = false;
         this.elapsed.textContent = "0:00";
+        if (this.actions) this.actions.replaceChildren();
         clearInterval(this.timer);
         this.timer = setInterval(() => {
             this.elapsed.textContent = formatDuration((Date.now() - startedAt) / 1000);
@@ -96,6 +98,32 @@ async function readJson(response) {
     }
 }
 
+/**
+ * A readable message from whatever the server sent back.
+ *
+ * FastAPI reports validation failures as a list of objects under "detail".
+ * Concatenating that list produced "[object Object],[object Object],..." on
+ * screen, which said nothing about what had actually gone wrong.
+ */
+function errorMessage(payload, status) {
+    if (payload && typeof payload.message === "string") return payload.message;
+
+    const detail = payload && payload.detail;
+    if (typeof detail === "string") return detail;
+
+    if (Array.isArray(detail)) {
+        const parts = detail.map(item => {
+            if (typeof item === "string") return item;
+            const field = Array.isArray(item.loc) ? item.loc[item.loc.length - 1] : null;
+            const text = item.msg || item.type || JSON.stringify(item);
+            return field ? `${field}: ${text}` : text;
+        });
+        if (parts.length) return `Ogiltig begäran (${parts.join("; ")}).`;
+    }
+
+    return `Fel (status ${status}).`;
+}
+
 async function pollJob(jobId, panel) {
     while (true) {
         await sleep(POLL_INTERVAL_MS);
@@ -104,10 +132,10 @@ async function pollJob(jobId, panel) {
         const job = await readJson(response);
 
         if (response.status === 404) {
-            throw new Error(job.detail || "Jobbet finns inte längre.");
+            throw new Error(errorMessage(job, 404) || "Jobbet finns inte längre.");
         }
         if (!response.ok) {
-            throw new Error(job.message || job.detail || `Fel (status ${response.status}).`);
+            throw new Error(errorMessage(job, response.status));
         }
         if (job.status === "error") {
             throw new Error(job.message || job.error || "Analysen misslyckades.");
@@ -120,21 +148,53 @@ async function pollJob(jobId, panel) {
     }
 }
 
+/**
+ * Disable everything the user can click, for the rest of the page's life.
+ *
+ * A run takes minutes. Leaving the controls live invites a second submission,
+ * a tab switch mid-run, or an edited API key, none of which affect the job
+ * already running but all of which look as though they might. The page is
+ * deliberately not re-enabled afterwards: a reload is the way back, and the
+ * status panel offers one.
+ */
+function lockInterface() {
+    document
+        .querySelectorAll("button, input, select, textarea")
+        .forEach(element => {
+            element.disabled = true;
+        });
+    document.querySelectorAll(".tab-button").forEach(button => {
+        button.setAttribute("aria-disabled", "true");
+    });
+    document.body.dataset.locked = "true";
+}
+
+function addReloadLink(panel) {
+    // The only live control left, so there is always a way forward.
+    const link = document.createElement("a");
+    link.href = window.location.pathname;
+    link.className = "reload-link";
+    link.textContent = "Ladda om sidan för en ny analys";
+    panel.actions.replaceChildren(link);
+}
+
 async function submitForm(form, panel, busyText) {
     const endpoint = API[form.dataset.kind].start;
-    const submitButton = form.querySelector("button[type=submit]");
+
+    // Read the form BEFORE locking it. A disabled control is omitted from
+    // FormData, so locking first sent an empty request and the server
+    // answered 422 with every field reported missing.
+    const payload = new FormData(form);
 
     panel.busy(busyText);
-    if (submitButton) submitButton.disabled = true;
+    lockInterface();
 
     try {
-        const response = await fetch(endpoint, { method: "POST", body: new FormData(form) });
+        const response = await fetch(endpoint, { method: "POST", body: payload });
         const started = await readJson(response);
 
         if (!response.ok || !started.ok) {
-            throw new Error(
-                started.message || started.detail || `Fel (status ${response.status}).`
-            );
+            throw new Error(errorMessage(started, response.status));
         }
 
         const job = await pollJob(started.job_id, panel);
@@ -143,7 +203,8 @@ async function submitForm(form, panel, busyText) {
     } catch (err) {
         panel.failed(err.message || String(err));
     } finally {
-        if (submitButton) submitButton.disabled = false;
+        // Deliberately not re-enabled: the interface stays locked until reload.
+        addReloadLink(panel);
     }
 }
 

@@ -44,16 +44,16 @@ def _result(present, fund="Kommunalarbetarnas", year="2024"):
 # ------------------------------------------------------------ missing set
 def test_missing_metrics_lists_what_is_absent():
     a = _analyzer()
-    present = [n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")]
+    present = [n for n in ALL_METRICS if n not in ("Not 7: Årets avstående från återkrav", "Summa skulder")]
     missing = a._missing_metrics(_result(present))
-    assert missing == [n for n in ALL_METRICS if n in ("Skulder", "Eftergift")]
+    assert missing == [n for n in ALL_METRICS if n in ("Summa skulder", "Not 7: Årets avstående från återkrav")]
 
 
 def test_null_valued_metrics_count_as_missing():
     a = _analyzer()
     result = _result(ALL_METRICS)
-    result["Kommunalarbetarnas"]["2024"]["Eftergift"]["värde"] = None
-    assert a._missing_metrics(result) == ["Eftergift"]
+    result["Kommunalarbetarnas"]["2024"]["Not 7: Årets avstående från återkrav"]["värde"] = None
+    assert a._missing_metrics(result) == ["Not 7: Årets avstående från återkrav"]
 
 
 def test_nothing_missing_when_all_present():
@@ -74,7 +74,7 @@ def test_no_extra_call_when_nothing_is_missing():
 
 def test_second_pass_recovers_a_missed_metric():
     a = _analyzer()
-    present = [n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")]
+    present = [n for n in ALL_METRICS if n not in ("Not 7: Årets avstående från återkrav", "Summa skulder")]
     result = _result(present)
     seen = {}
 
@@ -85,7 +85,7 @@ def test_second_pass_recovers_a_missed_metric():
         seen["prompt"] = system_prompt
         return json.dumps({
             "kassa": "Kommunalarbetarnas", "år": 2024,
-            "nyckeltal": [{"namn": "Eftergift", "värde": 4211, "källa": "Not 7",
+            "nyckeltal": [{"namn": "Not 7: Årets avstående från återkrav", "värde": 4211, "källa": "Not 7",
                            "säkerhet": 0.85, "kommentar": "Hittad i not 7."}],
         }, ensure_ascii=False)
 
@@ -93,27 +93,27 @@ def test_second_pass_recovers_a_missed_metric():
     a._second_pass_for_missing(result, ["text"], the_year=2024, model="gpt-5.2")
 
     metrics = result["Kommunalarbetarnas"]["2024"]
-    assert metrics["Eftergift"]["värde"] == 4211
+    assert metrics["Not 7: Årets avstående från återkrav"]["värde"] == 4211
     # the schema makes it structurally impossible to answer about anything else
-    assert set(seen["enum"]) == {"Eftergift", "Skulder"}
+    assert set(seen["enum"]) == {"Not 7: Årets avstående från återkrav", "Summa skulder"}
     # and the prompt carries exactly one metric definition, not all 18
     # (the base instruction text mentions some metric names as examples, so
     # count definition entries rather than bare occurrences)
     assert seen["prompt"].count('"Nyckeltal":') == 2
-    assert '"Nyckeltal": "Eftergift"' in seen["prompt"]
+    assert '"Nyckeltal": "Not 7: Årets avstående från återkrav"' in seen["prompt"]
 
 
 def test_recovered_values_are_tagged():
     a = _analyzer()
-    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
+    result = _result([n for n in ALL_METRICS if n not in ("Not 7: Årets avstående från återkrav", "Summa skulder")])
     a._make_openai_api_call = lambda *args, **kwargs: json.dumps({
         "kassa": "K", "år": 2024,
-        "nyckeltal": [{"namn": "Eftergift", "värde": 1, "källa": "s",
+        "nyckeltal": [{"namn": "Not 7: Årets avstående från återkrav", "värde": 1, "källa": "s",
                        "säkerhet": 0.8, "kommentar": "Hittad i not 7."}],
     }, ensure_ascii=False)
     a._second_pass_for_missing(result, ["t"], the_year=2024, model="m")
 
-    comment = result["Kommunalarbetarnas"]["2024"]["Eftergift"]["kommentar"]
+    comment = result["Kommunalarbetarnas"]["2024"]["Not 7: Årets avstående från återkrav"]["kommentar"]
     assert comment.startswith(JBGAnnualReportAnalyzer.SECOND_PASS_TAG)
     assert "Hittad i not 7." in comment
 
@@ -122,37 +122,37 @@ def test_first_pass_values_are_never_overwritten():
     """A second pass that re-answers a metric it was not asked about must not
     clobber a value the first pass already established."""
     a = _analyzer()
-    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
-    original = dict(result["Kommunalarbetarnas"]["2024"]["Balansomslutning"])
+    result = _result([n for n in ALL_METRICS if n not in ("Not 7: Årets avstående från återkrav", "Summa skulder")])
+    original = dict(result["Kommunalarbetarnas"]["2024"]["Summa tillgångar"])
 
     a._make_openai_api_call = lambda *args, **kwargs: json.dumps({
         "kassa": "K", "år": 2024,
         "nyckeltal": [
-            {"namn": "Eftergift", "värde": 1, "källa": "s", "säkerhet": 0.8, "kommentar": "c"},
-            {"namn": "Balansomslutning", "värde": 999999, "källa": "fel",
+            {"namn": "Not 7: Årets avstående från återkrav", "värde": 1, "källa": "s", "säkerhet": 0.8, "kommentar": "c"},
+            {"namn": "Summa tillgångar", "värde": 999999, "källa": "fel",
              "säkerhet": 0.2, "kommentar": "gissning"},
         ],
     }, ensure_ascii=False)
     a._second_pass_for_missing(result, ["t"], the_year=2024, model="m")
 
-    assert result["Kommunalarbetarnas"]["2024"]["Balansomslutning"] == original
+    assert result["Kommunalarbetarnas"]["2024"]["Summa tillgångar"] == original
 
 
 def test_values_are_grafted_onto_the_existing_fund_and_year():
     """The second pass may word the fund name differently. That must not split
     the file's result into two funds."""
     a = _analyzer()
-    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
+    result = _result([n for n in ALL_METRICS if n not in ("Not 7: Årets avstående från återkrav", "Summa skulder")])
     a._make_openai_api_call = lambda *args, **kwargs: json.dumps({
         "kassa": "Kommunalarbetarnas Arbetslöshetskassa", "år": 2023,
-        "nyckeltal": [{"namn": "Eftergift", "värde": 7, "källa": "s",
+        "nyckeltal": [{"namn": "Not 7: Årets avstående från återkrav", "värde": 7, "källa": "s",
                        "säkerhet": 0.8, "kommentar": "c"}],
     }, ensure_ascii=False)
     a._second_pass_for_missing(result, ["t"], the_year=2024, model="m")
 
     assert list(result) == ["Kommunalarbetarnas"]
     assert list(result["Kommunalarbetarnas"]) == ["2024"]
-    assert result["Kommunalarbetarnas"]["2024"]["Eftergift"]["värde"] == 7
+    assert result["Kommunalarbetarnas"]["2024"]["Not 7: Årets avstående från återkrav"]["värde"] == 7
 
 
 def test_skipped_when_most_metrics_are_missing():
@@ -169,7 +169,7 @@ def test_stops_early_once_nothing_is_missing():
     """With several chunks, the pass must not keep asking after the last gap
     has been filled."""
     a = _analyzer()
-    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
+    result = _result([n for n in ALL_METRICS if n not in ("Not 7: Årets avstående från återkrav", "Summa skulder")])
     calls = []
 
     def fake(system_prompt, request_text, model="", response_schema=None, **kwargs):
@@ -177,9 +177,9 @@ def test_stops_early_once_nothing_is_missing():
         return json.dumps({
             "kassa": "K", "år": 2024,
             "nyckeltal": [
-                {"namn": "Eftergift", "värde": 1, "källa": "s",
+                {"namn": "Not 7: Årets avstående från återkrav", "värde": 1, "källa": "s",
                  "säkerhet": 0.8, "kommentar": "c"},
-                {"namn": "Skulder", "värde": 2, "källa": "s",
+                {"namn": "Summa skulder", "värde": 2, "källa": "s",
                  "säkerhet": 0.8, "kommentar": "c"},
             ],
         }, ensure_ascii=False)
@@ -192,7 +192,7 @@ def test_stops_early_once_nothing_is_missing():
 
 def test_a_failed_second_pass_leaves_the_result_intact():
     a = _analyzer()
-    present = [n for n in ALL_METRICS if n != "Eftergift"]
+    present = [n for n in ALL_METRICS if n != "Not 7: Årets avstående från återkrav"]
     result = _result(present)
     before = json.dumps(result, ensure_ascii=False, sort_keys=True)
 
@@ -206,37 +206,37 @@ def test_a_failed_second_pass_leaves_the_result_intact():
 
 def test_unparsable_second_pass_response_is_survived():
     a = _analyzer()
-    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
+    result = _result([n for n in ALL_METRICS if n not in ("Not 7: Årets avstående från återkrav", "Summa skulder")])
     a._make_openai_api_call = lambda *args, **kwargs: "inte JSON alls"
     a._second_pass_for_missing(result, ["t"], the_year=2024, model="m")
-    assert "Eftergift" not in result["Kommunalarbetarnas"]["2024"]
+    assert "Not 7: Årets avstående från återkrav" not in result["Kommunalarbetarnas"]["2024"]
 
 
 # ------------------------------------------------------------------ schema
 def test_restricted_schema_is_still_strict():
     a = _analyzer()
-    built = a._response_schema(["Eftergift", "Skulder"])
+    built = a._response_schema(["Not 7: Årets avstående från återkrav", "Summa skulder"])
     assert built["strict"] is True
     item = built["schema"]["properties"]["nyckeltal"]["items"]
-    assert item["properties"]["namn"]["enum"] == ["Eftergift", "Skulder"]
+    assert item["properties"]["namn"]["enum"] == ["Not 7: Årets avstående från återkrav", "Summa skulder"]
     assert set(item["required"]) == set(item["properties"])
 
 
 def test_schemas_are_cached_per_metric_set():
     a = _analyzer()
     full_a, full_b = a._response_schema(), a._response_schema()
-    part_a, part_b = a._response_schema(["Eftergift"]), a._response_schema(["Eftergift"])
+    part_a, part_b = a._response_schema(["Not 7: Årets avstående från återkrav"]), a._response_schema(["Not 7: Årets avstående från återkrav"])
     assert full_a is full_b
     assert part_a is part_b
     assert full_a is not part_a
-    assert len(full_a["schema"]["properties"]["nyckeltal"]["items"]["properties"]["namn"]["enum"]) == 18
+    assert len(full_a["schema"]["properties"]["nyckeltal"]["items"]["properties"]["namn"]["enum"]) == len(ALL_METRICS)
 
 
 def test_second_pass_instruction_permits_omission():
     """It must not pressure the model into inventing a value: an absent metric
     is a legitimate answer."""
-    text = schema.describe_for_second_pass(["Eftergift"])
-    assert "Eftergift" in text
+    text = schema.describe_for_second_pass(["Not 7: Årets avstående från återkrav"])
+    assert "Not 7: Årets avstående från återkrav" in text
     assert "utelämna" in text
     assert "Gissa inte" in text
 
@@ -256,7 +256,7 @@ def test_a_single_missing_metric_does_not_trigger_a_pass():
     calls = []
     a._make_openai_api_call = lambda *args, **kwargs: calls.append(1) or "{}"
 
-    result = _result([n for n in ALL_METRICS if n != "Eftergift"])
+    result = _result([n for n in ALL_METRICS if n != "Not 7: Årets avstående från återkrav"])
     a._second_pass_for_missing(result, ["text"], the_year=2024, model="gpt-5.2")
     assert calls == []
 
@@ -270,7 +270,7 @@ def test_two_missing_metrics_do_trigger_a_pass():
         return json.dumps({"kassa": "K", "år": 2024, "nyckeltal": []}, ensure_ascii=False)
 
     a._make_openai_api_call = fake
-    result = _result([n for n in ALL_METRICS if n not in ("Eftergift", "Skulder")])
+    result = _result([n for n in ALL_METRICS if n not in ("Not 7: Årets avstående från återkrav", "Summa skulder")])
     a._second_pass_for_missing(result, ["text"], the_year=2024, model="gpt-5.2")
     assert len(calls) == 1
 

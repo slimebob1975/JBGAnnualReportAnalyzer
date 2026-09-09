@@ -1,179 +1,950 @@
 [
   {
-    "Nyckeltal": "Balansomslutning",
-    "Alternativa benämningar": [
-      "Balansräkning",
-      "Summa tillgångar",
-      "Summa eget kapital och skulder"
-    ],
-    "Beskrivning": "Balansomslutningen visar summan av respektive sida i balansräkningen och fungerar som en kontrollpunkt för att bokföringen är korrekt",
-    "Formel": "Summa tillgångar eller summa eget kapital och skulder",
-    "Grupp": "📊 Balansposter",
-    "Specifika instruktioner": "Identifieras oftast i balansräkningen som 'Summa tillgångar' eller 'Summa eget kapital och skulder'. Ange endast totalsumman från balansräkningens båda sidor. Kan också ligger i en Flerårsöversikt."
-  },
-  {
-    "Nyckeltal": "Fordringar statligt bidrag till arbetslöshetsersättning",
-    "Alternativa benämningar": [
-      "Fordringar statliga bidrag till arbetslöshetsersättning"
-    ],
-    "Beskrivning": "Belopp som a-kassan har rätt att få från staten för utbetald arbetslöshetsersättning",
-    "Formel": "",
-    "Grupp": "📊 Balansposter",
-    "Specifika instruktioner": "Förekommer ibland under not 'Fordringar', eller specificerat med lång rubrik som inkluderar 'statligt bidrag'."
-  },
-  {
-    "Nyckeltal": "Fordringar felaktig arbetslöshetsersättning",
+    "Nyckeltal": "Medlemsavgifter",
     "Alternativa benämningar": [],
-    "Beskrivning": "Tillgång som uppstår när a-kassan har ett krav på återbetalning från medlemmar som fått för mycket ersättning",
-    "Formel": "",
-    "Grupp": "📊 Balansposter",
-    "Specifika instruktioner": "Benämns ibland som 'felaktigt utbetald ersättning'. Leta i tillgångsdelen av balansräkning eller not kring fordringar."
+    "Beskrivning": "Intäkter från medlemsavgifter.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Under INTÄKTER."
   },
   {
-    "Nyckeltal": "Fordran källskatt arbetslöshetsersättning",
-    "Alternativa benämningar": [
-      "Källskatt, arbetslöshetsersättning",
-      "Källskatt arbetslöshetsersättning",
-      "källskatt"
-    ],
-    "Beskrivning": "Tillgång som avser innehållen källskatt på utbetald arbetslöshetsersättning",
-    "Formel": "",
-    "Grupp": "📊 Balansposter",
-    "Specifika instruktioner": "Kan vara placerad under övriga fordringar. Skilj mellan skuld och fordran på källskatt."
-  },
-  {
-    "Nyckeltal": "Omsättningstillgångar",
-    "Alternativa benämningar": [
-      "Summa omsättningstillgångar"
-    ],
-    "Beskrivning": "Tillgångar som är avsedda att omsättas inom ett år, exempelvis kassa, kundfordringar och kortfristiga placeringar",
-    "Formel": "",
-    "Grupp": "📊 Balansposter",
-    "Specifika instruktioner": "Sammanställning av kortfristiga tillgångar. Leta efter tydligt 'Summa omsättningstillgångar' i balansräkningen."
-  },
-  {
-    "Nyckeltal": "Skulder",
-    "Alternativa benämningar": [
-      "Summa skulder",
-      "Summa kortfristiga skulder",
-      "Summa avsättningar och skulder"
-    ],
-    "Beskrivning": "Summan av föreningens förpliktelser",
-    "Formel": "Summa skulder. Finns bara 'Summa avsättningar och skulder' anges den summan minus summa avsättningar.",
-    "Grupp": "📉 Skulder och åtaganden",
-    "Specifika instruktioner": "Ange skulderna EXKLUSIVE avsättningar, så att beloppet blir jämförbart mellan kassor. Hittas oftast som 'Summa skulder' sist i skuldavsnittet. Viktigt: en del årsredovisningar redovisar ingen egen rad för 'Summa skulder' utan enbart 'Summa avsättningar och skulder'. Ange då den summan MINUS summa avsättningar, och skriv i kommentaren att värdet är beräknat på det sättet samt vilka två belopp du använt. Kontrollera gärna att Eget kapital + Skulder + Utgående avsättningar blir lika med balansomslutningen. Blir summan i stället lika med balansomslutningen redan utan avsättningarna har avsättningarna räknats in i skulderna, vilket är fel här."
-  },
-  {
-    "Nyckeltal": "Skulder arbetslöshetsersättning",
+    "Nyckeltal": "Övriga intäkter",
     "Alternativa benämningar": [],
-    "Beskrivning": "Skulder kopplade till utbetalningar av arbetslöshetsersättning",
-    "Formel": "",
-    "Grupp": "📉 Skulder och åtaganden",
-    "Specifika instruktioner": "Sök i specifika rader där skulder relaterade till arbetslöshetsersättning är uppdelade. Kan ha egen not."
+    "Beskrivning": "Andra intäkter än medlemsavgifter.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Under INTÄKTER. Specificeras i not 1."
   },
   {
-    "Nyckeltal": "Skuld källskatt arbetslöshetsersättning",
-    "Alternativa benämningar": [
-      "Källskatt arbetslöshetsersättning",
-      "källskatt"
-    ],
-    "Beskrivning": "Skuld avseende källskatt som ska vidarebefordras till Skatteverket",
-    "Formel": "",
-    "Grupp": "📉 Skulder och åtaganden",
-    "Specifika instruktioner": "Liknar posten om fordran källskatt, men är en skuld. Leta under 'Skulder' eller 'Övriga skulder'."
+    "Nyckeltal": "Summa intäkter",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Summan av rörelsens intäkter.",
+    "Grupp": "📈 Resultaträkning",
+    "Delposter": {
+      "Medlemsavgifter": 1,
+      "Övriga intäkter": 1
+    },
+    "Formel": "Medlemsavgifter + Övriga intäkter",
+    "Specifika instruktioner": "Återfinns i resultaträkningen."
   },
   {
-    "Nyckeltal": "Eget kapital",
+    "Nyckeltal": "Personalkostnader",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Kostnader för personal.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Anges som ett positivt belopp. Specificeras i not 2."
+  },
+  {
+    "Nyckeltal": "Övriga externa kostnader",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Externa administrationskostnader.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Anges som ett positivt belopp. Specificeras i not 3. Förväxla inte med posten med samma namn i not 3, som är en delpost."
+  },
+  {
+    "Nyckeltal": "Avskrivningar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Avskrivningar på anläggningstillgångar.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Anges som ett positivt belopp."
+  },
+  {
+    "Nyckeltal": "Summa administrationskostnader",
     "Alternativa benämningar": [
-      "Summa eget kapital"
+      "Administrationskostnader"
     ],
-    "Beskrivning": "Skillnaden mellan tillgångar och skulder",
-    "Formel": "Från balansräkning",
-    "Grupp": "📊 Balansposter",
-    "Specifika instruktioner": "Hämtas ur balansräkningen, ibland rubricerat som 'Summa eget kapital'. Blanda inte in skulder."
+    "Beskrivning": "Summan av administrationskostnaderna.",
+    "Grupp": "📈 Resultaträkning",
+    "Delposter": {
+      "Personalkostnader": 1,
+      "Övriga externa kostnader": 1,
+      "Avskrivningar": 1
+    },
+    "Formel": "Personalkostnader + Övriga externa kostnader + Avskrivningar",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Anges som ett positivt belopp."
+  },
+  {
+    "Nyckeltal": "Resultat före avgifter till staten",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Intäkter minus administrationskostnader.",
+    "Grupp": "📈 Resultaträkning",
+    "Delposter": {
+      "Summa intäkter": 1,
+      "Summa administrationskostnader": -1
+    },
+    "Formel": "Summa intäkter - Summa administrationskostnader",
+    "Specifika instruktioner": "Återfinns i resultaträkningen."
   },
   {
     "Nyckeltal": "Finansieringsavgift",
-    "Alternativa benämningar": [
-      "Summa avgifter till staten"
-    ],
-    "Beskrivning": "Avgift för finansiering av arbetslöshetsersättning",
-    "Formel": "",
-    "Grupp": "💸 Kostnader",
-    "Specifika instruktioner": "Benämns ofta som 'avgifter till staten' eller 'finansieringsavgifter'. Återfinns i resultaträkningen."
-  },
-  {
-    "Nyckeltal": "Administrationskostnader",
-    "Alternativa benämningar": [
-      "Summa administrationskostnader"
-    ],
-    "Beskrivning": "Kostnader för administration",
-    "Formel": "",
-    "Grupp": "💸 Kostnader",
-    "Specifika instruktioner": "Återfinns i resultaträkningen. Kan vara uppdelad i delposter – summera vid behov."
-  },
-  {
-    "Nyckeltal": "Kassa och bank",
     "Alternativa benämningar": [],
-    "Beskrivning": "Kassa och bank",
-    "Formel": "Från balansräkning",
-    "Grupp": "💼 Likviditet och intäkter",
-    "Specifika instruktioner": "Om både 'kassa' och 'bank' finns, summera dem. Återfinns bland omsättningstillgångar."
+    "Beskrivning": "Avgift till staten.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Under AVGIFTER TILL STATEN. Anges som ett positivt belopp."
   },
   {
-    "Nyckeltal": "Kortfristiga placeringar",
+    "Nyckeltal": "Summa avgifter till staten",
     "Alternativa benämningar": [],
-    "Beskrivning": "Placeringar som förfaller inom ett år",
-    "Formel": "",
-    "Grupp": "💼 Likviditet och intäkter",
-    "Specifika instruktioner": "Placeringspost i balansräkningen. Kan stå som 'värdepappersinnehav' eller 'finansiella placeringar'."
+    "Beskrivning": "Summan av avgifterna till staten.",
+    "Grupp": "📈 Resultaträkning",
+    "Delposter": {
+      "Finansieringsavgift": 1
+    },
+    "Formel": "Finansieringsavgift",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Anges som ett positivt belopp."
   },
   {
-    "Nyckeltal": "Utgående avsättningar",
-    "Alternativa benämningar": [
-      "Summa avsättningar",
-      "Utgående avsättningar felaktig ersättning",
-      "Redovisade avsättningar"
-    ],
-    "Beskrivning": "Skulder av osäker storlek eller förfallotidpunkt, t.ex. för framtida kostnader",
-    "Formel": "",
-    "Grupp": "🗃 Övriga uppgifter från årsredovisningen",
-    "Specifika instruktioner": "Förekommer ofta som separat not. Välj posten som summerar avsättningarna. Skilj från övriga skulder."
-  },
-  {
-    "Nyckeltal": "Eftergift",
-    "Alternativa benämningar": [
-      "Årets eftergiftsbeslut"
-    ],
-    "Beskrivning": "Avstående från krav på återbetalning, vanligtvis kopplat till tidigare felaktigt utbetald ersättning",
-    "Formel": "",
-    "Grupp": "🗃 Övriga uppgifter från årsredovisningen",
-    "Specifika instruktioner": "Kan stå som 'Årets eftergiftsbeslut'. Även om beloppet är negativt (t.ex. -1 027), tolkas det som ett positivt eftergivet belopp."
-  },
-  {
-    "Nyckeltal": "Osäkra fordringar",
+    "Nyckeltal": "Resultat före finansiella poster",
     "Alternativa benämningar": [],
-    "Beskrivning": "Fordringar där det finns tveksamhet kring om de kommer att bli betalda",
-    "Formel": "",
-    "Grupp": "🗃 Övriga uppgifter från årsredovisningen",
-    "Specifika instruktioner": "Benämns ibland som 'värderegleringar' eller 'osäkra kundfordringar'. Finns ofta som underpost i fordringar."
+    "Beskrivning": "Resultat efter avgifter till staten.",
+    "Grupp": "📈 Resultaträkning",
+    "Delposter": {
+      "Resultat före avgifter till staten": 1,
+      "Summa avgifter till staten": -1
+    },
+    "Formel": "Resultat före avgifter till staten - Summa avgifter till staten",
+    "Specifika instruktioner": "Återfinns i resultaträkningen."
   },
   {
-    "Nyckeltal": "Medlemsavgiftsintäkter",
-    "Alternativa benämningar": [
-      "Medlemsavgifter"
-    ],
-    "Beskrivning": "Intäkter från medlemmars avgifter till a-kassan",
-    "Formel": "",
-    "Grupp": "🗃 Övriga uppgifter från årsredovisningen",
-    "Specifika instruktioner": "Benämns ibland bara 'Medlemsavgifter'. Hittas i resultaträkningen bland intäkter."
+    "Nyckeltal": "Finansiella intäkter",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Ränteintäkter och liknande.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Specificeras i not 4."
+  },
+  {
+    "Nyckeltal": "Finansiella kostnader",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Räntekostnader och liknande.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Anges som ett positivt belopp."
   },
   {
     "Nyckeltal": "Summa finansiella poster",
     "Alternativa benämningar": [],
-    "Beskrivning": "Netto av ränteintäkter, räntekostnader och andra finansiella intäkter/kostnader",
-    "Formel": "",
-    "Grupp": "🗃 Övriga uppgifter från årsredovisningen",
-    "Specifika instruktioner": "Ofta summering av flera ränteintäkter/kostnader. Hittas i slutet av sektionen för finansiella poster i resultaträkningen."
+    "Beskrivning": "Netto av finansiella intäkter och kostnader.",
+    "Grupp": "📈 Resultaträkning",
+    "Delposter": {
+      "Finansiella intäkter": 1,
+      "Finansiella kostnader": -1
+    },
+    "Formel": "Finansiella intäkter - Finansiella kostnader",
+    "Specifika instruktioner": "Återfinns i resultaträkningen."
+  },
+  {
+    "Nyckeltal": "Resultat före poster arbetslöshetsförsäkringen",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Resultat innan försäkringsposterna.",
+    "Grupp": "📈 Resultaträkning",
+    "Delposter": {
+      "Resultat före finansiella poster": 1,
+      "Summa finansiella poster": 1
+    },
+    "Formel": "Resultat före finansiella poster + Summa finansiella poster",
+    "Specifika instruktioner": "Återfinns i resultaträkningen."
+  },
+  {
+    "Nyckeltal": "Statligt bidrag till arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Statsbidrag som finansierar utbetald ersättning.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Under POSTER ARBETSLÖSHETSFÖRSÄKRINGEN. Specificeras i not 5."
+  },
+  {
+    "Nyckeltal": "Kostnad arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Utbetald arbetslöshetsersättning.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Anges som ett positivt belopp. Specificeras i not 6."
+  },
+  {
+    "Nyckeltal": "Kostnad ej statsbidragsberättigad arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Ersättning som inte täcks av statsbidrag.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen. Anges som ett positivt belopp."
+  },
+  {
+    "Nyckeltal": "Summa poster arbetslöshetsförsäkringen",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Netto av försäkringsposterna.",
+    "Grupp": "📈 Resultaträkning",
+    "Delposter": {
+      "Statligt bidrag till arbetslöshetsersättning": 1,
+      "Kostnad arbetslöshetsersättning": -1,
+      "Kostnad ej statsbidragsberättigad arbetslöshetsersättning": -1
+    },
+    "Formel": "Statligt bidrag till arbetslöshetsersättning - Kostnad arbetslöshetsersättning - Kostnad ej statsbidragsberättigad arbetslöshetsersättning",
+    "Specifika instruktioner": "Återfinns i resultaträkningen."
+  },
+  {
+    "Nyckeltal": "Årets resultat",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Årets resultat.",
+    "Grupp": "📈 Resultaträkning",
+    "Specifika instruktioner": "Återfinns sist i resultaträkningen och även i balansräkningen under EGET KAPITAL. Ange samma belopp oavsett var det hämtas."
+  },
+  {
+    "Nyckeltal": "Immateriella anläggningstillgångar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Immateriella tillgångar.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Materiella anläggningstillgångar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Materiella tillgångar.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Andra långfristiga värdepappersinnehav",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Delpost under finansiella anläggningstillgångar.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Detta är en ANLÄGGNINGStillgång och får inte förväxlas med Övriga kortfristiga placeringar."
+  },
+  {
+    "Nyckeltal": "Finansiella anläggningstillgångar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Summan av de finansiella anläggningstillgångarna.",
+    "Grupp": "📊 Balansräkning",
+    "Delposter": {
+      "Andra långfristiga värdepappersinnehav": 1
+    },
+    "Formel": "Andra långfristiga värdepappersinnehav",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Redovisar kassan bara raden 'Andra långfristiga värdepappersinnehav' är beloppen desamma."
+  },
+  {
+    "Nyckeltal": "Summa anläggningstillgångar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Summan av anläggningstillgångarna.",
+    "Grupp": "📊 Balansräkning",
+    "Delposter": {
+      "Immateriella anläggningstillgångar": 1,
+      "Materiella anläggningstillgångar": 1,
+      "Finansiella anläggningstillgångar": 1
+    },
+    "Formel": "Immateriella anläggningstillgångar + Materiella anläggningstillgångar + Finansiella anläggningstillgångar",
+    "Specifika instruktioner": "Återfinns i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Fordringar statligt bidrag till arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Fordran på staten avseende utbetald ersättning.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under FORDRINGAR."
+  },
+  {
+    "Nyckeltal": "Fordringar felaktig arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Fordran avseende felaktigt utbetald ersättning.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under FORDRINGAR. Specificeras i not 7."
+  },
+  {
+    "Nyckeltal": "Fordringar ränta återkrav felaktig arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Upplupen ränta på återkrav.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under FORDRINGAR."
+  },
+  {
+    "Nyckeltal": "Fordringar medlemsavgift",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Fordran avseende medlemsavgifter.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under FORDRINGAR."
+  },
+  {
+    "Nyckeltal": "Övriga fordringar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Andra fordringar.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under FORDRINGAR. Specificeras i not 8. Detta är balansräkningens totalpost, inte delposten med samma namn i not 8."
+  },
+  {
+    "Nyckeltal": "Förutbetalda kostnader och upplupna intäkter",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Interimsfordringar.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under FORDRINGAR."
+  },
+  {
+    "Nyckeltal": "Övriga kortfristiga placeringar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Kortfristiga placeringar.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under KORTFRISTIGA PLACERINGAR. Saknas posten, eller finns rubriken utan belopp, ska nyckeltalet utelämnas. Hämta aldrig beloppet från Andra långfristiga värdepappersinnehav eller från Kassa och bank."
+  },
+  {
+    "Nyckeltal": "Kassa och bank",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Likvida medel.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under OMSÄTTNINGSTILLGÅNGAR."
+  },
+  {
+    "Nyckeltal": "Summa omsättningstillgångar",
+    "Alternativa benämningar": [
+      "Omsättningstillgångar"
+    ],
+    "Beskrivning": "Summan av omsättningstillgångarna.",
+    "Grupp": "📊 Balansräkning",
+    "Delposter": {
+      "Fordringar statligt bidrag till arbetslöshetsersättning": 1,
+      "Fordringar felaktig arbetslöshetsersättning": 1,
+      "Fordringar ränta återkrav felaktig arbetslöshetsersättning": 1,
+      "Fordringar medlemsavgift": 1,
+      "Övriga fordringar": 1,
+      "Förutbetalda kostnader och upplupna intäkter": 1,
+      "Övriga kortfristiga placeringar": 1,
+      "Kassa och bank": 1
+    },
+    "Formel": "Fordringar statligt bidrag till arbetslöshetsersättning + Fordringar felaktig arbetslöshetsersättning + Fordringar ränta återkrav felaktig arbetslöshetsersättning + Fordringar medlemsavgift + Övriga fordringar + Förutbetalda kostnader och upplupna intäkter + Övriga kortfristiga placeringar + Kassa och bank",
+    "Specifika instruktioner": "Återfinns i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Summa tillgångar",
+    "Alternativa benämningar": [
+      "Balansomslutning"
+    ],
+    "Beskrivning": "Balansomslutning, tillgångssidan.",
+    "Grupp": "📊 Balansräkning",
+    "Delposter": {
+      "Summa anläggningstillgångar": 1,
+      "Summa omsättningstillgångar": 1
+    },
+    "Formel": "Summa anläggningstillgångar + Summa omsättningstillgångar",
+    "Specifika instruktioner": "Återfinns i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Eget kapital vid räkenskapsårets början",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Ingående eget kapital.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under EGET KAPITAL."
+  },
+  {
+    "Nyckeltal": "Summa eget kapital",
+    "Alternativa benämningar": [
+      "Eget kapital"
+    ],
+    "Beskrivning": "Utgående eget kapital.",
+    "Grupp": "📊 Balansräkning",
+    "Delposter": {
+      "Eget kapital vid räkenskapsårets början": 1,
+      "Årets resultat": 1
+    },
+    "Formel": "Eget kapital vid räkenskapsårets början + Årets resultat",
+    "Specifika instruktioner": "Återfinns i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Avsättningar felaktig arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Avsättning för felaktigt utbetald ersättning.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under AVSÄTTNINGAR. Specificeras i not 9."
+  },
+  {
+    "Nyckeltal": "Summa avsättningar",
+    "Alternativa benämningar": [
+      "Utgående avsättningar"
+    ],
+    "Beskrivning": "Summan av avsättningarna.",
+    "Grupp": "📊 Balansräkning",
+    "Delposter": {
+      "Avsättningar felaktig arbetslöshetsersättning": 1
+    },
+    "Formel": "Avsättningar felaktig arbetslöshetsersättning",
+    "Specifika instruktioner": "Återfinns i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Skulder arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Skuld avseende ersättning.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under SKULDER."
+  },
+  {
+    "Nyckeltal": "Skulder finansieringsavgift",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Skuld avseende finansieringsavgift.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under SKULDER."
+  },
+  {
+    "Nyckeltal": "Leverantörsskulder",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Skulder till leverantörer.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under SKULDER."
+  },
+  {
+    "Nyckeltal": "Övriga skulder",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Andra skulder.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under SKULDER. Specificeras i not 10. Detta är balansräkningens totalpost, inte delposten med samma namn i not 10."
+  },
+  {
+    "Nyckeltal": "Upplupna kostnader och förutbetalda intäkter",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Interimsskulder.",
+    "Grupp": "📊 Balansräkning",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Under SKULDER."
+  },
+  {
+    "Nyckeltal": "Summa skulder",
+    "Alternativa benämningar": [
+      "Skulder"
+    ],
+    "Beskrivning": "Summan av skulderna, exklusive avsättningar.",
+    "Grupp": "📊 Balansräkning",
+    "Delposter": {
+      "Skulder arbetslöshetsersättning": 1,
+      "Skulder finansieringsavgift": 1,
+      "Leverantörsskulder": 1,
+      "Övriga skulder": 1,
+      "Upplupna kostnader och förutbetalda intäkter": 1
+    },
+    "Formel": "Skulder arbetslöshetsersättning + Skulder finansieringsavgift + Leverantörsskulder + Övriga skulder + Upplupna kostnader och förutbetalda intäkter",
+    "Specifika instruktioner": "Återfinns i balansräkningen. Ange skulderna EXKLUSIVE avsättningar. Redovisar dokumentet bara 'Summa avsättningar och skulder', ange den summan minus summa avsättningar och skriv i kommentaren hur beloppet räknats fram."
+  },
+  {
+    "Nyckeltal": "Summa eget kapital, avsättningar och skulder",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Balansomslutning, skuldsidan.",
+    "Grupp": "📊 Balansräkning",
+    "Delposter": {
+      "Summa eget kapital": 1,
+      "Summa avsättningar": 1,
+      "Summa skulder": 1
+    },
+    "Formel": "Summa eget kapital + Summa avsättningar + Summa skulder",
+    "Specifika instruktioner": "Återfinns i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Not 1: Annat statligt bidrag",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Annat statligt bidrag enligt Not 1.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 1 (Övriga intäkter) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 1: Summa",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Summa enligt Not 1.",
+    "Grupp": "🗒 Noter",
+    "Delposter": {
+      "Not 1: Annat statligt bidrag": 1
+    },
+    "Formel": "Not 1: Annat statligt bidrag",
+    "Specifika instruktioner": "Summeringsraden i Not 1 (Övriga intäkter). Rapportera raden som den står i dokumentet; räkna inte om den."
+  },
+  {
+    "Nyckeltal": "Not 2: Medelantal anställda kvinnor",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Medelantal anställda kvinnor enligt Not 2.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 2 (Personalkostnader) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 2: Medelantal anställda män",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Medelantal anställda män enligt Not 2.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 2 (Personalkostnader) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 2: Summa",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Summa enligt Not 2.",
+    "Grupp": "🗒 Noter",
+    "Delposter": {
+      "Not 2: Medelantal anställda kvinnor": 1,
+      "Not 2: Medelantal anställda män": 1
+    },
+    "Formel": "Not 2: Medelantal anställda kvinnor + Not 2: Medelantal anställda män",
+    "Specifika instruktioner": "Summeringsraden i Not 2 (Personalkostnader). Rapportera raden som den står i dokumentet; räkna inte om den."
+  },
+  {
+    "Nyckeltal": "Not 3: Befarade och konstaterade förluster medlemsavgifter",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Befarade och konstaterade förluster medlemsavgifter enligt Not 3.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 3 (Övriga externa kostnader) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 3: Övriga externa kostnader",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Övriga externa kostnader enligt Not 3.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 3 (Övriga externa kostnader) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 3: Summa",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Summa enligt Not 3.",
+    "Grupp": "🗒 Noter",
+    "Delposter": {
+      "Not 3: Befarade och konstaterade förluster medlemsavgifter": 1,
+      "Not 3: Övriga externa kostnader": 1
+    },
+    "Formel": "Not 3: Befarade och konstaterade förluster medlemsavgifter + Not 3: Övriga externa kostnader",
+    "Specifika instruktioner": "Summeringsraden i Not 3 (Övriga externa kostnader). Rapportera raden som den står i dokumentet; räkna inte om den."
+  },
+  {
+    "Nyckeltal": "Not 4: Ränta på återkrav felaktig arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Ränta på återkrav felaktig arbetslöshetsersättning enligt Not 4.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 4 (Finansiella intäkter) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 4: Övriga ränteintäkter",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Övriga ränteintäkter enligt Not 4.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 4 (Finansiella intäkter) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 4: Summa",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Summa enligt Not 4.",
+    "Grupp": "🗒 Noter",
+    "Delposter": {
+      "Not 4: Ränta på återkrav felaktig arbetslöshetsersättning": 1,
+      "Not 4: Övriga ränteintäkter": 1
+    },
+    "Formel": "Not 4: Ränta på återkrav felaktig arbetslöshetsersättning + Not 4: Övriga ränteintäkter",
+    "Specifika instruktioner": "Summeringsraden i Not 4 (Finansiella intäkter). Rapportera raden som den står i dokumentet; räkna inte om den."
+  },
+  {
+    "Nyckeltal": "Not 5: Statligt bidrag till arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Statligt bidrag till arbetslöshetsersättning enligt Not 5.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 5 (Statligt bidrag till arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 5: Periodiserat statligt bidrag till arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Periodiserat statligt bidrag till arbetslöshetsersättning enligt Not 5.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 5 (Statligt bidrag till arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 5: Återbetald arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Återbetald arbetslöshetsersättning enligt Not 5.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 5 (Statligt bidrag till arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 5: Förändring värdereglering avsättning felaktig arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Förändring värdereglering avsättning felaktig arbetslöshetsersättning enligt Not 5.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 5 (Statligt bidrag till arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 5: Summa",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Summa enligt Not 5.",
+    "Grupp": "🗒 Noter",
+    "Delposter": {
+      "Not 5: Statligt bidrag till arbetslöshetsersättning": 1,
+      "Not 5: Periodiserat statligt bidrag till arbetslöshetsersättning": 1,
+      "Not 5: Återbetald arbetslöshetsersättning": 1,
+      "Not 5: Förändring värdereglering avsättning felaktig arbetslöshetsersättning": 1
+    },
+    "Formel": "Not 5: Statligt bidrag till arbetslöshetsersättning + Not 5: Periodiserat statligt bidrag till arbetslöshetsersättning + Not 5: Återbetald arbetslöshetsersättning + Not 5: Förändring värdereglering avsättning felaktig arbetslöshetsersättning",
+    "Specifika instruktioner": "Summeringsraden i Not 5 (Statligt bidrag till arbetslöshetsersättning). Rapportera raden som den står i dokumentet; räkna inte om den."
+  },
+  {
+    "Nyckeltal": "Not 6: Arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Arbetslöshetsersättning enligt Not 6.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 6 (Kostnad arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 6: Periodiserad arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Periodiserad arbetslöshetsersättning enligt Not 6.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 6 (Kostnad arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 6: Återbetald arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Återbetald arbetslöshetsersättning enligt Not 6.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 6 (Kostnad arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 6: Förändring värdereglering fordran felaktig arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Förändring värdereglering fordran felaktig arbetslöshetsersättning enligt Not 6.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 6 (Kostnad arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 6: Summa",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Summa enligt Not 6.",
+    "Grupp": "🗒 Noter",
+    "Delposter": {
+      "Not 6: Arbetslöshetsersättning": 1,
+      "Not 6: Periodiserad arbetslöshetsersättning": 1,
+      "Not 6: Återbetald arbetslöshetsersättning": 1,
+      "Not 6: Förändring värdereglering fordran felaktig arbetslöshetsersättning": 1
+    },
+    "Formel": "Not 6: Arbetslöshetsersättning + Not 6: Periodiserad arbetslöshetsersättning + Not 6: Återbetald arbetslöshetsersättning + Not 6: Förändring värdereglering fordran felaktig arbetslöshetsersättning",
+    "Specifika instruktioner": "Summeringsraden i Not 6 (Kostnad arbetslöshetsersättning). Rapportera raden som den står i dokumentet; räkna inte om den."
+  },
+  {
+    "Nyckeltal": "Not 7: Ingående fordringar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Ingående fordringar enligt Not 7.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 7 (Fordringar felaktig arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 7: Årets tillkommande fordringar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Årets tillkommande fordringar enligt Not 7.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 7 (Fordringar felaktig arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 7: Årets inbetalningar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Årets inbetalningar enligt Not 7.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 7 (Fordringar felaktig arbetslöshetsersättning) i årsredovisningens noter. Posten minskar saldot och ska anges som ett NEGATIVT belopp, även om dokumentet skriver den utan minustecken. Osäkra fordringar redovisas enligt svensk praxis som ett avdrag i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Not 7: Årets avstående från återkrav",
+    "Alternativa benämningar": [
+      "Eftergift",
+      "Årets eftergift",
+      "Eftergivna belopp"
+    ],
+    "Beskrivning": "Årets avstående från återkrav enligt Not 7.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 7 (Fordringar felaktig arbetslöshetsersättning) i årsredovisningens noter. Posten minskar saldot och ska anges som ett NEGATIVT belopp, även om dokumentet skriver den utan minustecken. Osäkra fordringar redovisas enligt svensk praxis som ett avdrag i balansräkningen. Vissa kassor kallar posten 'eftergift'. Begreppet är utfasat men ska tolkas som synonymt med avstående från återkrav."
+  },
+  {
+    "Nyckeltal": "Not 7: Osäkra fordringar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Osäkra fordringar enligt Not 7.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 7 (Fordringar felaktig arbetslöshetsersättning) i årsredovisningens noter. Posten minskar saldot och ska anges som ett NEGATIVT belopp, även om dokumentet skriver den utan minustecken. Osäkra fordringar redovisas enligt svensk praxis som ett avdrag i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Not 7: Utgående fordringar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Utgående fordringar enligt Not 7.",
+    "Grupp": "🗒 Noter",
+    "Delposter": {
+      "Not 7: Ingående fordringar": 1,
+      "Not 7: Årets tillkommande fordringar": 1,
+      "Not 7: Årets inbetalningar": 1,
+      "Not 7: Årets avstående från återkrav": 1,
+      "Not 7: Osäkra fordringar": 1
+    },
+    "Formel": "Not 7: Ingående fordringar + Not 7: Årets tillkommande fordringar + Not 7: Årets inbetalningar + Not 7: Årets avstående från återkrav + Not 7: Osäkra fordringar",
+    "Specifika instruktioner": "Summeringsraden i Not 7 (Fordringar felaktig arbetslöshetsersättning). Rapportera raden som den står i dokumentet; räkna inte om den."
+  },
+  {
+    "Nyckeltal": "Not 8: Källskatt arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Källskatt arbetslöshetsersättning enligt Not 8.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 8 (Övriga fordringar) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 8: Övriga fordringar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Övriga fordringar enligt Not 8.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 8 (Övriga fordringar) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 8: Summa",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Summa enligt Not 8.",
+    "Grupp": "🗒 Noter",
+    "Delposter": {
+      "Not 8: Källskatt arbetslöshetsersättning": 1,
+      "Not 8: Övriga fordringar": 1
+    },
+    "Formel": "Not 8: Källskatt arbetslöshetsersättning + Not 8: Övriga fordringar",
+    "Specifika instruktioner": "Summeringsraden i Not 8 (Övriga fordringar). Rapportera raden som den står i dokumentet; räkna inte om den."
+  },
+  {
+    "Nyckeltal": "Not 9: Ingående avsättningar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Ingående avsättningar enligt Not 9.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 9 (Avsättning felaktig arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 9: Årets tillkommande avsättningar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Årets tillkommande avsättningar enligt Not 9.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 9 (Avsättning felaktig arbetslöshetsersättning) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 9: Årets betalningar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Årets betalningar enligt Not 9.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 9 (Avsättning felaktig arbetslöshetsersättning) i årsredovisningens noter. Posten minskar saldot och ska anges som ett NEGATIVT belopp, även om dokumentet skriver den utan minustecken. Osäkra fordringar redovisas enligt svensk praxis som ett avdrag i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Not 9: Årets avstående från återkrav",
+    "Alternativa benämningar": [
+      "Eftergift",
+      "Årets eftergift",
+      "Eftergivna belopp"
+    ],
+    "Beskrivning": "Årets avstående från återkrav enligt Not 9.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 9 (Avsättning felaktig arbetslöshetsersättning) i årsredovisningens noter. Posten minskar saldot och ska anges som ett NEGATIVT belopp, även om dokumentet skriver den utan minustecken. Osäkra fordringar redovisas enligt svensk praxis som ett avdrag i balansräkningen. Vissa kassor kallar posten 'eftergift'. Begreppet är utfasat men ska tolkas som synonymt med avstående från återkrav."
+  },
+  {
+    "Nyckeltal": "Not 9: Justering till följd av osäkra fordringar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Justering till följd av osäkra fordringar enligt Not 9.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 9 (Avsättning felaktig arbetslöshetsersättning) i årsredovisningens noter. Posten minskar saldot och ska anges som ett NEGATIVT belopp, även om dokumentet skriver den utan minustecken. Osäkra fordringar redovisas enligt svensk praxis som ett avdrag i balansräkningen."
+  },
+  {
+    "Nyckeltal": "Not 9: Utgående avsättningar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Utgående avsättningar enligt Not 9.",
+    "Grupp": "🗒 Noter",
+    "Delposter": {
+      "Not 9: Ingående avsättningar": 1,
+      "Not 9: Årets tillkommande avsättningar": 1,
+      "Not 9: Årets betalningar": 1,
+      "Not 9: Årets avstående från återkrav": 1,
+      "Not 9: Justering till följd av osäkra fordringar": 1
+    },
+    "Formel": "Not 9: Ingående avsättningar + Not 9: Årets tillkommande avsättningar + Not 9: Årets betalningar + Not 9: Årets avstående från återkrav + Not 9: Justering till följd av osäkra fordringar",
+    "Specifika instruktioner": "Summeringsraden i Not 9 (Avsättning felaktig arbetslöshetsersättning). Rapportera raden som den står i dokumentet; räkna inte om den."
+  },
+  {
+    "Nyckeltal": "Not 10: Källskatt arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Källskatt arbetslöshetsersättning enligt Not 10.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 10 (Övriga skulder) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 10: Övriga skulder",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Övriga skulder enligt Not 10.",
+    "Grupp": "🗒 Noter",
+    "Specifika instruktioner": "Delpost i Not 10 (Övriga skulder) i årsredovisningens noter."
+  },
+  {
+    "Nyckeltal": "Not 10: Summa",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Summa enligt Not 10.",
+    "Grupp": "🗒 Noter",
+    "Delposter": {
+      "Not 10: Källskatt arbetslöshetsersättning": 1,
+      "Not 10: Övriga skulder": 1
+    },
+    "Formel": "Not 10: Källskatt arbetslöshetsersättning + Not 10: Övriga skulder",
+    "Specifika instruktioner": "Summeringsraden i Not 10 (Övriga skulder). Rapportera raden som den står i dokumentet; räkna inte om den."
+  },
+  {
+    "Nyckeltal": "Totalt antal medlemmar 31 december",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: totalt antal medlemmar 31 december.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under MEDLEMMAR. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal medlemmar varav män",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal medlemmar varav män.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under MEDLEMMAR, raden 'varav män'. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal medlemmar varav kvinnor",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal medlemmar varav kvinnor.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under MEDLEMMAR, raden 'varav kvinnor'. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal nytillkomna medlemmar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal nytillkomna medlemmar.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under MEDLEMMAR. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal som begärt utträde",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal som begärt utträde.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under MEDLEMMAR. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal som utträtt pga bristande betalning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal som utträtt pga bristande betalning.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under MEDLEMMAR. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal uteslutna medlemmar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal uteslutna medlemmar.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under MEDLEMMAR. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Medlemsavgift per månad 31 december",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: medlemsavgift per månad 31 december.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "kronor",
+    "Specifika instruktioner": "Under MEDLEMSAVGIFT. Ange beloppet i kronor per månad, inte tusental."
+  },
+  {
+    "Nyckeltal": "Utbetald arbetslöshetsersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: utbetald arbetslöshetsersättning.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "belopp",
+    "Specifika instruktioner": "Under ARBETSLÖSHETSERSÄTTNING."
+  },
+  {
+    "Nyckeltal": "Antal ersättningsdagar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal ersättningsdagar.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under ARBETSLÖSHETSERSÄTTNING. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal medlemmar som fått ersättning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal medlemmar som fått ersättning.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under ARBETSLÖSHETSERSÄTTNING. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal beslut underrättelser",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal beslut underrättelser.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under UNDERRÄTTELSER, raden 'Antal beslut'. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal sanktion",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal sanktion.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under UNDERRÄTTELSER. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal beslut omprövning",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal beslut omprövning.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under OMPRÖVNINGAR, ÖVERKLAGAN, DOMAR. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal beslut omprövning med ändring",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal beslut omprövning med ändring.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under OMPRÖVNINGAR, ÖVERKLAGAN, DOMAR. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal överklagan",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal överklagan.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under OMPRÖVNINGAR, ÖVERKLAGAN, DOMAR. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal domar",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal domar.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under OMPRÖVNINGAR, ÖVERKLAGAN, DOMAR. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Antal beslut återkrav",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal beslut återkrav.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under ÅTERKRAV, raden 'Antal beslut'. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Totalt belopp återkrav",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: totalt belopp återkrav.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "belopp",
+    "Specifika instruktioner": "Under ÅTERKRAV, raden 'Totalt belopp'."
+  },
+  {
+    "Nyckeltal": "Antal beslut återkrav inlämnade till Kronofogdemyndigheten",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal beslut återkrav inlämnade till kronofogdemyndigheten.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under ÅTERKRAV. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Totalt belopp återkrav inlämnade till Kronofogdemyndigheten",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: totalt belopp återkrav inlämnade till kronofogdemyndigheten.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "belopp",
+    "Specifika instruktioner": "Under ÅTERKRAV."
+  },
+  {
+    "Nyckeltal": "Antal anmälningar till Polismyndigheten",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: antal anmälningar till polismyndigheten.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "antal",
+    "Specifika instruktioner": "Under POLISANMÄLNINGAR. Uppgiften är ett antal, inte ett belopp."
+  },
+  {
+    "Nyckeltal": "Totalt belopp anmälningar till Polismyndigheten",
+    "Alternativa benämningar": [],
+    "Beskrivning": "Uppgift ur bilaga 2: totalt belopp anmälningar till polismyndigheten.",
+    "Grupp": "👥 Statistik (bilaga 2)",
+    "Enhet": "belopp",
+    "Specifika instruktioner": "Under POLISANMÄLNINGAR."
   }
 ]

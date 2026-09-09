@@ -29,12 +29,12 @@ def test_schema_is_strict_and_closed():
     assert item["additionalProperties"] is False
     assert set(item["required"]) == set(item["properties"])
     assert item["properties"][schema.FIELD_NAME]["enum"] == names
-    assert len(names) == 18
+    assert len(names) == 108
 
 
 def test_metric_names_are_enumerated_so_invention_is_impossible():
     names = schema.load_metric_names(METRICS)
-    assert "Balansomslutning" in names
+    assert "Summa tillgångar" in names
     assert "Hittepå-nyckeltal" not in names
 
 
@@ -44,7 +44,7 @@ def test_flat_reply_becomes_nested_structure():
         "år": 2023,
         "nyckeltal": [
             {
-                "namn": "Balansomslutning",
+                "namn": "Summa tillgångar",
                 "värde": 63853,
                 "källa": "Sida 14 – Balansräkning",
                 "säkerhet": 1.0,
@@ -56,7 +56,7 @@ def test_flat_reply_becomes_nested_structure():
     assert nested == {
         "Livs arbetslöshetskassa": {
             "2023": {
-                "Balansomslutning": {
+                "Summa tillgångar": {
                     "värde": 63853,
                     "källa": "Sida 14 – Balansräkning",
                     "säkerhet": 1.0,
@@ -74,21 +74,21 @@ def test_null_valued_metrics_are_dropped():
         "kassa": "K",
         "år": 2023,
         "nyckeltal": [
-            {"namn": "Balansomslutning", "värde": None, "källa": "saknas",
+            {"namn": "Summa tillgångar", "värde": None, "källa": "saknas",
              "säkerhet": 0.1, "kommentar": "Balansräkningen finns inte i utdraget."},
-            {"namn": "Eget kapital", "värde": 16339, "källa": "Sida 14",
+            {"namn": "Summa eget kapital", "värde": 16339, "källa": "Sida 14",
              "säkerhet": 1.0, "kommentar": "Explicit."},
         ],
     }
     nested = schema.flat_to_nested(payload)
     metrics = nested["K"]["2023"]
-    assert "Balansomslutning" not in metrics
-    assert metrics["Eget kapital"]["värde"] == 16339
+    assert "Summa tillgångar" not in metrics
+    assert metrics["Summa eget kapital"]["värde"] == 16339
 
 
 def test_year_falls_back_when_model_omits_it():
     payload = {"kassa": "K", "år": None,
-               "nyckeltal": [{"namn": "Eget kapital", "värde": 1, "källa": "s",
+               "nyckeltal": [{"namn": "Summa eget kapital", "värde": 1, "källa": "s",
                               "säkerhet": 1, "kommentar": "c"}]}
     assert "2024" in schema.flat_to_nested(payload, fallback_year=2024)["K"]
 
@@ -177,12 +177,12 @@ def test_chunks_are_merged_in_order_not_completion_order():
         # deliberately finish in reverse order
         _time.sleep(0.05 * (total - index))
         order.append(index)
-        return {"K": {"2023": {"Eget kapital": {"värde": index, "källa": "", "säkerhet": 1, "kommentar": "c"}}}}
+        return {"K": {"2023": {"Summa eget kapital": {"värde": index, "källa": "", "säkerhet": 1, "kommentar": "c"}}}}
 
     a._analyse_chunk = fake
     results = a._analyse_chunks(["a", "b", "c", "d"], the_year=2023, model="gpt-4o")
     assert order != sorted(order), "test setup failed to reverse completion order"
-    values = [r["K"]["2023"]["Eget kapital"]["värde"] for r in results]
+    values = [r["K"]["2023"]["Summa eget kapital"]["värde"] for r in results]
     assert values == [0, 1, 2, 3]
 
 
@@ -192,7 +192,7 @@ def test_failed_chunks_do_not_sink_the_batch():
     def fake(index, total, chunk, the_year, model, purpose=None):
         if index == 1:
             return None  # simulates a parse failure or API error
-        return {"K": {"2023": {"Eget kapital": {"värde": index, "källa": "",
+        return {"K": {"2023": {"Summa eget kapital": {"värde": index, "källa": "",
                                                 "säkerhet": 1, "kommentar": "c"}}}}
 
     a._analyse_chunk = fake
@@ -206,6 +206,7 @@ def test_failed_chunks_do_not_sink_the_batch():
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("JBG_JOB_DIR", str(tmp_path / "jobs"))
+    monkeypatch.setenv("JBG_MODEL_ROLES", str(tmp_path / "roles.json"))
     fastapi_testclient = pytest.importorskip("fastapi.testclient")
     import importlib
 

@@ -74,8 +74,8 @@ def test_every_official_and_short_name_resolves_to_itself(resolver):
 
 def test_two_spellings_of_one_fund_are_merged():
     result = {
-        "Journalisternas Arbetslöshetskassa": {"2023": {"Eget kapital": {"värde": 1}}},
-        "Journalisternas arbetslöshetskassa": {"2024": {"Eget kapital": {"värde": 2}}},
+        "Journalisternas Arbetslöshetskassa": {"2023": {"Summa eget kapital": {"värde": 1}}},
+        "Journalisternas arbetslöshetskassa": {"2024": {"Summa eget kapital": {"värde": 2}}},
     }
     merged, unresolved = normalise_result_fund_names(result, KASSOR)
     assert unresolved == []
@@ -103,8 +103,8 @@ def _fund(**metrics):
 
 def test_balanced_balance_sheet_produces_no_findings():
     result = _fund(
-        **{"Balansomslutning": 63853, "Eget kapital": 16339, "Skulder": 42401,
-           "Utgående avsättningar": 5113}
+        **{"Summa tillgångar": 63853, "Summa eget kapital": 16339, "Summa skulder": 42401,
+           "Summa avsättningar": 5113}
     )
     assert validation.validate(result) == []
 
@@ -112,8 +112,8 @@ def test_balanced_balance_sheet_produces_no_findings():
 def test_a_balance_sheet_that_does_not_add_up_is_caught():
     """Neither EK+S nor EK+S+A equals BO, so a figure is genuinely wrong."""
     result = _fund(
-        **{"Balansomslutning": 45776, "Eget kapital": 20000, "Skulder": 20000,
-           "Utgående avsättningar": 2867}
+        **{"Summa tillgångar": 45776, "Summa eget kapital": 20000, "Summa skulder": 20000,
+           "Summa avsättningar": 2867}
     )
     findings = validation.validate(result)
     assert len(findings) == 1
@@ -124,28 +124,43 @@ def test_a_balance_sheet_that_does_not_add_up_is_caught():
 
 def test_rounding_in_tkr_does_not_trip_the_check():
     result = _fund(
-        **{"Balansomslutning": 730143, "Eget kapital": 300000, "Skulder": 430142,
-           "Utgående avsättningar": 0}
+        **{"Summa tillgångar": 730143, "Summa eget kapital": 300000, "Summa skulder": 430142,
+           "Summa avsättningar": 0}
     )
     assert validation.validate(result) == []
 
 
 def test_missing_metrics_skip_the_rule_rather_than_failing_it():
     """The model is told to omit what it cannot find, so absence is normal."""
-    result = _fund(**{"Balansomslutning": 63853, "Eget kapital": 16339})
+    result = _fund(**{"Summa tillgångar": 63853, "Summa eget kapital": 16339})
     assert validation.validate(result) == []
 
 
-def test_impossible_subtotals_are_caught():
-    result = _fund(**{"Omsättningstillgångar": 90000, "Balansomslutning": 63853})
-    assert any("Omsättningstillgångar" in f.message for f in validation.validate(result))
+def test_subtotals_are_checked_from_the_definitions(tmp_path):
+    """The föreskrift states every subtotal, so the arithmetic is data: one
+    generic rule replaces a hand-written check per identity."""
+    built = validation.rules_from_definitions(KEY_DEFS)
+    assert len(built) >= 20
+    names = {r.name for r in built}
+    assert "Delsummering: Summa tillgångar" in names
+    assert "Delsummering: Summa intäkter" in names
 
-    result = _fund(**{"Kassa och bank": 50000, "Omsättningstillgångar": 38976})
-    assert any("Kassa och bank" in f.message for f in validation.validate(result))
+
+def test_a_subtotal_that_does_not_add_up_is_reported():
+    result = _fund(**{"Summa intäkter": 100000, "Medlemsavgifter": 60000,
+                      "Övriga intäkter": 30000})
+    findings = validation.validate(result, KEY_DEFS)
+    assert any("Summa intäkter" in f.message for f in findings)
+
+
+def test_a_correct_subtotal_is_silent():
+    result = _fund(**{"Summa intäkter": 90000, "Medlemsavgifter": 60000,
+                      "Övriga intäkter": 30000})
+    assert validation.validate(result, KEY_DEFS) == []
 
 
 def test_negative_cost_is_flagged_since_the_prompt_asks_for_positives():
-    result = _fund(**{"Administrationskostnader": -58493})
+    result = _fund(**{"Summa administrationskostnader": -58493})
     findings = validation.validate(result)
     assert len(findings) == 1
     assert findings[0].severity == validation.SEVERITY_WARNING
@@ -153,10 +168,10 @@ def test_negative_cost_is_flagged_since_the_prompt_asks_for_positives():
 
 def test_string_values_are_still_checked():
     result = {"K": {"2023": {
-        "Balansomslutning": {"värde": "63 853"},
-        "Eget kapital": {"värde": "16339"},
-        "Skulder": {"värde": "42401"},
-        "Utgående avsättningar": {"värde": "5113"},
+        "Summa tillgångar": {"värde": "63 853"},
+        "Summa eget kapital": {"värde": "16339"},
+        "Summa skulder": {"värde": "42401"},
+        "Summa avsättningar": {"värde": "5113"},
     }}}
     assert validation.validate(result) == []
 
@@ -167,11 +182,11 @@ def test_malformed_result_does_not_raise():
 
 
 def test_findings_index_by_cell():
-    result = _fund(**{"Balansomslutning": 100, "Eget kapital": 1, "Skulder": 1,
-                      "Utgående avsättningar": 1})
+    result = _fund(**{"Summa tillgångar": 100, "Summa eget kapital": 1, "Summa skulder": 1,
+                      "Summa avsättningar": 1})
     index = validation.findings_by_cell(validation.validate(result))
-    assert ("K", "2023", "Balansomslutning") in index
-    assert ("K", "2023", "Skulder") in index
+    assert ("K", "2023", "Summa tillgångar") in index
+    assert ("K", "2023", "Summa skulder") in index
 
 
 # ----------------------------------------------------------------- export
@@ -180,11 +195,11 @@ def sample_json(tmp_path):
     data = {
         "Journalisternas arbetslöshetskassa": {
             "2024": {
-                "Balansomslutning": {
+                "Summa tillgångar": {
                     "värde": 15959, "källa": "Sida 10, Balansräkning",
                     "säkerhet": 1.0, "kommentar": "Summa tillgångar.",
                 },
-                "Eget kapital": {
+                "Summa eget kapital": {
                     "värde": 9000, "källa": "Sida 10",
                     "säkerhet": 0.45, "kommentar": "Osäker tolkning.",
                 },
@@ -232,8 +247,8 @@ def test_excel_shades_by_certainty_and_attaches_notes(sample_json, tmp_path):
     assert ws.cell(row=1, column=2).value == "Journalisternas"
 
     cells = {r[0].value: r for r in ws.iter_rows(min_row=2)}
-    high = cells["Balansomslutning"][1]
-    low = cells["Eget kapital"][1]
+    high = cells["Summa tillgångar"][1]
+    low = cells["Summa eget kapital"][1]
     assert high.fill.start_color.rgb.endswith("C6EFCE")   # high certainty, green
     assert low.fill.start_color.rgb.endswith("FFC7CE")    # low certainty, red
     assert "Summa tillgångar" in high.comment.text
@@ -250,7 +265,7 @@ def test_excel_marks_cells_named_in_a_finding(sample_json, tmp_path):
         rule="Balansräkningen balanserar",
         message="Testanmärkning",
         severity=validation.SEVERITY_ERROR,
-        metrics=["Balansomslutning"],
+        metrics=["Summa tillgångar"],
     )
     out = tmp_path / "out.xlsx"
     JsonConverter(sample_json, include_sources=True).to_excel_by_year(
@@ -260,7 +275,7 @@ def test_excel_marks_cells_named_in_a_finding(sample_json, tmp_path):
     wb = openpyxl.load_workbook(out)
     ws = wb["2024"]
     cells = {r[0].value: r for r in ws.iter_rows(min_row=2)}
-    flagged = cells["Balansomslutning"][1]
+    flagged = cells["Summa tillgångar"][1]
     # the flag colour wins over the certainty colour
     assert flagged.fill.start_color.rgb.endswith("E1BEE7")
     assert "Testanmärkning" in flagged.comment.text
@@ -302,8 +317,8 @@ def test_csv_values_are_not_mangled(sample_json, tmp_path):
     JsonConverter(sample_json, include_sources=True).to_csv(out)
     rows = out.read_text(encoding="utf-8-sig").splitlines()[1:]
     values = {r.split(";")[2]: r.split(";")[3] for r in rows}
-    assert values["Balansomslutning"] == "15959"
-    assert values["Eget kapital"] == "9000"
+    assert values["Summa tillgångar"] == "15959"
+    assert values["Summa eget kapital"] == "9000"
 
 
 def test_dataframe_still_works_when_pandas_is_present(sample_json):
@@ -325,13 +340,13 @@ def flagged_json(tmp_path):
     result = {
         "Journalisternas arbetslöshetskassa": {
             "2024": {
-                "Balansomslutning": {"värde": 45776, "källa": "Sida 15",
+                "Summa tillgångar": {"värde": 45776, "källa": "Sida 15",
                                      "säkerhet": 1.0, "kommentar": "Summa tillgångar."},
-                "Eget kapital": {"värde": 29179, "källa": "Sida 16",
+                "Summa eget kapital": {"värde": 29179, "källa": "Sida 16",
                                  "säkerhet": 1.0, "kommentar": "."},
-                "Skulder": {"värde": 16597, "källa": "Sida 16",
+                "Summa skulder": {"värde": 16597, "källa": "Sida 16",
                             "säkerhet": 1.0, "kommentar": "."},
-                "Utgående avsättningar": {"värde": 2867, "källa": "Not 9",
+                "Summa avsättningar": {"värde": 2867, "källa": "Not 9",
                                           "säkerhet": 0.8, "kommentar": "."},
             }
         }
@@ -365,7 +380,7 @@ def test_csv_names_the_failed_check_per_cell(flagged_json, tmp_path):
 
     flagged = [line for line in lines[1:] if line.rsplit(";", 1)[-1]]
     keys = {line.split(";")[2] for line in flagged}
-    assert keys == {"Balansomslutning", "Eget kapital", "Skulder", "Utgående avsättningar"}
+    assert keys == {"Summa tillgångar", "Summa eget kapital", "Summa skulder", "Summa avsättningar"}
     assert all("Balansräkningen balanserar" in line for line in flagged)
 
 
@@ -378,7 +393,7 @@ def test_unflagged_rows_have_an_empty_validation_column(flagged_json, tmp_path):
     # second fund that is fine and check it stays blank
     data = json.loads(flagged_json.read_text(encoding="utf-8"))
     data["Fastighets arbetslöshetskassa"] = {
-        "2024": {"Balansomslutning": {"värde": 1, "källa": "s", "säkerhet": 1, "kommentar": "."}}
+        "2024": {"Summa tillgångar": {"värde": 1, "källa": "s", "säkerhet": 1, "kommentar": "."}}
     }
     flagged_json.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
@@ -401,10 +416,10 @@ def test_excel_recovers_findings_from_the_result_file(flagged_json, tmp_path):
     wb = openpyxl.load_workbook(out)
     ws = wb["2024"]
     cells = {r[0].value: r[1] for r in ws.iter_rows(min_row=2)}
-    assert cells["Balansomslutning"].fill.start_color.rgb.endswith("E1BEE7")
-    assert "Balansräkningen balanserar" in cells["Balansomslutning"].comment.text
+    assert cells["Summa tillgångar"].fill.start_color.rgb.endswith("E1BEE7")
+    assert "Balansräkningen balanserar" in cells["Summa tillgångar"].comment.text
     # a high-certainty value that is not flagged keeps its own colour
-    assert cells["Eget kapital"].fill.start_color.rgb.endswith("E1BEE7")
+    assert cells["Summa eget kapital"].fill.start_color.rgb.endswith("E1BEE7")
 
 
 # --------------------------------------------------- certainty calibration
@@ -477,12 +492,10 @@ def test_skulder_definition_states_the_exclusive_convention():
     """The prompt has to tell the model what to do when only
     "Summa avsättningar och skulder" is presented."""
     definitions = json.loads(KEY_DEFS.read_text(encoding="utf-8"))
-    skulder = next(d for d in definitions if d["Nyckeltal"] == "Skulder")
+    skulder = next(d for d in definitions if d["Nyckeltal"] == "Summa skulder")
     instructions = skulder["Specifika instruktioner"]
     assert "EXKLUSIVE avsättningar" in instructions
     assert "Summa avsättningar och skulder" in instructions
-    assert "MINUS" in instructions
-    assert "Summa avsättningar och skulder" in skulder["Alternativa benämningar"]
 
 
 # ------------------------------------------------- fund aliases as data
@@ -527,3 +540,138 @@ def test_aliases_live_in_the_register_not_in_code():
 def test_entries_without_aliases_still_work():
     resolver = FundNameResolver(KASSOR)
     assert resolver.short_name("Byggnadsarbetarnas arbetslöshetskassa") == "Byggnadsarbetarnas"
+
+
+# ------------------------------------------- the expanded specification
+def test_metric_names_are_unique():
+    """They are an enum in the response schema. The source document reuses
+    "SUMMA" eight times, plus "Övriga fordringar", "Övriga skulder",
+    "Övriga externa kostnader", "Källskatt arbetslöshetsersättning",
+    "Årets avstående från återkrav" and "Antal beslut" twice each."""
+    names = [d["Nyckeltal"] for d in json.loads(KEY_DEFS.read_text(encoding="utf-8"))]
+    assert len(names) == len(set(names)), "duplicate metric name"
+
+
+def test_all_four_sections_of_the_foreskrift_are_covered():
+    definitions = json.loads(KEY_DEFS.read_text(encoding="utf-8"))
+    groups = {d["Grupp"] for d in definitions}
+    assert len(groups) == 4
+    assert any("Resultaträkning" in g for g in groups)
+    assert any("Balansräkning" in g for g in groups)
+    assert any("Noter" in g for g in groups)
+    assert any("bilaga 2" in g for g in groups)
+
+
+def test_note_items_are_prefixed_with_their_note():
+    """So a note's subtotal cannot be confused with the balance sheet line of
+    the same name."""
+    definitions = json.loads(KEY_DEFS.read_text(encoding="utf-8"))
+    note_names = [d["Nyckeltal"] for d in definitions if "Noter" in d["Grupp"]]
+    assert note_names, "expected note metrics"
+    assert all(n.startswith("Not ") for n in note_names)
+    names = set(d["Nyckeltal"] for d in definitions)
+    # the pairs that collide in the source document
+    assert "Övriga fordringar" in names and "Not 8: Övriga fordringar" in names
+    assert "Övriga skulder" in names and "Not 10: Övriga skulder" in names
+    assert "Övriga externa kostnader" in names
+    assert "Not 3: Övriga externa kostnader" in names
+
+
+def test_eftergift_is_an_alias_for_avstaende():
+    """Some funds call it eftergift. The term is being phased out but means
+    the same thing."""
+    definitions = json.loads(KEY_DEFS.read_text(encoding="utf-8"))
+    entry = next(d for d in definitions
+                 if d["Nyckeltal"] == "Not 7: Årets avstående från återkrav")
+    assert "Eftergift" in entry["Alternativa benämningar"]
+
+
+def test_every_subtotal_references_metrics_that_exist():
+    definitions = json.loads(KEY_DEFS.read_text(encoding="utf-8"))
+    names = {d["Nyckeltal"] for d in definitions}
+    for entry in definitions:
+        for component in entry.get("Delposter", {}):
+            assert component in names, f"{entry['Nyckeltal']} -> {component}"
+
+
+def test_the_prompt_forbids_extra_items_and_comparison_years():
+    """Two explicit instructions: the föreskrift is a minimum and funds may add
+    rows, which must not be reported; and only the current year counts."""
+    text = " ".join(
+        (ROOT / "app" / "prompt" / "GPT-instruktioner_komprimerad.md")
+        .read_text(encoding="utf-8").split()
+    )
+    assert "Lägg inte till egna poster" in text
+    assert "jämförelseår" in text.lower()
+    assert "Endast innevarande räkenskapsår" in text
+
+
+# --------------------------------------------------- derived subtotals
+def _analyzer_for_derivation():
+    from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
+
+    a = JBGAnnualReportAnalyzer.__new__(JBGAnnualReportAnalyzer)
+    a.metrics_path = KEY_DEFS
+    return a
+
+
+def _cell(value):
+    return {"värde": value, "källa": "Sida 5", "säkerhet": "explicit", "kommentar": "c"}
+
+
+def test_a_missing_subtotal_is_computed_from_its_components():
+    """FINANSIELLA POSTER is only a heading; the two figures below it are what
+    the report states, and the summing row follows from them."""
+    result = {"K": {"2025": {"Finansiella intäkter": _cell(500),
+                             "Finansiella kostnader": _cell(120)}}}
+    assert _analyzer_for_derivation()._derive_missing_subtotals(result) == 1
+    entry = result["K"]["2025"]["Summa finansiella poster"]
+    assert entry["värde"] == 380
+    assert entry["källa"] == "Beräknad ur delposter"
+    assert entry["säkerhet"] == "härledd"
+    assert entry["kommentar"].startswith("[Beräknad]")
+
+
+def test_derivation_chains_through_dependent_subtotals():
+    """Summa tillgångar needs Summa anläggningstillgångar, which needs its own
+    components, so one pass is not enough."""
+    result = {"K": {"2025": {
+        "Immateriella anläggningstillgångar": _cell(0),
+        "Materiella anläggningstillgångar": _cell(1000),
+        "Andra långfristiga värdepappersinnehav": _cell(19000),
+        "Medlemsavgifter": _cell(60000),
+        "Övriga intäkter": _cell(30000),
+        "Personalkostnader": _cell(40000),
+        "Övriga externa kostnader": _cell(15000),
+        "Avskrivningar": _cell(5000),
+    }}}
+    _analyzer_for_derivation()._derive_missing_subtotals(result)
+    metrics = result["K"]["2025"]
+    assert metrics["Summa anläggningstillgångar"]["värde"] == 20000
+    assert metrics["Summa intäkter"]["värde"] == 90000
+    # depends on two subtotals that were themselves derived
+    assert metrics["Resultat före avgifter till staten"]["värde"] == 30000
+
+
+def test_a_stated_subtotal_is_never_overwritten():
+    """If the report says it, that is what we report, even if the components
+    do not add up — the sum check exists to surface that."""
+    result = {"K": {"2025": {"Finansiella intäkter": _cell(500),
+                             "Finansiella kostnader": _cell(120),
+                             "Summa finansiella poster": _cell(999)}}}
+    assert _analyzer_for_derivation()._derive_missing_subtotals(result) == 0
+    assert result["K"]["2025"]["Summa finansiella poster"]["värde"] == 999
+
+
+def test_nothing_is_derived_from_incomplete_components():
+    result = {"K": {"2025": {"Finansiella intäkter": _cell(500)}}}
+    assert _analyzer_for_derivation()._derive_missing_subtotals(result) == 0
+    assert "Summa finansiella poster" not in result["K"]["2025"]
+
+
+def test_signs_are_respected():
+    """Resultat före avgifter till staten is intäkter MINUS kostnader."""
+    result = {"K": {"2025": {"Summa intäkter": _cell(90000),
+                             "Summa administrationskostnader": _cell(60000)}}}
+    _analyzer_for_derivation()._derive_missing_subtotals(result)
+    assert result["K"]["2025"]["Resultat före avgifter till staten"]["värde"] == 30000
