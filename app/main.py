@@ -56,8 +56,17 @@ logging.getLogger("ocrmypdf").setLevel(logging.CRITICAL)
 
 # ocrmypdf pulls in fontTools, pikepdf and img2pdf, which together emit
 # several hundred INFO lines per OCR-ed document (every glyph name, twice).
+# One INFO line per HTTP request, per glyph, per cache lookup. None of it is
+# the application talking.
+#
+# httpx2 and httpcore2 matter as much as httpx and httpcore: the openai SDK
+# from version 3 depends on httpx2, whose client logs under a logger of that
+# name. Silencing only "httpx" left every model call printing
+# "HTTP Request: POST https://api.openai.com/..." and looked, misleadingly,
+# like something OCR had done.
 NOISY_LOGGERS = (
-    "httpx", "httpcore", "openai", "urllib3", "filelock",
+    "httpx", "httpx2", "httpcore", "httpcore2",
+    "openai", "urllib3", "filelock",
     "transformers", "huggingface_hub", "PIL",
     "fontTools", "fontTools.subset", "fontTools.ttLib",
     "pikepdf", "img2pdf", "pdfminer",
@@ -65,12 +74,7 @@ NOISY_LOGGERS = (
 
 
 def quieten_third_party_loggers() -> None:
-    """Third-party libraries log one INFO line per HTTP request.
-
-    Re-applicable, because ocrmypdf reconfigures logging when it runs: the
-    levels set at import were undone by the first OCR job, and every model
-    call after it printed a "HTTP Request: POST ..." line again.
-    """
+    """Raise the threshold on libraries that log an INFO line per operation."""
     for name in NOISY_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
 

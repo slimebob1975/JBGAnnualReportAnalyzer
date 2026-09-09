@@ -101,13 +101,13 @@ def test_conflicts_prefer_the_more_explicit_value():
 def test_conflict_ranking_still_works_with_legacy_floats():
     analyzer = JBGAnnualReportAnalyzer.__new__(JBGAnnualReportAnalyzer)
     data = {
-        "K": {"2023": {"Not 7: Osäkra fordringar": [
+        "K": {"2023": {"Not till Fordringar felaktig arbetslöshetsersättning: Osäkra fordringar": [
             {"värde": 1965, "källa": "Not 12", "säkerhet": 0.9, "kommentar": "a"},
             {"värde": 477, "källa": "Sida 3, Sida 9", "säkerhet": 0.7, "kommentar": "b"},
         ]}}
     }
     merged, _ = analyzer._merge_conflicted_values_json_objects(data)
-    assert merged["K"]["2023"]["Not 7: Osäkra fordringar"]["värde"] == 1965
+    assert merged["K"]["2023"]["Not till Fordringar felaktig arbetslöshetsersättning: Osäkra fordringar"]["värde"] == 1965
 
 
 def test_mixed_levels_and_floats_compare_sensibly():

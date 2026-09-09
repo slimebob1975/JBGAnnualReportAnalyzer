@@ -89,7 +89,13 @@ metrics += [
     m("Finansiella kostnader", RR, "Räntekostnader och liknande.",
       IN_RR + " Anges som ett positivt belopp."),
     m("Summa finansiella poster", RR, "Netto av finansiella intäkter och kostnader.",
-      IN_RR, delposter={"Finansiella intäkter": 1, "Finansiella kostnader": -1}),
+      IN_RR +
+      " Detta är en NETTOPOST och ska anges med korrekt matematiskt tecken: "
+      "positiv när intäkterna överstiger kostnaderna, negativ när kostnaderna "
+      "överstiger intäkterna. Skriver dokumentet beloppet utan tecken, eller "
+      "med omvänt tecken mot vad delposterna ger, ange ändå det matematiskt "
+      "riktiga värdet och förklara i kommentaren.",
+      delposter={"Finansiella intäkter": 1, "Finansiella kostnader": -1}),
 
     m("Resultat före poster arbetslöshetsförsäkringen", RR,
       "Resultat innan försäkringsposterna.", IN_RR,
@@ -104,14 +110,21 @@ metrics += [
       "Ersättning som inte täcks av statsbidrag.",
       IN_RR + " Anges som ett positivt belopp."),
     m("Summa poster arbetslöshetsförsäkringen", RR,
-      "Netto av försäkringsposterna.", IN_RR,
+      "Netto av försäkringsposterna.", IN_RR +
+      " Detta är en NETTOPOST och ska anges med korrekt matematiskt tecken: "
+      "positiv när intäkterna överstiger kostnaderna, negativ när kostnaderna "
+      "överstiger intäkterna. Skriver dokumentet beloppet utan tecken, eller "
+      "med omvänt tecken mot vad delposterna ger, ange ändå det matematiskt "
+      "riktiga värdet och förklara i kommentaren.",
       delposter={"Statligt bidrag till arbetslöshetsersättning": 1,
                  "Kostnad arbetslöshetsersättning": -1,
                  "Kostnad ej statsbidragsberättigad arbetslöshetsersättning": -1}),
 
     m("Årets resultat", RR, "Årets resultat.",
       "Återfinns sist i resultaträkningen och även i balansräkningen under EGET KAPITAL. "
-      "Ange samma belopp oavsett var det hämtas."),
+      "Ange samma belopp oavsett var det hämtas.",
+      delposter={"Resultat före poster arbetslöshetsförsäkringen": 1,
+                 "Summa poster arbetslöshetsförsäkringen": 1}),
 ]
 
 # ---------------------------------------------------------------- bilaga 1: BR
@@ -139,27 +152,29 @@ metrics += [
       IN_BR + " Under FORDRINGAR. Specificeras i not 7."),
     m("Fordringar ränta återkrav felaktig arbetslöshetsersättning", BR,
       "Upplupen ränta på återkrav.", IN_BR + " Under FORDRINGAR."),
-    m("Fordringar medlemsavgift", BR, "Fordran avseende medlemsavgifter.",
-      IN_BR + " Under FORDRINGAR."),
+    m("Fordringar medlemsavgifter", BR, "Fordran avseende medlemsavgifter.",
+      IN_BR + " Under FORDRINGAR.",
+      alt=["Fordringar medlemsavgift"]),
     m("Övriga fordringar", BR, "Andra fordringar.",
       IN_BR + " Under FORDRINGAR. Specificeras i not 8. Detta är balansräkningens "
       "totalpost, inte delposten med samma namn i not 8."),
     m("Förutbetalda kostnader och upplupna intäkter", BR, "Interimsfordringar.",
       IN_BR + " Under FORDRINGAR."),
-    m("Övriga kortfristiga placeringar", BR, "Kortfristiga placeringar.",
+    m("Andra kortfristiga placeringar", BR, "Kortfristiga placeringar.",
       IN_BR + " Under KORTFRISTIGA PLACERINGAR. Saknas posten, eller finns rubriken "
       "utan belopp, ska nyckeltalet utelämnas. Hämta aldrig beloppet från "
-      "Andra långfristiga värdepappersinnehav eller från Kassa och bank."),
+      "Andra långfristiga värdepappersinnehav eller från Kassa och bank.",
+      alt=["Övriga kortfristiga placeringar"]),
     m("Kassa och bank", BR, "Likvida medel.", IN_BR + " Under OMSÄTTNINGSTILLGÅNGAR."),
     m("Summa omsättningstillgångar", BR, "Summan av omsättningstillgångarna.", IN_BR,
       alt=["Omsättningstillgångar"],
       delposter={"Fordringar statligt bidrag till arbetslöshetsersättning": 1,
                  "Fordringar felaktig arbetslöshetsersättning": 1,
                  "Fordringar ränta återkrav felaktig arbetslöshetsersättning": 1,
-                 "Fordringar medlemsavgift": 1,
+                 "Fordringar medlemsavgifter": 1,
                  "Övriga fordringar": 1,
                  "Förutbetalda kostnader och upplupna intäkter": 1,
-                 "Övriga kortfristiga placeringar": 1,
+                 "Andra kortfristiga placeringar": 1,
                  "Kassa och bank": 1}),
     m("Summa tillgångar", BR, "Balansomslutning, tillgångssidan.",
       IN_BR, alt=["Balansomslutning"],
@@ -201,37 +216,50 @@ metrics += [
 ]
 
 # ------------------------------------------------------------- bilaga 1: noter
+# (föreskriftens notnummer, notens rubrik, delposter, summeringsrad, den post i
+# RR/BR som noten specificerar). The note number is the föreskrift's own and
+# is NOT used in the metric name: funds add notes of their own, so their note 7
+# is rarely the föreskrift's note 7. Naming by subject keeps the metric stable
+# whatever the report numbers it.
+#
+# "links_to" is the row the note explains; the note's total must equal it.
+# Note 2 is excluded: medelantal anställda is a headcount, not an amount.
 NOTE_SPEC = [
-    ("Not 1", "Övriga intäkter", ["Annat statligt bidrag"], "Summa"),
-    ("Not 2", "Personalkostnader",
-     ["Medelantal anställda kvinnor", "Medelantal anställda män"], "Summa"),
-    ("Not 3", "Övriga externa kostnader",
+    (1, "Övriga intäkter", ["Annat statligt bidrag"], "Summa", "Övriga intäkter"),
+    (2, "Personalkostnader",
+     ["Medelantal anställda kvinnor", "Medelantal anställda män"], "Summa", None),
+    (3, "Övriga externa kostnader",
      ["Befarade och konstaterade förluster medlemsavgifter", "Övriga externa kostnader"],
-     "Summa"),
-    ("Not 4", "Finansiella intäkter",
+     "Summa", "Övriga externa kostnader"),
+    (4, "Finansiella intäkter",
      ["Ränta på återkrav felaktig arbetslöshetsersättning", "Övriga ränteintäkter"],
-     "Summa"),
-    ("Not 5", "Statligt bidrag till arbetslöshetsersättning",
+     "Summa", "Finansiella intäkter"),
+    (5, "Statligt bidrag till arbetslöshetsersättning",
      ["Statligt bidrag till arbetslöshetsersättning",
       "Periodiserat statligt bidrag till arbetslöshetsersättning",
       "Återbetald arbetslöshetsersättning",
-      "Förändring värdereglering avsättning felaktig arbetslöshetsersättning"], "Summa"),
-    ("Not 6", "Kostnad arbetslöshetsersättning",
+      "Förändring värdereglering avsättning felaktig arbetslöshetsersättning"],
+     "Summa", "Statligt bidrag till arbetslöshetsersättning"),
+    (6, "Kostnad arbetslöshetsersättning",
      ["Arbetslöshetsersättning", "Periodiserad arbetslöshetsersättning",
       "Återbetald arbetslöshetsersättning",
-      "Förändring värdereglering fordran felaktig arbetslöshetsersättning"], "Summa"),
-    ("Not 7", "Fordringar felaktig arbetslöshetsersättning",
+      "Förändring värdereglering fordran felaktig arbetslöshetsersättning"],
+     "Summa", "Kostnad arbetslöshetsersättning"),
+    (7, "Fordringar felaktig arbetslöshetsersättning",
      ["Ingående fordringar", "Årets tillkommande fordringar", "Årets inbetalningar",
-      "Årets avstående från återkrav", "Osäkra fordringar"], "Utgående fordringar"),
-    ("Not 8", "Övriga fordringar",
-     ["Källskatt arbetslöshetsersättning", "Övriga fordringar"], "Summa"),
-    ("Not 9", "Avsättning felaktig arbetslöshetsersättning",
+      "Årets avstående från återkrav", "Osäkra fordringar"],
+     "Utgående fordringar", "Fordringar felaktig arbetslöshetsersättning"),
+    (8, "Övriga fordringar",
+     ["Källskatt arbetslöshetsersättning", "Övriga fordringar"],
+     "Summa", "Övriga fordringar"),
+    (9, "Avsättning felaktig arbetslöshetsersättning",
      ["Ingående avsättningar", "Årets tillkommande avsättningar", "Årets betalningar",
       "Årets avstående från återkrav", "Justering till följd av osäkra fordringar"],
-     "Utgående avsättningar"),
-    ("Not 10", "Övriga skulder",
-     ["Källskatt arbetslöshetsersättning", "Övriga skulder"], "Summa"),
+     "Utgående avsättningar", "Avsättningar felaktig arbetslöshetsersättning"),
+    (10, "Övriga skulder",
+     ["Källskatt arbetslöshetsersättning", "Övriga skulder"], "Summa", "Övriga skulder"),
 ]
+
 
 # Rows that reduce the balance in a roll-forward note. The reports disagree:
 # tested against six funds, "as reported" reproduced the stated total for two,
@@ -251,10 +279,19 @@ SIGN_RULE = (
     "enligt svensk praxis som ett avdrag i balansräkningen."
 )
 
-for note, title, items, total in NOTE_SPEC:
+
+def note_metric(subject: str, item: str) -> str:
+    return f"Not till {subject}: {item}"
+
+
+for number, title, items, total, links_to in NOTE_SPEC:
+    reference = (
+        f"Noten som specificerar {title} i resultat- eller balansräkningen "
+        f"(nummer {number} i föreskriften; kassans egen numrering kan skilja sig)."
+    )
     for item in items:
         alt = []
-        instr = f"Delpost i {note} ({title}) i årsredovisningens noter."
+        instr = f"Delpost i {reference}"
         if item in DEDUCTIONS:
             instr += SIGN_RULE
         if item == "Årets avstående från återkrav":
@@ -264,14 +301,31 @@ for note, title, items, total in NOTE_SPEC:
                 "ska tolkas som synonymt med avstående från återkrav."
             )
         metrics.append(
-            m(f"{note}: {item}", NOT, f"{item} enligt {note}.", instr, alt=alt)
+            m(note_metric(title, item), NOT, f"{item}, enligt noten till {title}.",
+              instr, alt=alt)
         )
-    metrics.append(
-        m(f"{note}: {total}", NOT, f"{total} enligt {note}.",
-          f"Summeringsraden i {note} ({title}). Rapportera raden som den står i "
-          "dokumentet; räkna inte om den.",
-          delposter={f"{note}: {i}": 1 for i in items})
-    )
+
+    # No component sum for a note.
+    #
+    # The föreskrift is a minimum and funds add rows of their own, so the
+    # delposter we know about cannot be expected to reach the note's total.
+    # Measured on six funds: the sum check failed on five of six for two
+    # separate notes while the note-to-statement check passed on both. It
+    # produced about twenty findings carrying no information.
+    #
+    # The note's total against the row it explains is the check that holds
+    # regardless of how many rows a fund adds.
+    entry = m(note_metric(title, total), NOT, f"{total}, enligt noten till {title}.",
+              f"Summeringsraden i {reference} Rapportera raden som den står i "
+              "dokumentet; räkna inte om den.")
+    if links_to:
+        # The note explains one row of the statements, so its total must equal it.
+        entry["Motsvarar"] = links_to
+        entry["Specifika instruktioner"] += (
+            f" Summan ska stämma med posten '{links_to}' i resultat- eller "
+            "balansräkningen."
+        )
+    metrics.append(entry)
 
 # ---------------------------------------------------------------- bilaga 2
 STAT_SPEC = [
@@ -302,7 +356,8 @@ STAT_SPEC = [
      "Under ÅTERKRAV."),
     ("Antal anmälningar till Polismyndigheten", "antal", "Under POLISANMÄLNINGAR."),
     ("Totalt belopp anmälningar till Polismyndigheten", "belopp",
-     "Under POLISANMÄLNINGAR."),
+     "Under POLISANMÄLNINGAR, raden 'Totalt belopp av anmälningar som är "
+     "inlämnade till Polismyndigheten'."),
 ]
 for name, unit, instr in STAT_SPEC:
     metrics.append(

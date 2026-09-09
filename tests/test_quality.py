@@ -562,27 +562,36 @@ def test_all_four_sections_of_the_foreskrift_are_covered():
     assert any("bilaga 2" in g for g in groups)
 
 
-def test_note_items_are_prefixed_with_their_note():
-    """So a note's subtotal cannot be confused with the balance sheet line of
-    the same name."""
+def test_note_items_are_named_by_subject_not_by_number():
+    """Funds add notes of their own, so their note 7 is rarely the
+    föreskrift's note 7. Naming by subject keeps the metric stable whatever
+    the report numbers it."""
     definitions = json.loads(KEY_DEFS.read_text(encoding="utf-8"))
     note_names = [d["Nyckeltal"] for d in definitions if "Noter" in d["Grupp"]]
     assert note_names, "expected note metrics"
-    assert all(n.startswith("Not ") for n in note_names)
+    assert all(n.startswith("Not till ") for n in note_names)
+    import re
+
+    assert not any(re.match(r"^Not \d", n) for n in note_names), "no bare note numbers"
     names = set(d["Nyckeltal"] for d in definitions)
     # the pairs that collide in the source document
-    assert "Övriga fordringar" in names and "Not 8: Övriga fordringar" in names
-    assert "Övriga skulder" in names and "Not 10: Övriga skulder" in names
+    assert "Övriga fordringar" in names
+    assert "Not till Övriga fordringar: Övriga fordringar" in names
+    assert "Övriga skulder" in names
+    assert "Not till Övriga skulder: Övriga skulder" in names
     assert "Övriga externa kostnader" in names
-    assert "Not 3: Övriga externa kostnader" in names
+    assert "Not till Övriga externa kostnader: Övriga externa kostnader" in names
 
 
 def test_eftergift_is_an_alias_for_avstaende():
     """Some funds call it eftergift. The term is being phased out but means
     the same thing."""
     definitions = json.loads(KEY_DEFS.read_text(encoding="utf-8"))
-    entry = next(d for d in definitions
-                 if d["Nyckeltal"] == "Not 7: Årets avstående från återkrav")
+    entry = next(
+        d for d in definitions
+        if d["Nyckeltal"].endswith("Årets avstående från återkrav")
+        and "Fordringar" in d["Nyckeltal"]
+    )
     assert "Eftergift" in entry["Alternativa benämningar"]
 
 
@@ -675,3 +684,92 @@ def test_signs_are_respected():
                              "Summa administrationskostnader": _cell(60000)}}}
     _analyzer_for_derivation()._derive_missing_subtotals(result)
     assert result["K"]["2025"]["Resultat före avgifter till staten"]["värde"] == 30000
+
+
+# ------------------------------------- a note must agree with its statement row
+def test_a_note_total_must_equal_the_row_it_explains():
+    """Nine of the ten notes specify one row of the statements. Not 2 is
+    excluded: medelantal anställda is a headcount, not an amount."""
+    built = validation.rules_from_definitions(KEY_DEFS)
+    links = [r for r in built if r.name.startswith("Not mot räkning")]
+    assert len(links) == 9
+    assert not any("Personalkostnader" in r.name for r in links)
+
+
+def test_a_note_that_disagrees_with_its_row_is_reported():
+    """A real case: Not 1 came back as 1 338 451 while Övriga intäkter was 193."""
+    result = _fund(**{"Not till Övriga intäkter: Summa": 1338451, "Övriga intäkter": 193})
+    findings = validation.validate(result, KEY_DEFS)
+    assert any(f.rule == "Not mot räkning: Övriga intäkter" for f in findings)
+
+
+def test_a_matching_note_is_silent():
+    result = _fund(**{"Not till Övriga intäkter: Summa": 431, "Övriga intäkter": 431})
+    assert validation.validate(result, KEY_DEFS) == []
+
+
+def test_the_tolerance_is_one_krona():
+    """A relative tolerance let 730 000 pass on a 730 million balance sheet."""
+    assert validation.ABSOLUTE_TOLERANCE == 1.0
+    assert validation.RELATIVE_TOLERANCE == 0.0
+    ok = _fund(**{"Not till Övriga intäkter: Summa": 431, "Övriga intäkter": 432})
+    assert validation.validate(ok, KEY_DEFS) == []
+    bad = _fund(**{"Not till Övriga intäkter: Summa": 431, "Övriga intäkter": 433})
+    assert validation.validate(bad, KEY_DEFS)
+
+
+def test_an_inverted_net_is_diagnosed_as_such():
+    """A net posted without its sign is a different fault from a wrong figure."""
+    result = _fund(**{"Summa finansiella poster": -6158,
+                      "Finansiella intäkter": 6159, "Finansiella kostnader": 1})
+    findings = validation.validate(result, KEY_DEFS)
+    assert any("omvänt tecken" in f.message for f in findings)
+
+
+def test_the_result_chain_is_checked_end_to_end():
+    """Årets resultat had no check at all until now."""
+    names = {r.name for r in validation.rules_from_definitions(KEY_DEFS)}
+    for target in ("Resultat före avgifter till staten",
+                   "Resultat före finansiella poster",
+                   "Resultat före poster arbetslöshetsförsäkringen",
+                   "Årets resultat"):
+        assert f"Delsummering: {target}" in names, target
+
+
+def test_the_updated_specification_wording_is_used():
+    """IAFFS 2026:1 renamed two balance sheet rows. The old names stay as
+    aliases, because reports written to the previous wording still exist."""
+    definitions = json.loads(KEY_DEFS.read_text(encoding="utf-8"))
+    by_name = {d["Nyckeltal"]: d for d in definitions}
+
+    assert "Fordringar medlemsavgifter" in by_name
+    assert "Fordringar medlemsavgift" in by_name["Fordringar medlemsavgifter"][
+        "Alternativa benämningar"
+    ]
+
+    assert "Andra kortfristiga placeringar" in by_name
+    assert "Övriga kortfristiga placeringar" in by_name["Andra kortfristiga placeringar"][
+        "Alternativa benämningar"
+    ]
+
+    # and nothing still refers to the superseded names as a metric
+    assert "Fordringar medlemsavgift" not in by_name
+    assert "Övriga kortfristiga placeringar" not in by_name
+
+
+def test_notes_are_not_checked_against_their_own_components():
+    """The föreskrift is a minimum and funds add rows, so the components we
+    know cannot reach the note's total. On six funds that check failed five
+    times over for two separate notes while the note-to-statement check passed
+    on both."""
+    built = validation.rules_from_definitions(KEY_DEFS)
+    sums = [r for r in built if r.name.startswith("Delsummering")]
+    assert sums, "the statements still have subtotals to check"
+    assert not any("Not till" in r.name for r in sums)
+
+
+def test_the_statements_are_still_checked():
+    names = {r.name for r in validation.rules_from_definitions(KEY_DEFS)}
+    for target in ("Summa intäkter", "Årets resultat", "Summa tillgångar",
+                   "Summa eget kapital, avsättningar och skulder"):
+        assert f"Delsummering: {target}" in names, target

@@ -725,17 +725,6 @@ class JBGAnnualReportAnalyzer:
             logger.error(f"OCR misslyckades för {pdf_path.name}: {ocr_err}")
             return None
 
-        finally:
-            # ocrmypdf installs its own logging configuration, which resets the
-            # levels set at startup. Put them back or every later model call
-            # logs an HTTP line.
-            try:
-                from app.main import quieten_third_party_loggers
-
-                quieten_third_party_loggers()
-            except Exception:  # pragma: no cover - main may not be importable
-                pass
-
         if not ocr_path.is_file():
             logger.error(f"OCR gav ingen utdatafil för {pdf_path.name}.")
             return None

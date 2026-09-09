@@ -23,8 +23,8 @@
     "som stod för vilken del av kostnaden."
   ],
   "extraktion": "gpt-5.2",
-  "omsokning": "gpt-5.1",
-  "stabilitet": "gpt-5-mini",
+  "omsokning": "gpt-5.2",
+  "stabilitet": "gpt-5.2",
   "aar": "",
   "sidnummer": ""
 }

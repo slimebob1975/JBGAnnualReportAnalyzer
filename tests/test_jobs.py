@@ -486,3 +486,32 @@ def test_an_unknown_model_is_rejected(client):
     )
     assert r.status_code == 400
     assert "Okänd modell" in r.text
+
+
+def test_the_openai_http_logger_is_silenced():
+    """openai 3.x depends on httpx2, whose client logs "HTTP Request" under a
+    logger of that name. Silencing only "httpx" left every model call printing
+    a line, which looked misleadingly like something OCR had done."""
+    import logging as _logging
+
+    import app.main as main
+
+    main.quieten_third_party_loggers()
+    for name in ("httpx", "httpx2", "httpcore", "httpcore2"):
+        assert name in main.NOISY_LOGGERS, name
+        assert _logging.getLogger(name).getEffectiveLevel() >= _logging.WARNING
+
+
+def test_the_logger_the_sdk_actually_uses_is_covered():
+    """Pin it to the installed SDK rather than to a name I assumed."""
+    import logging as _logging
+
+    import app.main as main
+
+    try:
+        import httpx2._client as client
+    except ImportError:
+        import httpx._client as client
+
+    main.quieten_third_party_loggers()
+    assert not client.logger.isEnabledFor(_logging.INFO), client.logger.name

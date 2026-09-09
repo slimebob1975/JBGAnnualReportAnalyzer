@@ -108,19 +108,33 @@ Anges en summeringsrad i dokumentet ska du rapportera den som den står, även o
 den inte stämmer med delposterna. Saknas den räknas den ut automatiskt ur
 delposterna efteråt, så du behöver inte räkna själv.
 
+## Noternas numrering
+
+Nyckeltalen för noter heter `Not till <post>: <rad>`, alltså efter vilken post
+noten specificerar – inte efter notens nummer. Kassorna får lägga till egna
+noter, så numreringen i en årsredovisning stämmer sällan med föreskriftens.
+
+**Leta därför efter noten via dess rubrik**, eller via nothänvisningen bredvid
+posten i resultat- eller balansräkningen. Utgå aldrig från att föreskriftens
+not 7 är kassans not 7.
+
+Varje nots summa ska stämma med den post den specificerar. Hittar du en not vars
+summa inte alls liknar posten har du sannolikt hamnat i fel not.
+
 ## Poster med samma namn på flera ställen
 
 Flera benämningar återkommer i olika delar av årsredovisningen. Nyckeltalen är
 därför namngivna så att de går isär, och notposter har notnumret först:
 
 - `Övriga fordringar` är balansräkningens totalpost.
-  `Not 8: Övriga fordringar` är delposten inne i not 8.
+  `Not till Övriga fordringar: Övriga fordringar` är delposten inne i noten.
 - `Övriga skulder` är balansräkningens totalpost.
-  `Not 10: Övriga skulder` är delposten inne i not 10.
+  `Not till Övriga skulder: Övriga skulder` är delposten inne i noten.
 - `Övriga externa kostnader` är resultaträkningens rad.
-  `Not 3: Övriga externa kostnader` är delposten inne i not 3.
-- `Not 7: Årets avstående från återkrav` och
-  `Not 9: Årets avstående från återkrav` är två olika poster i två olika noter.
+  `Not till Övriga externa kostnader: Övriga externa kostnader` är delposten.
+- `Not till Fordringar felaktig arbetslöshetsersättning: Årets avstående från
+  återkrav` och `Not till Avsättning felaktig arbetslöshetsersättning: Årets
+  avstående från återkrav` är två olika poster i två olika noter.
 
 Läs alltid namnet noga innan du fyller i ett belopp. Ett belopp som hör hemma i
 en not ska inte rapporteras som balansräkningens totalpost, eller tvärtom.

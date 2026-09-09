@@ -28,13 +28,14 @@ FIELD_CERTAINTY = "säkerhet"
 SEVERITY_ERROR = "fel"
 SEVERITY_WARNING = "varning"
 
-# Relative tolerance for sums reported in whole tkr. Tight, because the sample
-# data balances exactly; loosening it would hide the errors worth finding.
-RELATIVE_TOLERANCE = 0.001
+# Rounding in whole tkr can shift a sum by one either way; anything larger is
+# a real difference. A relative tolerance was far too permissive: on a balance
+# sheet of 730 million it let 730 000 pass unnoticed.
+RELATIVE_TOLERANCE = 0.0
 # Below this many values, a single certainty level says nothing about the
 # scale; it just means a small sample.
 MIN_VALUES_FOR_CERTAINTY_CHECK = 20
-ABSOLUTE_TOLERANCE = 2.0
+ABSOLUTE_TOLERANCE = 1.0
 
 
 @dataclass
@@ -178,11 +179,38 @@ def _sum_check(target: str, components: dict[str, float]):
         diff = total - parts
         if abs(diff) <= _tolerance(total or parts):
             return None
+
         terms = " ".join(
             f"{'+' if c > 0 else '-'} {name}" for name, c in components.items()
         ).lstrip("+ ")
+
+        # A net posted without its sign is a different fault from a wrong
+        # figure, and the fix is different too.
+        if parts and abs(total + parts) <= _tolerance(parts):
+            return (
+                f"{target} har omvänt tecken: {_fmt(total)} står i dokumentet medan "
+                f"{terms} ger {_fmt(parts)}. Nettoposter ska anges matematiskt "
+                "riktigt, negativa när kostnaderna överstiger intäkterna."
+            )
+
         return (
             f"{target} {_fmt(total)} stämmer inte med {terms} = {_fmt(parts)} "
+            f"(differens {_fmt(diff) if diff < 0 else '+' + _fmt(diff)})."
+        )
+
+    return check
+
+
+def _equality_check(target: str, other: str):
+    """A note's total must equal the row it explains."""
+
+    def check(values: dict[str, float]) -> str | None:
+        diff = values[target] - values[other]
+        if abs(diff) <= _tolerance(values[other] or values[target]):
+            return None
+        return (
+            f"{target} är {_fmt(values[target])} medan posten den specificerar, "
+            f"'{other}', är {_fmt(values[other])} "
             f"(differens {_fmt(diff) if diff < 0 else '+' + _fmt(diff)})."
         )
 
@@ -204,19 +232,32 @@ def rules_from_definitions(metrics_path) -> list[Rule]:
 
     built = []
     for entry in definitions:
-        components = entry.get("Delposter")
-        if not components:
-            continue
         target = entry["Nyckeltal"]
-        built.append(
-            Rule(
-                name=f"Delsummering: {target}",
-                description=entry.get("Formel", ""),
-                metrics=[target, *components],
-                check=_sum_check(target, components),
-                severity=SEVERITY_WARNING,
+
+        components = entry.get("Delposter")
+        if components:
+            built.append(
+                Rule(
+                    name=f"Delsummering: {target}",
+                    description=entry.get("Formel", ""),
+                    metrics=[target, *components],
+                    check=_sum_check(target, components),
+                    severity=SEVERITY_WARNING,
+                )
             )
-        )
+
+        # A note specifies one row of the statements; the two must agree.
+        counterpart = entry.get("Motsvarar")
+        if counterpart:
+            built.append(
+                Rule(
+                    name=f"Not mot räkning: {counterpart}",
+                    description=f"{target} ska vara lika med {counterpart}.",
+                    metrics=[target, counterpart],
+                    check=_equality_check(target, counterpart),
+                    severity=SEVERITY_WARNING,
+                )
+            )
     return built
 
 
