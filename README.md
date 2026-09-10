@@ -142,7 +142,7 @@ att tjänsten ska fungera.
 | `JBG_LOG_LEVEL` | `INFO` | Loggnivå. `DEBUG` skriver ut fullständig dokumenttext och modellsvar, vilket innebär personuppgifter på disk. |
 | `JBG_LOG_RETENTION_DAYS` | `14` | Loggfiler äldre än så tas bort vid start. De fem senaste sparas alltid. |
 | `JBG_JOB_DIR` | systemets temp-katalog | Var jobbens arbetskataloger skapas. |
-| `JBG_JOB_TTL_SECONDS` | `3600` | Hur länge ett jobbs filer ligger kvar innan de raderas. |
+| `JBG_JOB_TTL_SECONDS` | `3600` | Hur länge ett jobbs filer ligger kvar efter senaste livstecken. |
 | `JBG_SWEEP_INTERVAL_SECONDS` | `300` | Hur ofta utgångna jobb städas bort. |
 | `JBG_MAX_CONCURRENT_JOBS` | `2` | Antal analyser som körs samtidigt. |
 | `JBG_MAX_UPLOAD_MB` | `200` | Största tillåtna uppladdning. |
@@ -180,6 +180,14 @@ Varje delsumma i föreskriften kontrolleras aritmetiskt mot sina delposter.
 Kontrollerna byggs ur `Delposter` i nyckeltalsdefinitionerna, så ett nytt
 nyckeltal med delposter ger en ny kontroll utan kodändring.
 
+Två avvikelser skiljs ut från vanliga differenser, eftersom de kräver helt
+olika åtgärd. **Omvänt tecken** betyder att noten och den post den
+specificerar är samma belopp med olika tecken; det är en fråga om
+teckenkonvention och inte om en felläst siffra. **Skalfel** betyder att de två
+sidorna är samma belopp i kronor respektive tusental kronor, vilket händer när
+ett värde hämtats ur förvaltningsberättelsen i stället för ur räkningen. Båda
+namnger sig själva i anmärkningen.
+
 Ett nyckeltal som saknas i utdata har inte hittats i dokumentet. Modellen är
 instruerad att utelämna det den inte hittar hellre än att gissa.
 
@@ -196,6 +204,31 @@ Hittar den första genomgången inte alla nyckeltal görs en riktad omsökning s
 enbart frågar efter de saknade. Värden från omsökningen märks med
 `[Riktad omsökning]` i kommentarsfältet. Saknas ett nyckeltal även efter det
 finns posten med största sannolikhet inte i dokumentet.
+
+### När OCR inte ger någon text
+
+OCR körs i två steg. Först den billiga inställningen, som lämnar sidor som
+redan har text ifred. Ger den mindre än 2 000 tecken görs ett andra försök med
+`force_ocr`, som rastrerar varje sida oavsett vad den innehåller. Det andra
+steget kostar ungefär dubbelt och är därför en reserv, inte förval.
+
+Ett dokument vars sidinnehåll är ritat i stället för inbäddat som bild ser
+tomt ut för det första steget: ocrmypdf hittar ingenting att tolka och
+returnerar en fil lika tom som den fick in. Ett sådant dokument gav 897 tecken
+på femton sidor, samtliga från en digital signatur som fogats till efter
+skanningen.
+
+Misslyckas båda försöken undersöks filen sida för sida innan den hoppas över.
+Loggen anger då hur många sidor som har textlager, hur många som har bilder, i
+vilken upplösning, och om sidorna över huvud taget renderar något. Slutsatsen
+skrivs ut som en av ett fåtal namngivna orsaker – tom rendering, inbäddade
+bilder, låg upplösning – och följer med i skipp-meddelandet i stället för bara
+ett teckenantal.
+
+Undersökningen renderar sidor i minnet. `SAVE_DIAGNOSTIC_RENDERS = True` i
+`JBGAnnualReportAnalysis.py` sparar dem som PNG i jobbkatalogen, vilket är
+bekvämt vid felsökning men lägger omaskerade sidor ur en inskannad rapport på
+disk. Därför är det avstängt.
 
 ### Stabilitetskontroll av inskannade rapporter
 
@@ -223,6 +256,24 @@ Anmärkningarna finns i alla tre formaten:
 Loggen visar också fördelningen av angiven säkerhet efter varje körning. Om
 nästan alla värden får 1,0 skiljer skalan inte mellan säkra och osäkra värden,
 och färgkodningen säger då lite.
+
+### Långa körningar
+
+Livslängden räknas från jobbets senaste livstecken, inte från när det
+skapades. Ett jobb rapporterar framsteg efter varje dokument och håller sig
+därmed självt vid liv hur länge analysen än tar. Räknat från skapandet tog
+städningen bort arbetskatalogen mitt under en körning: en analys av 24 filer
+tar omkring nittio minuter, livslängden var en timme, och det tjugotredje
+dokumentet föll på att dess pdf inte längre fanns. Ett jobb som verkligen har
+hängt sig städas fortfarande bort, men först efter en hel livslängd utan
+livstecken.
+
+Ett fel i ett dokument stoppar inte längre körningen. Filen redovisas under
+`_ejanalyserade` med orsaken, och de övriga analyseras som vanligt.
+
+Efter varje dokument skrivs det som hunnit bli klart till en fil med suffixet
+`_delvis.json` bredvid resultatfilen. Avbryts körningen finns arbetet kvar
+där.
 
 ### Kostnad per körning
 

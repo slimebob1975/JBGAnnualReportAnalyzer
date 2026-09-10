@@ -48,12 +48,23 @@ class Job:
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
+    # Expiry is measured from here, not from creation. A 24-file run takes
+    # ninety minutes; with a one-hour lifetime counted from creation the
+    # sweeper deleted the working directory of a job that was still reading
+    # from it, and the next document failed with FileNotFoundError after
+    # twenty-two had been analysed. Anything that shows the job is alive
+    # pushes this forward.
+    last_activity: float = field(default_factory=time.time)
     total_files: int = 0
     done_files: int = 0
     current_file: str = ""
     output_name: str | None = None
     skipped_files: int = 0
     error: str | None = None
+
+    def touch(self) -> None:
+        """Record that the job is still doing something."""
+        self.last_activity = time.time()
 
     @property
     def duration(self) -> float:
@@ -149,6 +160,7 @@ class JobRegistry:
         def runner():
             job.status = STATUS_RUNNING
             job.started_at = time.time()
+            job.touch()
             job.message = "Analysen har startat..."
             try:
                 job.output_name = work(job)
@@ -166,6 +178,7 @@ class JobRegistry:
                 job.message = f"Analysen misslyckades: {ex}"
             finally:
                 job.finished_at = time.time()
+                job.touch()
 
         self._pool.submit(runner)
 
@@ -202,6 +215,7 @@ class JobRegistry:
 
     def progress_callback(self, job: Job) -> Callable[[int, int, str], None]:
         def report(done: int, total: int, filename: str):
+            job.touch()
             job.done_files = done
             job.total_files = total
             job.current_file = filename
@@ -221,13 +235,31 @@ class JobRegistry:
         return candidate
 
     def purge_expired(self) -> int:
+        """Remove jobs that have been idle for longer than the lifetime.
+
+        Idle, not old. The lifetime exists so that uploaded reports and
+        results do not sit on disk; it was never meant to put a ceiling on
+        how long an analysis may take. Measured from creation it did exactly
+        that, and a run longer than the lifetime deleted its own working
+        directory mid-flight. A job that is still working reports progress
+        after every document, so it keeps itself alive; one that has genuinely
+        hung still goes away once it falls silent for a full lifetime.
+        """
         cutoff = time.time() - self.ttl_seconds
         removed = 0
         with self._lock:
-            expired = [j for j in self._jobs.values() if j.created_at < cutoff]
+            expired = [j for j in self._jobs.values() if j.last_activity < cutoff]
             for job in expired:
                 self._jobs.pop(job.id, None)
         for job in expired:
+            if job.status == STATUS_RUNNING:
+                # Worth saying out loud: the analysis thread is still there as
+                # far as we know, and it is about to lose its files.
+                logger.warning(
+                    f"Jobb {job.id} har varit igång utan livstecken i mer än "
+                    f"{self.ttl_seconds}s och städas bort. Analysen verkar ha "
+                    "hängt sig."
+                )
             shutil.rmtree(job.directory, ignore_errors=True)
             removed += 1
 

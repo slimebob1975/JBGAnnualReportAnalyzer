@@ -26,6 +26,7 @@ RETRYABLE_OPENAI_ERRORS = (
 import logging
 
 from app.src import JBGMetricSchema as schema
+from app.src import JBGPDFDiagnostics as diagnostics
 from app.src import JBGUsage as usage
 from app.src import JBGValidation as validation
 from app.src.JBGAnnualReportExceptions import FileTypeException
@@ -139,6 +140,9 @@ class JBGAnnualReportAnalyzer:
     VALIDATION_KEY = "_rimlighetskontroller"
     SKIPPED_KEY = "_ejanalyserade"
     USAGE_KEY = "_modellanvandning"
+    # Written after every document so that a run which dies part-way still
+    # leaves the documents it finished.
+    PARTIAL_SUFFIX = "_delvis.json"
     # One extra, narrowly-scoped call per file when the first pass missed
     # something. Skipped entirely when nothing is missing.
     USE_SECOND_PASS_FOR_MISSING = True
@@ -198,6 +202,22 @@ class JBGAnnualReportAnalyzer:
     OCR_LANGUAGE = "swe"
     # Below this, a "text layer" is a scanning artefact, not a report.
     MIN_USABLE_TEXT_CHARS = 2000
+    # Tried in order until one yields MIN_USABLE_TEXT_CHARS. The first is the
+    # cheap, correct default for an ordinary scan: it leaves pages that
+    # already have text alone. The second exists for documents where that
+    # assumption fails - content drawn as vectors or embedded inline in the
+    # content stream, which ocrmypdf sees as nothing to do. force_ocr
+    # rasterises the page regardless and costs roughly twice as much, so it
+    # is a fallback rather than the default.
+    OCR_ATTEMPTS = (
+        ("skip_text", {"skip_text": True, "deskew": True}),
+        ("force_ocr", {"force_ocr": True, "deskew": True, "rotate_pages": True}),
+    )
+    # One line per scanned document recording what it looked like going in.
+    LOG_SCAN_PROFILE = True
+    # Writes rendered pages to the job directory when OCR fails entirely.
+    # Off by default: they are unmasked pages of a scanned report.
+    SAVE_DIAGNOSTIC_RENDERS = False
 
     def __init__(
         self,
@@ -232,6 +252,9 @@ class JBGAnnualReportAnalyzer:
         self.usage = usage.UsageTracker()
         self.model_roles = usage.load_roles()
         self.stability_findings: list = []
+        # The diagnosis from the most recent OCR failure, so the skip message
+        # can name a cause instead of only a character count.
+        self.last_ocr_diagnosis = None
         self._masker = None
         self._schema_cache = None
         # max_retries lets the SDK handle rate limits with proper jitter, which
@@ -668,10 +691,13 @@ class JBGAnnualReportAnalyzer:
 
         ocr_path = self._run_ocr(pdf_path)
         if ocr_path is None:
+            diagnosis = getattr(self, "last_ocr_diagnosis", None)
+            cause = f" {diagnosis.explanation}" if diagnosis else ""
             raise FileTypeException(
                 message=(
-                    f"{pdf_path.name} saknar textlager och OCR misslyckades. "
-                    "Se loggen för detaljer."
+                    f"{pdf_path.name} saknar textlager och OCR misslyckades "
+                    f"med samtliga inställningar.{cause} Se loggen för "
+                    "sidvis undersökning."
                 )
             )
         return ocr_path
@@ -698,17 +724,21 @@ class JBGAnnualReportAnalyzer:
             logger.warning(f"Text extraction failed for {pdf_path.name}: {e}")
             return ""
 
-    def _run_ocr(self, pdf_path: Path) -> Path | None:
-        """OCR the pages lacking a text layer; return the new file's path.
+    @staticmethod
+    def _text_length(pdf_path: Path) -> int:
+        """Characters of extractable text in a file, or 0 if it cannot be read."""
+        try:
+            with pymupdf.open(pdf_path) as doc:
+                return sum(len(page.get_text().strip()) for page in doc)
+        except Exception as ex:
+            logger.debug(f"Kunde inte mäta textmängden i {pdf_path.name}: {ex}")
+            return 0
 
-        Returns None when OCR fails, so the caller can report the file as
-        unreadable instead of passing an empty string down the pipeline.
-        """
-        ocr_path = pdf_path.with_name(f"{pdf_path.stem}_ocr.pdf")
+    def _ocr_once(self, pdf_path: Path, ocr_path: Path, options: dict) -> bool:
+        """One ocrmypdf invocation. True when it wrote an output file."""
         try:
             import ocrmypdf
 
-            logger.info(f"Kör OCR på {pdf_path.name} (språk: {self.OCR_LANGUAGE})...")
             # NOTE: the first parameter is positional. ocrmypdf 17 renamed it
             # from `input_file` to `input_file_or_options`, so a keyword call
             # raised TypeError on every document and was silently swallowed.
@@ -716,20 +746,71 @@ class JBGAnnualReportAnalyzer:
                 str(pdf_path),
                 str(ocr_path),
                 language=self.OCR_LANGUAGE,
-                deskew=True,
-                # Only rasterise pages that have no text of their own.
-                skip_text=True,
                 progress_bar=False,
+                **options,
             )
         except Exception as ocr_err:
             logger.error(f"OCR misslyckades för {pdf_path.name}: {ocr_err}")
-            return None
+            return False
 
         if not ocr_path.is_file():
             logger.error(f"OCR gav ingen utdatafil för {pdf_path.name}.")
-            return None
-        logger.info(f"OCR klar: {ocr_path.name}")
-        return ocr_path
+            return False
+        return True
+
+    def _run_ocr(self, pdf_path: Path) -> Path | None:
+        """OCR the pages lacking a text layer; return the new file's path.
+
+        Tries each setting in OCR_ATTEMPTS until one produces enough text.
+        The default pass skips pages that already have a text layer, which is
+        right for an ordinary scan and wrong for a document whose content is
+        drawn rather than embedded as images: there ocrmypdf finds nothing to
+        rasterise and returns a file as empty as the one it was given. One
+        report in a 24-document corpus came back with 897 characters across
+        fifteen pages, all of them from a digital signature appended after
+        scanning, and the failure was indistinguishable from a bad scan until
+        someone looked at the file by hand.
+
+        Returns None when every attempt fails, so the caller can report the
+        file as unreadable instead of passing an empty string down the
+        pipeline. The diagnosis is logged first and kept on
+        `last_ocr_diagnosis` so the skip message can name the cause.
+        """
+        self.last_ocr_diagnosis = None
+        ocr_path = pdf_path.with_name(f"{pdf_path.stem}_ocr.pdf")
+
+        if self.LOG_SCAN_PROFILE:
+            logger.info(diagnostics.profile(pdf_path).one_line())
+
+        attempts = len(self.OCR_ATTEMPTS)
+        for attempt, (label, options) in enumerate(self.OCR_ATTEMPTS, start=1):
+            logger.info(
+                f"Kör OCR på {pdf_path.name} (språk: {self.OCR_LANGUAGE}, "
+                f"försök {attempt}/{attempts}: {label})..."
+            )
+            if not self._ocr_once(pdf_path, ocr_path, options):
+                continue
+
+            produced = self._text_length(ocr_path)
+            if produced >= self.MIN_USABLE_TEXT_CHARS:
+                logger.info(f"OCR klar: {ocr_path.name} ({produced} tecken).")
+                return ocr_path
+
+            # Not an error yet. The next setting may well fix it, and saying
+            # so keeps the log honest about what was tried.
+            logger.warning(
+                f"OCR med {label} gav bara {produced} tecken för "
+                f"{pdf_path.name}"
+                + (". Provar en kraftfullare inställning." if attempt < attempts else ".")
+            )
+
+        diagnosis = diagnostics.diagnose(
+            pdf_path,
+            save_to=pdf_path.parent if self.SAVE_DIAGNOSTIC_RENDERS else None,
+        )
+        self.last_ocr_diagnosis = diagnosis
+        diagnostics.log_report(diagnosis)
+        return None
 
     def _extract_text_from_pdf(self, doc, offset: int) -> str:
 
@@ -1849,6 +1930,31 @@ class JBGAnnualReportAnalyzer:
             )
         return result
 
+    def _save_partial_result(self, total_result: list, output_path) -> None:
+        """Write everything analysed so far, after each document.
+
+        A run that died on document 23 of 24 left nothing at all: ninety
+        minutes of work and some five dollars of model calls, discarded
+        because the last file failed. The partial file is written beside the
+        real output and is overwritten each time, so the cost is one merge
+        and one small write per document.
+
+        Never raises. A failure to write the safety net must not bring down
+        the run it exists to protect.
+        """
+        if not total_result:
+            return
+        try:
+            merged = self._deep_merge_json_objects(total_result)
+            partial_path = Path(output_path).with_name(
+                Path(output_path).stem + self.PARTIAL_SUFFIX
+            )
+            partial_path.write_text(
+                json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except Exception as ex:
+            logger.warning(f"Kunde inte spara delresultatet: {ex}")
+
     def do_analysis(
         self,
         output_path: Path,
@@ -1920,83 +2026,96 @@ class JBGAnnualReportAnalyzer:
 
                 logger.info(f"Extraherar text från: {pdf_path.name}")
                 full_text = self._extract_text_from_pdf_from_pdf(pdf_path, model=model)
+
+                if not full_text:
+                    message = f"Ingen text kunde extraheras ur {_pdf_path.name}."
+                    logger.error(message)
+                    self.skipped_files.append((_pdf_path.name, message))
+                    report(file_index + 1, _pdf_path.name)
+                    continue
+
+                # The year comes from the extracted text, so an OCR-ed scan is read
+                # from its OCR output rather than from the blank original.
+                the_year = self._find_primary_year_from_text(full_text, model=model)
+                logger.info(f"Extraherade aktuellt år från: {pdf_path.name} som: {the_year}")
+                if the_year is not None and the_year < 0:
+                    logger.warning(f"Could not determine the year for {pdf_path.name}. Setting year unknown.")
+                    the_year = None
+
+                # Try to fix broken lines that can contain key numbers and values
+                if self.FIX_BROKEN_LINES_WITH_KEY_NUMBERS:
+                    try:
+                        full_text = self._merge_broken_key_number_lines(full_text, self._extract_key_number_terms())
+                        logger.debug(f"The full text for {pdf_path} where broken lines with key numbers are merged is: {full_text}")
+                    except Exception:
+                        logger.warning(f"Could not merge broken lines with key numbers and data in for full text of file: {pdf_path}")
+
+                # Divide the text into chunks. Page-aware by default, so the
+                # [Sida N] markers that populate the "källa" field survive.
+                chunks = self._chunk_text_for_model(full_text, model=model)
+                logger.info(f"{len(chunks)} chunk(s) genererade för {pdf_path.name}")
+
+                partial_results = self._analyse_chunks(chunks, the_year=the_year, model=model)
+
+                # Put together and clean up the result
+                appended_result = self._deep_merge_json_objects(partial_results)
+                logger.debug("In do_analysis: partial_results:")
+                for result in partial_results:
+                    logger.debug(f"{result}")
+                logger.debug(f"In do_analysis: appended_result: {appended_result}")
+                if appended_result:
+                    appended_result, conflicts = self._merge_json_fund_data(appended_result)
+                    if conflicts:
+                        logger.warning(
+                            f"Last merge of JSON data resulted in {len(conflicts)} conflict(s) "
+                            f"for {', '.join(sorted({c[1] for c in conflicts}))}"
+                        )
+                        logger.debug(f"Conflict detail: {conflicts}")
+                        appended_result, num_merged_values = self._merge_conflicted_values_json_objects(appended_result)
+                        if num_merged_values > 0:
+                            logger.info(f"Merged {num_merged_values} duplicate values in appended JSON structure")
+                        else:
+                            logger.warning("No conclicts were merged.")
+
+                    if self.USE_SECOND_PASS_FOR_MISSING:
+                        appended_result = self._second_pass_for_missing(
+                            appended_result, chunks, the_year=the_year, model=model
+                        )
+
+                    self._derive_missing_subtotals(appended_result)
+
+                    if self.VERIFY_ALL_EXTRACTIONS or (
+                        self.VERIFY_OCR_EXTRACTION and was_ocred
+                    ):
+                        self.stability_findings.extend(
+                            self._check_extraction_stability(
+                                appended_result,
+                                chunks,
+                                the_year=the_year,
+                                model=model,
+                                source_name=_pdf_path.name,
+                            )
+                        )
+
+                    total_result.append(appended_result)
             except FileTypeException as ex:
                 logger.error(f"Hoppar över {_pdf_path.name}: {ex.message}")
                 self.skipped_files.append((_pdf_path.name, ex.message))
-                report(file_index + 1, _pdf_path.name)
-                continue
+            except Exception as ex:
+                # Anything else - a model error, a network failure, a bug in
+                # one branch of the merge - used to abort the whole run from
+                # wherever it happened. A 24-file run is 90 minutes and some
+                # five dollars of model calls, and losing 22 finished
+                # documents because the 23rd failed is the expensive way to
+                # find that out. One bad file is now one skipped file.
+                logger.exception(f"Analysen av {_pdf_path.name} avbröts av ett fel")
+                self.skipped_files.append(
+                    (_pdf_path.name, f"Analysen avbröts av ett fel: {ex}")
+                )
+            else:
+                self._save_partial_result(total_result, output_path)
 
-            if not full_text:
-                message = f"Ingen text kunde extraheras ur {_pdf_path.name}."
-                logger.error(message)
-                self.skipped_files.append((_pdf_path.name, message))
-                report(file_index + 1, _pdf_path.name)
-                continue
-
-            # The year comes from the extracted text, so an OCR-ed scan is read
-            # from its OCR output rather than from the blank original.
-            the_year = self._find_primary_year_from_text(full_text, model=model)
-            logger.info(f"Extraherade aktuellt år från: {pdf_path.name} som: {the_year}")
-            if the_year is not None and the_year < 0:
-                logger.warning(f"Could not determine the year for {pdf_path.name}. Setting year unknown.")
-                the_year = None
-
-            # Try to fix broken lines that can contain key numbers and values
-            if self.FIX_BROKEN_LINES_WITH_KEY_NUMBERS:
-                try:
-                    full_text = self._merge_broken_key_number_lines(full_text, self._extract_key_number_terms())
-                    logger.debug(f"The full text for {pdf_path} where broken lines with key numbers are merged is: {full_text}")
-                except Exception:
-                    logger.warning(f"Could not merge broken lines with key numbers and data in for full text of file: {pdf_path}")
-
-            # Divide the text into chunks. Page-aware by default, so the
-            # [Sida N] markers that populate the "källa" field survive.
-            chunks = self._chunk_text_for_model(full_text, model=model)
-            logger.info(f"{len(chunks)} chunk(s) genererade för {pdf_path.name}")
-
-            partial_results = self._analyse_chunks(chunks, the_year=the_year, model=model)
-
-            # Put together and clean up the result
-            appended_result = self._deep_merge_json_objects(partial_results)
-            logger.debug("In do_analysis: partial_results:")
-            for result in partial_results:
-                logger.debug(f"{result}")
-            logger.debug(f"In do_analysis: appended_result: {appended_result}")
-            if appended_result:
-                appended_result, conflicts = self._merge_json_fund_data(appended_result)
-                if conflicts:
-                    logger.warning(
-                        f"Last merge of JSON data resulted in {len(conflicts)} conflict(s) "
-                        f"for {', '.join(sorted({c[1] for c in conflicts}))}"
-                    )
-                    logger.debug(f"Conflict detail: {conflicts}")
-                    appended_result, num_merged_values = self._merge_conflicted_values_json_objects(appended_result)
-                    if num_merged_values > 0:
-                        logger.info(f"Merged {num_merged_values} duplicate values in appended JSON structure")
-                    else:
-                        logger.warning("No conclicts were merged.")
-
-                if self.USE_SECOND_PASS_FOR_MISSING:
-                    appended_result = self._second_pass_for_missing(
-                        appended_result, chunks, the_year=the_year, model=model
-                    )
-
-                self._derive_missing_subtotals(appended_result)
-
-                if self.VERIFY_ALL_EXTRACTIONS or (
-                    self.VERIFY_OCR_EXTRACTION and was_ocred
-                ):
-                    self.stability_findings.extend(
-                        self._check_extraction_stability(
-                            appended_result,
-                            chunks,
-                            the_year=the_year,
-                            model=model,
-                            source_name=_pdf_path.name,
-                        )
-                    )
-
-                total_result.append(appended_result)
+            report(file_index + 1, _pdf_path.name)
 
         report(total_files, "")
 

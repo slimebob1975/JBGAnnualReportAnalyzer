@@ -159,6 +159,50 @@ def test_a_correct_subtotal_is_silent():
     assert validation.validate(result, KEY_DEFS) == []
 
 
+def test_a_note_with_the_opposite_sign_is_named_as_a_convention(tmp_path):
+    """Four of six funds in the first subset tripped this check with a note
+    equal to its statement row but negative. The definitions ask for exactly
+    that: the row is normalised positive, the note is reported as printed.
+    Calling it a difference of twice the amount described the rule, not the
+    document."""
+    result = _fund(**{"Not till Kostnad arbetslöshetsersättning: Summa": -2923688,
+                      "Kostnad arbetslöshetsersättning": 2923688})
+    findings = validation.validate(result, KEY_DEFS)
+    assert len(findings) == 1
+    assert "omvänt tecken" in findings[0].message
+    assert "differens" not in findings[0].message
+
+
+def test_a_note_that_is_genuinely_wrong_is_still_reported():
+    result = _fund(**{"Not till Övriga fordringar: Summa": 1109,
+                      "Övriga fordringar": 363})
+    findings = validation.validate(result, KEY_DEFS)
+    assert len(findings) == 1
+    assert "differens" in findings[0].message
+    assert "omvänt tecken" not in findings[0].message
+
+
+def test_kronor_read_where_tkr_was_expected_is_named_as_a_scale_error():
+    """Småföretagarnas Finansieringsavgift came back as 117 308 746 against a
+    Summa avgifter till staten of 117 309: one figure off the resultaträkning
+    in tkr, the other out of the förvaltningsberättelse in kronor."""
+    result = _fund(**{"Summa avgifter till staten": 117309,
+                      "Finansieringsavgift": 117308746})
+    findings = validation.validate(result, KEY_DEFS)
+    assert len(findings) == 1
+    assert "Skalfel" in findings[0].message
+    assert "tusental kronor" in findings[0].message
+
+
+def test_a_thousandfold_difference_that_is_not_a_scale_error_stays_a_difference():
+    """A factor of a thousand only means a unit mix-up when the digits match."""
+    result = _fund(**{"Summa avgifter till staten": 117309,
+                      "Finansieringsavgift": 954100000})
+    findings = validation.validate(result, KEY_DEFS)
+    assert len(findings) == 1
+    assert "Skalfel" not in findings[0].message
+
+
 def test_negative_cost_is_flagged_since_the_prompt_asks_for_positives():
     result = _fund(**{"Summa administrationskostnader": -58493})
     findings = validation.validate(result)

@@ -36,6 +36,9 @@ RELATIVE_TOLERANCE = 0.0
 # scale; it just means a small sample.
 MIN_VALUES_FOR_CERTAINTY_CHECK = 20
 ABSOLUTE_TOLERANCE = 1.0
+# Reports state amounts in tkr; a figure lifted from running text is often in
+# kronor. The factor between them is what tells the two mistakes apart.
+KRONOR_PER_TKR = 1000
 
 
 @dataclass
@@ -81,6 +84,38 @@ def _fmt(amount: float) -> str:
     message also removed the commas in the prose around it.
     """
     return f"{amount:,.0f}".replace(",", "\u00a0")
+
+
+def _scale_mismatch(target: str, total: float, other: str, parts: float,
+                    component_count: int = 1) -> str | None:
+    """One side read in kronor where the other is in thousands.
+
+    Småföretagarnas "Finansieringsavgift" came back as 117 308 746 against a
+    "Summa avgifter till staten" of 117 309: the same figure, read once off
+    the resultaträkning in tkr and once out of the förvaltningsberättelse in
+    kronor. Reported as a difference of 117 million it looks like a wild
+    misreading; reported as a scale mismatch it points straight at the cell
+    to fix.
+
+    The tolerance is per component, because rounding each one to whole tkr
+    can move the total by up to a krona times the number of terms.
+    """
+    slack = KRONOR_PER_TKR * max(1, component_count)
+    for high_name, high, low_name, low in (
+        (other, parts, target, total),
+        (target, total, other, parts),
+    ):
+        if not low or not high:
+            continue
+        if abs(high - low * KRONOR_PER_TKR) <= slack:
+            return (
+                f"Skalfel: {high_name} är {_fmt(high)} medan {low_name} är "
+                f"{_fmt(low)}, vilket är samma belopp i kronor respektive "
+                "tusental kronor. Ett av värdena är hämtat i fel storhet. "
+                "Kontrollera vilken sida som är rätt; beloppen ska anges i "
+                "samma enhet som räkningen i övrigt."
+            )
+    return None
 
 
 def _provisions_counted_twice(values: dict[str, float]) -> bool:
@@ -184,6 +219,12 @@ def _sum_check(target: str, components: dict[str, float]):
             f"{'+' if c > 0 else '-'} {name}" for name, c in components.items()
         ).lstrip("+ ")
 
+        # A wrong unit is a different fault from a wrong figure, and looks
+        # like an enormous error unless it is named for what it is.
+        scale = _scale_mismatch(target, total, terms, parts, len(components))
+        if scale:
+            return scale
+
         # A net posted without its sign is a different fault from a wrong
         # figure, and the fix is different too.
         if parts and abs(total + parts) <= _tolerance(parts):
@@ -205,12 +246,35 @@ def _equality_check(target: str, other: str):
     """A note's total must equal the row it explains."""
 
     def check(values: dict[str, float]) -> str | None:
-        diff = values[target] - values[other]
-        if abs(diff) <= _tolerance(values[other] or values[target]):
+        note = values[target]
+        row = values[other]
+        diff = note - row
+        if abs(diff) <= _tolerance(row or note):
             return None
+
+        # Same amount, opposite signs. The definitions ask for this: the
+        # statement line is normalised to a positive amount ("Anges som ett
+        # positivt belopp") while the note is to be reported as printed
+        # ("räkna inte om den"), and a fund that prints its cost note
+        # negative satisfies both while failing this check. It was four of
+        # six funds on the first subset, which is a rule reporting its own
+        # instructions back rather than a finding about the documents.
+        if note and row and abs(note + row) <= _tolerance(row):
+            return (
+                f"{target} är {_fmt(note)} medan posten den specificerar, "
+                f"'{other}', är {_fmt(row)}: samma belopp med omvänt tecken. "
+                "Noten redovisar posten med kostnadstecken och räkningen "
+                "utan, eller tvärtom. Beloppet stämmer; kontrollera bara "
+                "vilken teckenkonvention som ska gälla i utdata."
+            )
+
+        scale = _scale_mismatch(target, note, other, row)
+        if scale:
+            return scale
+
         return (
-            f"{target} är {_fmt(values[target])} medan posten den specificerar, "
-            f"'{other}', är {_fmt(values[other])} "
+            f"{target} är {_fmt(note)} medan posten den specificerar, "
+            f"'{other}', är {_fmt(row)} "
             f"(differens {_fmt(diff) if diff < 0 else '+' + _fmt(diff)})."
         )
 
