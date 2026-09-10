@@ -151,3 +151,51 @@ def test_serialised_findings_reach_the_result_file():
     json.dumps(payload, ensure_ascii=False)
     assert payload["kontroll"] == "Instabil avläsning"
     assert payload["berörda_nyckeltal"] == ["Summa tillgångar"]
+
+
+# ------------------------------------------------- comparing like with like
+def test_metrics_the_re_read_never_looks_for_are_not_compared():
+    """The artefact this guard exists for.
+
+    The first reading has been through the targeted re-search; the re-read has
+    not. Over a 24-document corpus the re-search added 50 metrics and the check
+    reported 51 as missing on the second reading — very nearly the same 50,
+    counted as instability that no document exhibited.
+    """
+    first = _result({"Summa tillgångar": 63853, "Fordringar medlemsavgifter": 311})
+    a = _analyzer([_result({"Summa tillgångar": 63853})])
+
+    findings = a._check_extraction_stability(
+        first, ["t"], 2025, "m", "x.pdf", compare_only={"Summa tillgångar"}
+    )
+
+    assert findings == []
+
+
+def test_a_real_disagreement_is_still_flagged_within_the_compared_set():
+    first = _result({"Summa tillgångar": 63853, "Fordringar medlemsavgifter": 311})
+    a = _analyzer([_result({"Summa tillgångar": 16026})])
+
+    findings = a._check_extraction_stability(
+        first, ["t"], 2025, "m", "x.pdf", compare_only={"Summa tillgångar"}
+    )
+
+    assert len(findings) == 1
+    assert findings[0].metrics == ["Summa tillgångar"]
+
+
+def test_without_the_argument_everything_is_compared_as_before():
+    first = _result({"Summa tillgångar": 63853, "Fordringar medlemsavgifter": 311})
+    a = _analyzer([_result({"Summa tillgångar": 63853})])
+
+    findings = a._check_extraction_stability(first, ["t"], 2025, "m", "x.pdf")
+
+    assert len(findings) == 1
+
+
+def test_the_first_pass_metric_names_are_collected_from_the_result():
+    a = JBGAnnualReportAnalyzer.__new__(JBGAnnualReportAnalyzer)
+    names = a._present_metric_names(
+        _result({"Summa tillgångar": 1, "Summa eget kapital": 2})
+    )
+    assert names == {"Summa tillgångar", "Summa eget kapital"}

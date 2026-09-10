@@ -36,9 +36,27 @@ RELATIVE_TOLERANCE = 0.0
 # scale; it just means a small sample.
 MIN_VALUES_FOR_CERTAINTY_CHECK = 20
 ABSOLUTE_TOLERANCE = 1.0
+# Two checks disagreeing by the same amount usually share a cause, but only
+# once the amount is large enough that the coincidence is unlikely.
+LINK_MIN_DIFFERENCE = 10
+LINK_MAX_GROUP = 3
 # Reports state amounts in tkr; a figure lifted from running text is often in
 # kronor. The factor between them is what tells the two mistakes apart.
 KRONOR_PER_TKR = 1000
+
+
+@dataclass
+class CheckResult:
+    """A failed check, with the size of the discrepancy when it has one.
+
+    Checks may return a plain string instead. The difference is only worth
+    carrying for a straightforward mismatch: for a sign error or a unit
+    mix-up the number is an artefact of the fault, not a quantity that could
+    match another finding.
+    """
+
+    message: str
+    difference: float | None = None
 
 
 @dataclass
@@ -49,6 +67,7 @@ class Finding:
     message: str
     severity: str = SEVERITY_WARNING
     metrics: list[str] | None = None
+    difference: float | None = None
 
     def __str__(self) -> str:
         return f"[{self.fund} {self.year}] {self.rule}: {self.message}"
@@ -69,7 +88,7 @@ class Rule:
     name: str
     description: str
     metrics: list[str]
-    check: Callable[[dict[str, float]], str | None]
+    check: Callable[[dict[str, float]], "str | CheckResult | None"]
     severity: str = SEVERITY_WARNING
 
 
@@ -130,7 +149,7 @@ def _provisions_counted_twice(values: dict[str, float]) -> bool:
     return values["Summa avsättningar"] > 0 and abs(total - without) <= _tolerance(total)
 
 
-def _balance_identity(values: dict[str, float]) -> str | None:
+def _balance_identity(values: dict[str, float]) -> "str | CheckResult | None":
     total = values["Summa tillgångar"]
     equity = values["Summa eget kapital"]
     debt = values["Summa skulder"]
@@ -160,7 +179,7 @@ def _balance_identity(values: dict[str, float]) -> str | None:
             "Kontrollera vilket mot balansräkningen."
         )
 
-    return message
+    return CheckResult(message, diff)
 
 
 def _non_negative(metric: str) -> Callable[[dict[str, float]], str | None]:
@@ -208,7 +227,7 @@ RULES: list[Rule] = [
 def _sum_check(target: str, components: dict[str, float]):
     """Build a check for one subtotal from the specification."""
 
-    def check(values: dict[str, float]) -> str | None:
+    def check(values: dict[str, float]) -> "str | CheckResult | None":
         total = values[target]
         parts = sum(values[name] * coefficient for name, coefficient in components.items())
         diff = total - parts
@@ -234,9 +253,10 @@ def _sum_check(target: str, components: dict[str, float]):
                 "riktigt, negativa när kostnaderna överstiger intäkterna."
             )
 
-        return (
+        return CheckResult(
             f"{target} {_fmt(total)} stämmer inte med {terms} = {_fmt(parts)} "
-            f"(differens {_fmt(diff) if diff < 0 else '+' + _fmt(diff)})."
+            f"(differens {_fmt(diff) if diff < 0 else '+' + _fmt(diff)}).",
+            diff,
         )
 
     return check
@@ -245,7 +265,7 @@ def _sum_check(target: str, components: dict[str, float]):
 def _equality_check(target: str, other: str):
     """A note's total must equal the row it explains."""
 
-    def check(values: dict[str, float]) -> str | None:
+    def check(values: dict[str, float]) -> "str | CheckResult | None":
         note = values[target]
         row = values[other]
         diff = note - row
@@ -272,10 +292,11 @@ def _equality_check(target: str, other: str):
         if scale:
             return scale
 
-        return (
+        return CheckResult(
             f"{target} är {_fmt(note)} medan posten den specificerar, "
             f"'{other}', är {_fmt(row)} "
-            f"(differens {_fmt(diff) if diff < 0 else '+' + _fmt(diff)})."
+            f"(differens {_fmt(diff) if diff < 0 else '+' + _fmt(diff)}).",
+            diff,
         )
 
     return check
@@ -374,19 +395,75 @@ def validate(result: dict, metrics_path=None) -> list[Finding]:
                 except Exception as ex:  # pragma: no cover - a rule must never crash a run
                     logger.warning(f"Kontrollen '{rule.name}' kunde inte utföras: {ex}")
                     continue
-                if problem:
-                    findings.append(
-                        Finding(
-                            fund=fund,
-                            year=str(year),
-                            rule=rule.name,
-                            message=problem,
-                            severity=rule.severity,
-                            metrics=list(rule.metrics),
-                        )
+                if not problem:
+                    continue
+                if isinstance(problem, CheckResult):
+                    message, difference = problem.message, problem.difference
+                else:
+                    message, difference = problem, None
+                findings.append(
+                    Finding(
+                        fund=fund,
+                        year=str(year),
+                        rule=rule.name,
+                        message=message,
+                        severity=rule.severity,
+                        metrics=list(rule.metrics),
+                        difference=difference,
                     )
+                )
 
+    link_related_findings(findings)
     return findings
+
+
+def link_related_findings(findings: list[Finding]) -> int:
+    """Point out findings that are one misreading seen from two sides.
+
+    Service och kommunikation reported Summa skulder exceeding its components
+    by exactly 10 000, and separately a note total of 11 781 against a row of
+    1 781. One dropped digit, two findings, and nothing saying so. Where two
+    checks on the same fund disagree by the same amount and share exactly one
+    metric, that metric is almost certainly the cell to fix, and the message
+    says which.
+
+    Small differences are left alone. A handful of funds are out by two or
+    fifty on unrelated subtotals, and pairing those on an equal number would
+    invent a connection that is not there.
+    """
+    linked = 0
+    grouped: dict[tuple, list[Finding]] = {}
+    for finding in findings:
+        if finding.difference is None:
+            continue
+        if abs(finding.difference) < LINK_MIN_DIFFERENCE:
+            continue
+        key = (finding.fund, finding.year, round(abs(finding.difference), 2))
+        grouped.setdefault(key, []).append(finding)
+
+    for group in grouped.values():
+        if not 2 <= len(group) <= LINK_MAX_GROUP:
+            # One finding is nothing to link; a crowd sharing a round number
+            # is a coincidence rather than a common cause.
+            continue
+        for finding in group:
+            others = [f for f in group if f is not finding]
+            shared = set(finding.metrics or [])
+            for other in others:
+                shared &= set(other.metrics or [])
+            names = ", ".join(f"'{f.rule}'" for f in others)
+            finding.message += (
+                f" Samma differens uppträder i {names}, vilket tyder på en enda "
+                "felläsning snarare än flera."
+            )
+            if len(shared) == 1:
+                finding.message += (
+                    f" Kontrollerna har '{next(iter(shared))}' gemensamt; "
+                    "kontrollera den posten först."
+                )
+            linked += 1
+
+    return linked
 
 
 def log_findings(findings: list[Finding]) -> None:

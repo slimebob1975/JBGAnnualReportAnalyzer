@@ -180,6 +180,13 @@ Varje delsumma i föreskriften kontrolleras aritmetiskt mot sina delposter.
 Kontrollerna byggs ur `Delposter` i nyckeltalsdefinitionerna, så ett nytt
 nyckeltal med delposter ger en ny kontroll utan kodändring.
 
+Anmärkningar som gäller samma differens inom samma kassa kopplas ihop. Har
+två kontroller exakt samma differens och ett enda gemensamt nyckeltal, är det
+nyckeltalet nästan alltid den felavlästa cellen, och anmärkningen skriver ut
+vilken. En kassa vars `Summa skulder` översteg sina delposter med 10 000 hade
+samtidigt en not på 11 781 mot en rad på 1 781: en tappad siffra, två
+anmärkningar.
+
 Två avvikelser skiljs ut från vanliga differenser, eftersom de kräver helt
 olika åtgärd. **Omvänt tecken** betyder att noten och den post den
 specificerar är samma belopp med olika tecken; det är en fråga om
@@ -231,6 +238,15 @@ bekvämt vid felsökning men lägger omaskerade sidor ur en inskannad rapport p�
 disk. Därför är det avstängt.
 
 ### Stabilitetskontroll av inskannade rapporter
+
+Jämförelsen omfattar bara de nyckeltal som första avläsningen fick fram på
+samma sätt som omkörningen arbetar. Första avläsningen har gått igenom riktad
+omsökning och härledda delsummor; omkörningen gör varken eller. Utan den
+avgränsningen jämfördes en tvåstegsavläsning med en enstegsavläsning, och varje
+nyckeltal som omsökningen räddat saknades i omkörningen per definition. Över 24
+dokument hittade omsökningen 50 nyckeltal och kontrollen rapporterade 51 som
+"hittades inget värde alls" — i praktiken samma 50, redovisade som en
+instabilitet inget dokument uppvisade.
 
 Dokument som gått genom OCR läses av två gånger och resultaten jämförs. Ett
 värde som skiljer sig mellan de två avläsningarna märks som **Instabil

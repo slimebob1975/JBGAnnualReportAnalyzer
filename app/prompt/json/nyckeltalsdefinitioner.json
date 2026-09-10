@@ -444,7 +444,7 @@
     "Alternativa benämningar": [],
     "Beskrivning": "Summa, enligt noten till Övriga intäkter.",
     "Grupp": "🗒 Noter",
-    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Övriga intäkter i resultat- eller balansräkningen (nummer 1 i föreskriften; kassans egen numrering kan skilja sig). Rapportera raden som den står i dokumentet; räkna inte om den. Summan ska stämma med posten 'Övriga intäkter' i resultat- eller balansräkningen.",
+    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Övriga intäkter i resultat- eller balansräkningen (nummer 1 i föreskriften; kassans egen numrering kan skilja sig). Ange summan med samma tecken som posten 'Övriga intäkter' i räkningen. Skriver noten beloppet med kostnadstecken (negativt) medan räkningen anger det utan tecken, ange det utan tecken här också. Ändra bara tecknet; räkna inte om själva beloppet. Summan ska stämma med posten 'Övriga intäkter' i resultat- eller balansräkningen.",
     "Motsvarar": "Övriga intäkter"
   },
   {
@@ -487,7 +487,7 @@
     "Alternativa benämningar": [],
     "Beskrivning": "Summa, enligt noten till Övriga externa kostnader.",
     "Grupp": "🗒 Noter",
-    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Övriga externa kostnader i resultat- eller balansräkningen (nummer 3 i föreskriften; kassans egen numrering kan skilja sig). Rapportera raden som den står i dokumentet; räkna inte om den. Summan ska stämma med posten 'Övriga externa kostnader' i resultat- eller balansräkningen.",
+    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Övriga externa kostnader i resultat- eller balansräkningen (nummer 3 i föreskriften; kassans egen numrering kan skilja sig). Ange summan med samma tecken som posten 'Övriga externa kostnader' i räkningen. Skriver noten beloppet med kostnadstecken (negativt) medan räkningen anger det utan tecken, ange det utan tecken här också. Ändra bara tecknet; räkna inte om själva beloppet. Summan ska stämma med posten 'Övriga externa kostnader' i resultat- eller balansräkningen.",
     "Motsvarar": "Övriga externa kostnader"
   },
   {
@@ -509,7 +509,7 @@
     "Alternativa benämningar": [],
     "Beskrivning": "Summa, enligt noten till Finansiella intäkter.",
     "Grupp": "🗒 Noter",
-    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Finansiella intäkter i resultat- eller balansräkningen (nummer 4 i föreskriften; kassans egen numrering kan skilja sig). Rapportera raden som den står i dokumentet; räkna inte om den. Summan ska stämma med posten 'Finansiella intäkter' i resultat- eller balansräkningen.",
+    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Finansiella intäkter i resultat- eller balansräkningen (nummer 4 i föreskriften; kassans egen numrering kan skilja sig). Ange summan med samma tecken som posten 'Finansiella intäkter' i räkningen. Skriver noten beloppet med kostnadstecken (negativt) medan räkningen anger det utan tecken, ange det utan tecken här också. Ändra bara tecknet; räkna inte om själva beloppet. Summan ska stämma med posten 'Finansiella intäkter' i resultat- eller balansräkningen.",
     "Motsvarar": "Finansiella intäkter"
   },
   {
@@ -545,7 +545,7 @@
     "Alternativa benämningar": [],
     "Beskrivning": "Summa, enligt noten till Statligt bidrag till arbetslöshetsersättning.",
     "Grupp": "🗒 Noter",
-    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Statligt bidrag till arbetslöshetsersättning i resultat- eller balansräkningen (nummer 5 i föreskriften; kassans egen numrering kan skilja sig). Rapportera raden som den står i dokumentet; räkna inte om den. Summan ska stämma med posten 'Statligt bidrag till arbetslöshetsersättning' i resultat- eller balansräkningen.",
+    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Statligt bidrag till arbetslöshetsersättning i resultat- eller balansräkningen (nummer 5 i föreskriften; kassans egen numrering kan skilja sig). Ange summan med samma tecken som posten 'Statligt bidrag till arbetslöshetsersättning' i räkningen. Skriver noten beloppet med kostnadstecken (negativt) medan räkningen anger det utan tecken, ange det utan tecken här också. Ändra bara tecknet; räkna inte om själva beloppet. Summan ska stämma med posten 'Statligt bidrag till arbetslöshetsersättning' i resultat- eller balansräkningen.",
     "Motsvarar": "Statligt bidrag till arbetslöshetsersättning"
   },
   {
@@ -581,7 +581,7 @@
     "Alternativa benämningar": [],
     "Beskrivning": "Summa, enligt noten till Kostnad arbetslöshetsersättning.",
     "Grupp": "🗒 Noter",
-    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Kostnad arbetslöshetsersättning i resultat- eller balansräkningen (nummer 6 i föreskriften; kassans egen numrering kan skilja sig). Rapportera raden som den står i dokumentet; räkna inte om den. Summan ska stämma med posten 'Kostnad arbetslöshetsersättning' i resultat- eller balansräkningen.",
+    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Kostnad arbetslöshetsersättning i resultat- eller balansräkningen (nummer 6 i föreskriften; kassans egen numrering kan skilja sig). Ange summan med samma tecken som posten 'Kostnad arbetslöshetsersättning' i räkningen. Skriver noten beloppet med kostnadstecken (negativt) medan räkningen anger det utan tecken, ange det utan tecken här också. Ändra bara tecknet; räkna inte om själva beloppet. Summan ska stämma med posten 'Kostnad arbetslöshetsersättning' i resultat- eller balansräkningen.",
     "Motsvarar": "Kostnad arbetslöshetsersättning"
   },
   {
@@ -628,7 +628,7 @@
     "Alternativa benämningar": [],
     "Beskrivning": "Utgående fordringar, enligt noten till Fordringar felaktig arbetslöshetsersättning.",
     "Grupp": "🗒 Noter",
-    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Fordringar felaktig arbetslöshetsersättning i resultat- eller balansräkningen (nummer 7 i föreskriften; kassans egen numrering kan skilja sig). Rapportera raden som den står i dokumentet; räkna inte om den. Summan ska stämma med posten 'Fordringar felaktig arbetslöshetsersättning' i resultat- eller balansräkningen.",
+    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Fordringar felaktig arbetslöshetsersättning i resultat- eller balansräkningen (nummer 7 i föreskriften; kassans egen numrering kan skilja sig). Ange summan med samma tecken som posten 'Fordringar felaktig arbetslöshetsersättning' i räkningen. Skriver noten beloppet med kostnadstecken (negativt) medan räkningen anger det utan tecken, ange det utan tecken här också. Ändra bara tecknet; räkna inte om själva beloppet. Summan ska stämma med posten 'Fordringar felaktig arbetslöshetsersättning' i resultat- eller balansräkningen.",
     "Motsvarar": "Fordringar felaktig arbetslöshetsersättning"
   },
   {
@@ -650,7 +650,7 @@
     "Alternativa benämningar": [],
     "Beskrivning": "Summa, enligt noten till Övriga fordringar.",
     "Grupp": "🗒 Noter",
-    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Övriga fordringar i resultat- eller balansräkningen (nummer 8 i föreskriften; kassans egen numrering kan skilja sig). Rapportera raden som den står i dokumentet; räkna inte om den. Summan ska stämma med posten 'Övriga fordringar' i resultat- eller balansräkningen.",
+    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Övriga fordringar i resultat- eller balansräkningen (nummer 8 i föreskriften; kassans egen numrering kan skilja sig). Ange summan med samma tecken som posten 'Övriga fordringar' i räkningen. Skriver noten beloppet med kostnadstecken (negativt) medan räkningen anger det utan tecken, ange det utan tecken här också. Ändra bara tecknet; räkna inte om själva beloppet. Summan ska stämma med posten 'Övriga fordringar' i resultat- eller balansräkningen.",
     "Motsvarar": "Övriga fordringar"
   },
   {
@@ -697,7 +697,7 @@
     "Alternativa benämningar": [],
     "Beskrivning": "Utgående avsättningar, enligt noten till Avsättning felaktig arbetslöshetsersättning.",
     "Grupp": "🗒 Noter",
-    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Avsättning felaktig arbetslöshetsersättning i resultat- eller balansräkningen (nummer 9 i föreskriften; kassans egen numrering kan skilja sig). Rapportera raden som den står i dokumentet; räkna inte om den. Summan ska stämma med posten 'Avsättningar felaktig arbetslöshetsersättning' i resultat- eller balansräkningen.",
+    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Avsättning felaktig arbetslöshetsersättning i resultat- eller balansräkningen (nummer 9 i föreskriften; kassans egen numrering kan skilja sig). Ange summan med samma tecken som posten 'Avsättningar felaktig arbetslöshetsersättning' i räkningen. Skriver noten beloppet med kostnadstecken (negativt) medan räkningen anger det utan tecken, ange det utan tecken här också. Ändra bara tecknet; räkna inte om själva beloppet. Summan ska stämma med posten 'Avsättningar felaktig arbetslöshetsersättning' i resultat- eller balansräkningen.",
     "Motsvarar": "Avsättningar felaktig arbetslöshetsersättning"
   },
   {
@@ -719,7 +719,7 @@
     "Alternativa benämningar": [],
     "Beskrivning": "Summa, enligt noten till Övriga skulder.",
     "Grupp": "🗒 Noter",
-    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Övriga skulder i resultat- eller balansräkningen (nummer 10 i föreskriften; kassans egen numrering kan skilja sig). Rapportera raden som den står i dokumentet; räkna inte om den. Summan ska stämma med posten 'Övriga skulder' i resultat- eller balansräkningen.",
+    "Specifika instruktioner": "Summeringsraden i Noten som specificerar Övriga skulder i resultat- eller balansräkningen (nummer 10 i föreskriften; kassans egen numrering kan skilja sig). Ange summan med samma tecken som posten 'Övriga skulder' i räkningen. Skriver noten beloppet med kostnadstecken (negativt) medan räkningen anger det utan tecken, ange det utan tecken här också. Ändra bara tecknet; räkna inte om själva beloppet. Summan ska stämma med posten 'Övriga skulder' i resultat- eller balansräkningen.",
     "Motsvarar": "Övriga skulder"
   },
   {

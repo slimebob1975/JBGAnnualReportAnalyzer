@@ -817,3 +817,80 @@ def test_the_statements_are_still_checked():
     for target in ("Summa intäkter", "Årets resultat", "Summa tillgångar",
                    "Summa eget kapital, avsättningar och skulder"):
         assert f"Delsummering: {target}" in names, target
+
+
+# --------------------------------------------- one misreading, two findings
+def test_two_checks_with_the_same_difference_are_linked():
+    """Service och kommunikation: Summa skulder exceeded its components by
+    exactly 10 000, and a note total ran 10 000 above the row it explains.
+    One dropped digit reported twice, with nothing saying so."""
+    result = _fund(**{
+        "Summa skulder": 48855,
+        "Skulder arbetslöshetsersättning": 20000,
+        "Skulder finansieringsavgift": 5000,
+        "Leverantörsskulder": 2074,
+        "Övriga skulder": 1781,
+        "Upplupna kostnader och förutbetalda intäkter": 10000,
+        "Not till Övriga skulder: Summa": 11781,
+    })
+    findings = validation.validate(result, KEY_DEFS)
+
+    assert len(findings) == 2
+    assert all("Samma differens uppträder i" in f.message for f in findings)
+    # The metric the two checks share is the cell to fix, and it is named.
+    assert all("'Övriga skulder' gemensamt" in f.message for f in findings)
+
+
+def test_a_lone_finding_is_not_linked_to_anything():
+    result = _fund(**{"Not till Övriga fordringar: Summa": 1109,
+                      "Övriga fordringar": 149})
+    findings = validation.validate(result, KEY_DEFS)
+
+    assert len(findings) == 1
+    assert "Samma differens" not in findings[0].message
+
+
+def test_small_coincidences_are_not_presented_as_a_common_cause():
+    """Two subtotals out by two on unrelated parts of the balance sheet is a
+    coincidence, and pairing them would invent a connection."""
+    findings = [
+        validation.Finding("K", "2025", "A", "x", metrics=["m1"], difference=2),
+        validation.Finding("K", "2025", "B", "y", metrics=["m2"], difference=-2),
+    ]
+    assert validation.link_related_findings(findings) == 0
+    assert all("Samma differens" not in f.message for f in findings)
+
+
+def test_findings_in_different_funds_are_never_linked():
+    findings = [
+        validation.Finding("Kassa A", "2025", "A", "x", metrics=["m"], difference=10000),
+        validation.Finding("Kassa B", "2025", "B", "y", metrics=["m"], difference=10000),
+    ]
+    assert validation.link_related_findings(findings) == 0
+
+
+def test_a_crowd_sharing_a_round_number_is_left_alone():
+    findings = [
+        validation.Finding("K", "2025", f"R{n}", "x", metrics=[f"m{n}"], difference=1000)
+        for n in range(5)
+    ]
+    assert validation.link_related_findings(findings) == 0
+
+
+def test_a_check_returning_a_plain_string_still_works():
+    """Most checks carry no meaningful difference and return a message only.
+    Those must survive the change unchanged, and stay out of the linking."""
+    plain = validation.Rule(
+        name="Plain", description="d", metrics=["Summa tillgångar"],
+        check=lambda values: "något är fel",
+    )
+    monkeyed = validation.RULES
+    try:
+        validation.RULES = [plain]
+        findings = validation.validate(_fund(**{"Summa tillgångar": 1}), None)
+    finally:
+        validation.RULES = monkeyed
+
+    assert len(findings) == 1
+    assert findings[0].message == "något är fel"
+    assert findings[0].difference is None

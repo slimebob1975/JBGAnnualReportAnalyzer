@@ -1759,8 +1759,20 @@ class JBGAnnualReportAnalyzer:
             )
         return derived_total
 
+    def _present_metric_names(self, result: dict) -> set[str]:
+        """Every metric name that carries a value anywhere in a result."""
+        names: set[str] = set()
+        for years in (result or {}).values():
+            if not isinstance(years, dict):
+                continue
+            for metrics in years.values():
+                if isinstance(metrics, dict):
+                    names.update(metrics.keys())
+        return names
+
     def _check_extraction_stability(
-        self, result: dict, chunks: list[str], the_year: int, model: str, source_name: str
+        self, result: dict, chunks: list[str], the_year: int, model: str,
+        source_name: str, compare_only: set[str] | None = None
     ) -> list:
         """Run the extraction again and report values that did not survive it.
 
@@ -1769,6 +1781,16 @@ class JBGAnnualReportAnalyzer:
         channel as the arithmetic checks, so an unstable cell is coloured in
         Excel, named in the CSV and recorded in the JSON without any new
         plumbing.
+
+        `compare_only` limits the comparison to metrics the first reading got
+        from the same procedure the re-read uses. Without it the check compares
+        a two-pass reading against a one-pass one: the first reading has been
+        through the targeted re-search and the derived subtotals, the re-read
+        has not, and every metric recovered that way is missing from the second
+        reading by construction. Over a 24-document corpus the targeted
+        re-search added 50 metrics and the check reported 51 as "hittades inget
+        värde alls" - very nearly the same 50, counted as instability that no
+        document exhibited.
         """
         if not result:
             return []
@@ -1798,9 +1820,14 @@ class JBGAnnualReportAnalyzer:
             for per_year in other_years.values():
                 second_metrics.update(per_year)
 
-        findings, agreed = [], 0
+        findings, agreed, skipped = [], 0, 0
         for name, entry in first_metrics.items():
             if not isinstance(entry, dict):
+                continue
+            if compare_only is not None and name not in compare_only:
+                # Recovered by a pass the re-read never ran. Its absence the
+                # second time says nothing about the document.
+                skipped += 1
                 continue
             first_value = self._comparable(entry.get(self.FIELD_VALUE))
             other = second_metrics.get(name)
@@ -1839,15 +1866,22 @@ class JBGAnnualReportAnalyzer:
                 )
             )
 
+        note = (
+            f" {skipped} nyckeltal jämfördes inte, eftersom de hittades först "
+            "vid riktad omsökning eller härleddes."
+            if skipped
+            else ""
+        )
         if findings:
             logger.warning(
-                f"{len(findings)} av {len(first_metrics)} nyckeltal i {source_name} "
-                "ändrades mellan två avläsningar av samma dokument."
+                f"{len(findings)} av {agreed + len(findings)} jämförda nyckeltal i "
+                f"{source_name} ändrades mellan två avläsningar av samma "
+                f"dokument.{note}"
             )
         else:
             logger.info(
-                f"Stabilitetskontroll: alla {agreed} nyckeltal i {source_name} "
-                "gav samma värde vid omkörning."
+                f"Stabilitetskontroll: alla {agreed} jämförda nyckeltal i "
+                f"{source_name} gav samma värde vid omkörning.{note}"
             )
         return findings
 
@@ -2077,6 +2111,10 @@ class JBGAnnualReportAnalyzer:
                         else:
                             logger.warning("No conclicts were merged.")
 
+                    # What the plain extraction found, before the passes the
+                    # stability re-read does not repeat.
+                    first_pass_metrics = self._present_metric_names(appended_result)
+
                     if self.USE_SECOND_PASS_FOR_MISSING:
                         appended_result = self._second_pass_for_missing(
                             appended_result, chunks, the_year=the_year, model=model
@@ -2094,6 +2132,7 @@ class JBGAnnualReportAnalyzer:
                                 the_year=the_year,
                                 model=model,
                                 source_name=_pdf_path.name,
+                                compare_only=first_pass_metrics,
                             )
                         )
 
