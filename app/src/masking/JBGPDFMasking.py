@@ -15,6 +15,74 @@ except ImportError:  # pragma: no cover - older PyMuPDF only exposes "fitz"
 
 NER_MODEL = "KBLab/bert-base-swedish-cased-ner"
 
+# Bindestreck, plus och de streckvarianter pdf-läsare ibland levererar i
+# stället för ett vanligt bindestreck.
+# Bindestrecket sist: i en teckenklass blir det annars ett intervall.
+ID_SEPARATORS = "+\u2010\u2011\u2012\u2013\u2014\u2015\u2212-"
+
+# Person- och samordningsnummer i alla former som förekommer: tio eller tolv
+# siffror, med eller utan skiljetecken. Den tidigare varianten täckte bara
+# \d{6}[-+]\d{4} och missade därmed tolvsiffriga nummer helt - just den form
+# som står i e-signeringsrutorna, där dessa dokument faktiskt bär
+# personuppgifter.
+IDENTITY_NUMBER_PATTERN = re.compile(
+    rf"(?<![\d{ID_SEPARATORS}])"
+    rf"((?:19|20)?\d{{6}}[{ID_SEPARATORS}]?\d{{4}})"
+    rf"(?![\d{ID_SEPARATORS}])"
+)
+
+
+def _luhn_ok(ten_digits: str) -> bool:
+    """Kontrollsiffran i ett personnummer, beräknad på de tio siffrorna."""
+    total = 0
+    for position, char in enumerate(ten_digits):
+        doubled = int(char) * (2 if position % 2 == 0 else 1)
+        total += doubled - 9 if doubled > 9 else doubled
+    return total % 10 == 0
+
+
+def _looks_like_identity_number(digits: str, has_separator: bool) -> bool:
+    """Är sifferföljden ett person- eller samordningsnummer?
+
+    Två skäl att inte nöja sig med formen. Ett fakturanummer eller ett
+    kontonummer på tio siffror ser likadant ut, och skulle svärtas i onödan.
+    Och organisationsnummer har exakt samma form som ett tiosiffrigt
+    personnummer - den tidigare kontrollen svärtade a-kassans eget
+    organisationsnummer ur varje årsredovisning. Organisationsnummer har 20
+    eller mer på månadsplatsen, vilket skiljer dem åt.
+
+    Kravet på kontrollsiffra ställs bara när skiljetecknet saknas. Ett
+    skiljetecken är i sig ett starkt tecken på att det rör sig om ett
+    personnummer, och en OCR-tolkad siffra som blivit fel ska inte leda till
+    att numret lämnas omaskerat - då är en onödig svärtning det billigare
+    felet.
+    """
+    core = digits[2:] if len(digits) == 12 else digits
+    month, day = int(core[2:4]), int(core[4:6])
+    if not 1 <= month <= 12:
+        return False
+    # 61-91 är samordningsnummer: födelsedagen plus 60.
+    if not (1 <= day <= 31 or 61 <= day <= 91):
+        return False
+    return True if has_separator else _luhn_ok(core)
+
+
+def find_identity_numbers(text: str) -> set[str]:
+    """Person- och samordningsnummer, ordagrant som de står i texten.
+
+    Termerna används sedan för att lokalisera och svärta, så de måste
+    returneras precis som de förekommer - inklusive skiljetecknet.
+    """
+    found = set()
+    for match in IDENTITY_NUMBER_PATTERN.finditer(text):
+        term = match.group(1)
+        digits = re.sub(r"\D", "", term)
+        if len(digits) not in (10, 12):
+            continue
+        if _looks_like_identity_number(digits, has_separator=len(term) != len(digits)):
+            found.add(term)
+    return found
+
 
 class PDFMasker:
     def __init__(self, ner=None):
@@ -101,7 +169,7 @@ class PDFMasker:
                 except Exception as e:
                     print(f"NER-fel: {e}")
         full_text = "\n".join(page_texts)
-        pnr_matches = set(re.findall(r"\b\d{6}[-+]\d{4}\b", full_text))
+        pnr_matches = find_identity_numbers(full_text)
         full_text = self._fix_split_emails(full_text)
         email_matches = set(re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", full_text))
         twitter_matches = set(re.findall(r"@[A-Za-z0-9_]{1,15}", full_text))
@@ -378,6 +446,18 @@ class PDFMasker:
         joined = re.sub(r"-\s*\n\s*", "", text or "")
         return cls._normalise_for_search(joined)
 
+    @staticmethod
+    def find_identity_numbers_in_pdf(pdf_path) -> set:
+        """Leta person- och samordningsnummer i en färdig pdf.
+
+        Fristående från termlistan med avsikt. Verifieringen svarar på frågan
+        "är de termer vi hittade borta?", vilket inte är samma sak som "finns
+        det några nummer kvar?" - ett nummer som upptäcktes men inte gick att
+        lokalisera passerar den första frågan och faller på den andra.
+        """
+        with pymupdf.open(pdf_path) as doc:
+            return find_identity_numbers("\n".join(page.get_text() for page in doc))
+
     @classmethod
     def diagnose_survivors(cls, output_pdf: Path, terms, hits: dict) -> list:
         """Measure, per surviving term, exactly where the redaction went wrong.
@@ -522,6 +602,18 @@ class PDFMasker:
                     f"Maskering verifierad: inga av {len(sensitive_terms)} termer "
                     "återfinns i utdata."
                 )
+
+            leftover_ids = self.find_identity_numbers_in_pdf(output_pdf)
+            if leftover_ids:
+                # Antal, aldrig numren: loggen är spårbarhet och numren är det
+                # som skyddas.
+                logger.error(
+                    f"{len(leftover_ids)} person- eller samordningsnummer är "
+                    f"läsbara som text i {output_pdf.name} efter maskering."
+                )
+                if self.FAIL_ON_LEAK:
+                    output_pdf.unlink(missing_ok=True)
+                    return None
 
             logger.info(f"Masked file saved: {output_pdf}")
             return output_pdf

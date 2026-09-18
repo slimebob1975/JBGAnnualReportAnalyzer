@@ -20,10 +20,10 @@ from app.src.JBGJSONConverter import JsonConverter
 from app.src.masking.JBGPDFMasking import PDFMasker
 
 BASE_DIR = Path(__file__).resolve().parent
-TITLE = "JBG nyckeltalsanalys"
-SUBTITLE = "Obs! För .PDF (eller .ZIP av .PDF)"
+TITLE = "Årsredovisningsgranskning"
+SUBTITLE = " För .PDF (eller .ZIP av .PDF)"
 TITLE_MASKING = "JBG filmaskning"
-SUBTITLE_MASKING = "Obs! För .PDF"
+SUBTITLE_MASKING = " För .PDF"
 INVALID_FILETYPE_FOR = "Ogiltig filtyp för"
 FILES_ALLOWED = "Endast pdf eller zip av pdf tillåtes"
 USE_COMPRESSED_GPT = True

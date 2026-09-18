@@ -273,6 +273,99 @@ Loggen visar också fördelningen av angiven säkerhet efter varje körning. Om
 nästan alla värden får 1,0 skiljer skalan inte mellan säkra och osäkra värden,
 och färgkodningen säger då lite.
 
+### Flikar i resultatfilen
+
+Per år skrivs två flikar. Årtalsfliken innehåller uppgifterna och, längst ned,
+nyckeltalsberäkningarna; det är den att arbeta i. Fliken `<år> med källa`
+innehåller samma uppgifter med en källkolumn per kassa, för att härleda ett
+värde till rätt sida. Utan `include_sources` skrivs bara den första.
+
+Nyckeltalsberäkningarna definieras i
+`app/prompt/json/nyckeltalsberakningar.json`. Varje formel hänvisar till
+nyckeltal inom klammer, till exempel
+`{Summa eget kapital} / {Summa tillgångar}`, och skrivs ut som en Excel-formel
+mot rätt rad. Nya beräkningar kräver därför ingen kodändring. Saknas någon
+ingående uppgift för en kassa lämnas cellen tom med en kommentar om vilken,
+hellre än ett tal räknat på luckor.
+
+### Person- och samordningsnummer
+
+Maskeringen svärtar namn (via NER), e-postadresser, @-handtag och
+person- eller samordningsnummer. Nummer känns igen i alla former som
+förekommer: tio eller tolv siffror, med eller utan skiljetecken. Tidigare
+täcktes bara `\d{6}[-+]\d{4}`, vilket missade tolvsiffriga nummer helt – just
+den form som står i e-signeringsrutorna.
+
+Organisationsnummer har samma form som ett tiosiffrigt personnummer men 20
+eller mer på månadsplatsen, och svärtas därför inte längre. Kontrollsiffran
+(Luhn) krävs bara när skiljetecknet saknas: ett skiljetecken är starkt belägg i
+sig, och en OCR-tolkad siffra som blivit fel ska inte leda till att numret
+lämnas omaskerat.
+
+Efter maskeringen görs två kontroller. Den ena är att de termer som hittats
+inte återfinns i utdata. Den andra sveper utdata efter person- och
+samordningsnummer på nytt, oberoende av termlistan – ett nummer som upptäcktes
+men inte gick att lokalisera passerar den första kontrollen och faller på den
+andra. Med `FAIL_ON_LEAK` kastas filen i båda fallen.
+
+Kontrollerna kan bara fånga det som går att upptäcka. Raden "Maskering
+verifierad" betyder att de hittade termerna är borta, inte att dokumentet med
+säkerhet är fritt från personuppgifter.
+
+### Normalisering före kontroll
+
+Två slags rättelser görs innan rimlighetskontrollerna körs, båda för att
+beslutet redan är bestämt av något vi vet och därför inte bör överlåtas åt
+modellen.
+
+**Tecken.** Nio nyckeltal är i definitionerna angivna som positiva belopp och
+nio notsummor ska följa tecknet på den post de specificerar. Att formulera om
+instruktionen hjälpte — anmärkningarna om not mot räkning halverades — men
+flyttade problemet snarare än löste det: av 52 värden som skilde sig mellan två
+avläsningar av samma dokument var 20 samma belopp med omvänt tecken. Tecknet
+sätts därför i koden. Beloppet räknas aldrig om.
+
+**Enhet.** Belopp i bilaga 2 räknas om till kronor när kassan uppenbart
+redovisat i tusental eller miljoner. Rättelsen är avsiktligt försiktig: värdet
+måste ligga minst hundra gånger från vad övriga kassor redovisar, och den
+valda faktorn måste föra det inom en tiopotens från dem. Räcker ingen faktor
+till lämnas värdet orört och anmärkningen står kvar. Akademikernas 2 924 mot en
+median på 192 397 000 är ett sådant fall: det är fortfarande fel enhet, men
+vilken går inte att avgöra från de andra kassorna.
+
+Båda skriver in vad de gjort i cellens kommentar. En rättelse som ingen kan se
+är sämre än ingen.
+
+### Rimliga intervall för nyckeltalen
+
+Fel syns ofta lättare i sina konsekvenser än i sig själva. Småföretagarnas
+finansieringsavgift kom i kronor där resten av resultaträkningen var i
+tusental; talet 117 308 746 såg i sig alldeles vanligt ut, men gav en
+kostnadstäckning på 0,02 månader — en kassa med en halv dags reserver. Varje
+nyckeltalsberäkning har därför ett `Rimligt intervall` i
+`nyckeltalsberakningar.json`, och ett värde utanför det ger en anmärkning som
+pekar ut de ingående posterna.
+
+Intervallen är vida med avsikt. Över 24 kassor löpte kostnadstäckningen från
+0,02 till 8,5 månader och kassalikviditeten från 0,28 till 10,3. Kontrollen
+ska fånga omöjligheter, inte kassor som är ovanliga.
+
+### Enhet i bilaga 2
+
+Bilaga 2 anger inte i vilken enhet belopp ska redovisas, och kassorna svarar
+olika. I en körning löpte `Totalt belopp återkrav inlämnade till
+Kronofogdemyndigheten` från 122 till 5 501 628 över 21 kassor, där flera
+uppenbart angett tusental kronor och flera kronor, två med ören. Kolumnen gick
+varken att summera eller jämföra, och ingenting märkte det: dessa nyckeltal
+omfattas inte av någon aritmetisk identitet.
+
+Kontrollen jämför varje kassas belopp mot medianen för de övriga och anmärker
+vid en avvikelse på minst hundra gånger. Den gäller bara nyckeltal som
+definitionerna märkt med `Enhet: belopp` eller `kronor`; antal medlemmar
+skiljer sig med två tiopotenser mellan största och minsta kassa helt legitimt.
+Bara tydliga fall fångas — en kassa som ligger en femtedel under sina
+jämförbara är inte avgjord av den här kontrollen.
+
 ### Långa körningar
 
 Livslängden räknas från jobbets senaste livstecken, inte från när det

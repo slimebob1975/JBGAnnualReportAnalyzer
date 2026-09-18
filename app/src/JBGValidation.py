@@ -13,6 +13,7 @@ That is a real extraction error, and nothing in the pipeline noticed it.
 
 import json
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,6 +41,16 @@ ABSOLUTE_TOLERANCE = 1.0
 # once the amount is large enough that the coincidence is unlikely.
 LINK_MIN_DIFFERENCE = 10
 LINK_MAX_GROUP = 3
+# Amount metrics from bilaga 2 are the one place where the funds themselves
+# disagree about the unit: some report kronor, some thousands. A value a
+# hundredth of what its peers report is a unit, not a fund that is a hundred
+# times smaller than everyone else.
+UNIT_OUTLIER_FACTOR = 100
+# Below this many funds there is no peer group to compare against.
+MIN_FUNDS_FOR_UNIT_CHECK = 5
+UNIT_CHECK_RULE = "Enhet avviker från övriga kassor"
+RATIO_RULE = "Nyckeltal utanför rimligt intervall"
+RATIO_FILENAME = "nyckeltalsberakningar.json"
 # Reports state amounts in tkr; a figure lifted from running text is often in
 # kronor. The factor between them is what tells the two mistakes apart.
 KRONOR_PER_TKR = 1000
@@ -195,7 +206,41 @@ def _non_negative(metric: str) -> Callable[[dict[str, float]], str | None]:
     return check
 
 
+def _receivable_matches_provision(values: dict[str, float]) -> "str | CheckResult | None":
+    """Fordringar and avsättningar for felaktig ersättning describe one thing.
+
+    A claim for wrongly paid benefit is carried as a receivable and provided
+    for at the same amount, so the two figures move together. The domain
+    expert checks this by hand in the spreadsheet; as a rule it colours the
+    cell and joins the findings instead.
+    """
+    receivable = values["Fordringar felaktig arbetslöshetsersättning"]
+    provision = values["Avsättningar felaktig arbetslöshetsersättning"]
+    diff = receivable - provision
+    if abs(diff) <= _tolerance(receivable or provision):
+        return None
+    return CheckResult(
+        f"Fordringar felaktig arbetslöshetsersättning {_fmt(receivable)} skiljer "
+        f"sig från Avsättningar felaktig arbetslöshetsersättning "
+        f"{_fmt(provision)} (differens "
+        f"{_fmt(diff) if diff < 0 else '+' + _fmt(diff)}). Posterna avser samma "
+        "sak och brukar vara lika stora.",
+        diff,
+    )
+
+
 RULES: list[Rule] = [
+    Rule(
+        name="Fordran och avsättning för felaktig ersättning",
+        description=(
+            "Fordringar felaktig arbetslöshetsersättning ska motsvara "
+            "Avsättningar felaktig arbetslöshetsersättning."
+        ),
+        metrics=["Fordringar felaktig arbetslöshetsersättning",
+                 "Avsättningar felaktig arbetslöshetsersättning"],
+        check=_receivable_matches_provision,
+        severity=SEVERITY_WARNING,
+    ),
     Rule(
         name="Balansräkningen balanserar",
         description=(
@@ -413,7 +458,101 @@ def validate(result: dict, metrics_path=None) -> list[Finding]:
                     )
                 )
 
+    findings.extend(check_unit_consistency(result, metrics_path))
+    findings.extend(check_ratio_plausibility(result, metrics_path))
     link_related_findings(findings)
+    return findings
+
+
+def _amount_metrics(metrics_path) -> set[str]:
+    """Metrics the definitions mark as an amount rather than a count."""
+    try:
+        with open(metrics_path, encoding="utf-8") as f:
+            definitions = json.load(f)
+    except (OSError, json.JSONDecodeError) as ex:
+        logger.warning(f"Kunde inte läsa {metrics_path}: {ex}")
+        return set()
+    return {
+        entry["Nyckeltal"]
+        for entry in definitions
+        if entry.get("Enhet") in ("belopp", "kronor")
+    }
+
+
+def check_unit_consistency(result: dict, metrics_path=None) -> list[Finding]:
+    """Flag amounts reported in a different unit from the other funds.
+
+    Bilaga 2 asks for amounts without saying in what unit, and the funds
+    answered differently. In one corpus "Totalt belopp återkrav" ran from 122
+    to 5 501 628 across 21 funds, with several plainly in tkr and several
+    plainly in kronor, including two carrying öre. The column could not be
+    summed or compared and nothing noticed, because these are among the
+    metrics no arithmetic identity touches.
+
+    The comparison is against the median of the other funds, and only for
+    metrics the definitions mark as amounts. Member counts vary by two orders
+    of magnitude between the largest and smallest fund quite legitimately; a
+    plain outlier test over those would cry wolf every run.
+
+    Clear cases only. A fund whose figure is a fifth of its peers' is not
+    resolved by this check and is not meant to be.
+    """
+    if not metrics_path:
+        return []
+    amount_metrics = _amount_metrics(metrics_path)
+    if not amount_metrics:
+        return []
+
+    # metric -> year -> fund -> value
+    columns: dict[str, dict[str, dict[str, float]]] = {}
+    for fund, years in (result or {}).items():
+        if not isinstance(years, dict):
+            continue
+        for year, metrics in years.items():
+            if not isinstance(metrics, dict):
+                continue
+            for name in amount_metrics:
+                value = _numeric(metrics.get(name))
+                if value is None or value == 0:
+                    # Zero carries no unit, so it says nothing either way.
+                    continue
+                columns.setdefault(name, {}).setdefault(str(year), {})[fund] = value
+
+    findings: list[Finding] = []
+    for name, per_year in columns.items():
+        for year, per_fund in per_year.items():
+            if len(per_fund) < MIN_FUNDS_FOR_UNIT_CHECK:
+                continue
+            for fund, value in sorted(per_fund.items()):
+                peers = sorted(
+                    abs(other) for peer, other in per_fund.items() if peer != fund
+                )
+                median = peers[len(peers) // 2]
+                if not median:
+                    continue
+                ratio = abs(value) / median
+                if ratio > 1 / UNIT_OUTLIER_FACTOR and ratio < UNIT_OUTLIER_FACTOR:
+                    continue
+                direction = "lägre" if ratio < 1 else "högre"
+                findings.append(
+                    Finding(
+                        fund=fund,
+                        year=year,
+                        rule=UNIT_CHECK_RULE,
+                        message=(
+                            f"{name} är {_fmt(value)}, vilket är omkring "
+                            f"{_fmt(1 / ratio if ratio < 1 else ratio)} gånger "
+                            f"{direction} än medianen {_fmt(median)} för övriga "
+                            f"{len(peers)} kassor. Bilaga 2 anger inte enhet och "
+                            "kassorna rapporterar olika: beloppet är sannolikt i "
+                            "kronor där de andra angett tusental kronor, eller "
+                            "tvärtom. Kolumnen kan inte summeras förrän detta är "
+                            "avgjort."
+                        ),
+                        severity=SEVERITY_WARNING,
+                        metrics=[name],
+                    )
+                )
     return findings
 
 
@@ -536,3 +675,97 @@ def findings_by_cell(findings: list[Finding]) -> dict[tuple, list[Finding]]:
         for metric in finding.metrics or []:
             index.setdefault((finding.fund, finding.year, metric), []).append(finding)
     return index
+
+
+def _ratio_definitions(metrics_path, ratio_path=None) -> list[dict]:
+    path = Path(ratio_path) if ratio_path else (
+        Path(metrics_path).parent / RATIO_FILENAME
+    )
+    if not path.is_file():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as ex:
+        logger.warning(f"Kunde inte läsa {path}: {ex}")
+        return []
+
+
+def check_ratio_plausibility(result: dict, metrics_path=None, ratio_path=None
+                             ) -> list[Finding]:
+    """Flag a derived ratio that cannot be right.
+
+    Errors are easier to see in their consequences than in themselves.
+    Småföretagarnas Finansieringsavgift came back in kronor where the rest of
+    the income statement was in thousands, and the figure in isolation looked
+    like a perfectly ordinary 117 308 746. Divided into the equity it gave a
+    cost coverage of 0.02 months - a fund with half a day of reserves - which
+    no reader could mistake for a real number.
+
+    The intervals are deliberately wide. Across 24 funds cost coverage ran
+    from 0.02 to 8.5 months and liquidity from 0.28 to 10.3, so these bands
+    catch impossibilities, not outliers; a fund that is merely unusual must
+    pass. Ratios are only computed where every input is present, since a ratio
+    built from gaps would produce findings about the gaps.
+    """
+    if not metrics_path:
+        return []
+    definitions = _ratio_definitions(metrics_path, ratio_path)
+    if not definitions:
+        return []
+
+    findings: list[Finding] = []
+    for fund, years in (result or {}).items():
+        if not isinstance(years, dict):
+            continue
+        for year, metrics in years.items():
+            if not isinstance(metrics, dict):
+                continue
+            for definition in definitions:
+                band = definition.get("Rimligt intervall")
+                formula = definition.get("Formel", "")
+                if not band or not formula:
+                    continue
+                names = re.findall(r"\{([^}]+)\}", formula)
+                values = {name: _numeric(metrics.get(name)) for name in names}
+                if any(value is None for value in values.values()):
+                    continue
+
+                expression = formula
+                for name in sorted(set(names), key=len, reverse=True):
+                    expression = expression.replace(f"{{{name}}}", repr(values[name]))
+                # The formula comes from a configuration file rather than
+                # from a document, but it is still evaluated, so the
+                # substituted expression is checked to be arithmetic and
+                # nothing else before it runs.
+                if not re.fullmatch(r"[\d\s()+\-*/.eE]+", expression):
+                    logger.warning(
+                        f"Hoppar över {definition['Nyckeltal']}: formeln "
+                        "innehåller annat än aritmetik."
+                    )
+                    continue
+                try:
+                    ratio = eval(expression, {"__builtins__": {}}, {})  # noqa: S307
+                except (ZeroDivisionError, ArithmeticError, SyntaxError, TypeError):
+                    continue
+
+                low, high = band
+                if low <= ratio <= high:
+                    continue
+                findings.append(
+                    Finding(
+                        fund=fund,
+                        year=str(year),
+                        rule=RATIO_RULE,
+                        message=(
+                            f"{definition['Nyckeltal']} blir {ratio:,.2f}, utanför "
+                            f"det rimliga intervallet {low}–{high}. Beräkningen "
+                            f"bygger på {', '.join(sorted(set(names)))}; något av "
+                            "de värdena är sannolikt felläst eller angivet i fel "
+                            "enhet."
+                        ),
+                        severity=SEVERITY_WARNING,
+                        metrics=sorted(set(names)),
+                    )
+                )
+    return findings

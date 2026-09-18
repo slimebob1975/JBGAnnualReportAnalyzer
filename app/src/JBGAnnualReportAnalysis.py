@@ -26,6 +26,7 @@ RETRYABLE_OPENAI_ERRORS = (
 import logging
 
 from app.src import JBGMetricSchema as schema
+from app.src import JBGNormalisation as normalisation
 from app.src import JBGPDFDiagnostics as diagnostics
 from app.src import JBGUsage as usage
 from app.src import JBGValidation as validation
@@ -1807,6 +1808,12 @@ class JBGAnnualReportAnalyzer:
             return []
 
         second, _ = self._merge_json_fund_data(self._deep_merge_json_objects(repeat))
+        # Both readings get the documented sign convention before they are
+        # compared. Without this, 20 of 52 differing values were the same
+        # amount with the sign flipped: a disagreement about a convention we
+        # have already written down, not about what the document says.
+        if self.metrics_path:
+            normalisation.normalise_signs(second, self.metrics_path)
 
         fund = next(iter(result))
         years = result[fund]
@@ -2184,6 +2191,14 @@ class JBGAnnualReportAnalyzer:
                         f"{len(unresolved)} kassanamn kunde inte normaliseras: "
                         f"{', '.join(sorted(unresolved))}"
                     )
+
+            # Corrections the definitions and the corpus already determine.
+            # These run before the checks, so the checks see the figures a
+            # reader will see, and after the names are canonicalised, because
+            # the unit comparison needs one column per fund.
+            if self.metrics_path:
+                normalisation.normalise_signs(final_result, self.metrics_path)
+                normalisation.normalise_units(final_result, self.metrics_path)
 
             # Arithmetic sanity checks. These do not change the data; they tell
             # the reader which figures to verify against the source document.

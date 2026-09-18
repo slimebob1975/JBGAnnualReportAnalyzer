@@ -894,3 +894,86 @@ def test_a_check_returning_a_plain_string_still_works():
     assert len(findings) == 1
     assert findings[0].message == "något är fel"
     assert findings[0].difference is None
+
+
+# ------------------------------------------------ fordran mot avsättning
+def test_receivable_and_provision_for_wrong_benefit_must_agree():
+    """The domain expert checks this by hand in the spreadsheet; as a rule it
+    colours the cell and joins the findings."""
+    result = _fund(**{"Fordringar felaktig arbetslöshetsersättning": 65588,
+                      "Avsättningar felaktig arbetslöshetsersättning": 62157})
+    findings = validation.validate(result, KEY_DEFS)
+
+    assert any("skiljer sig från" in f.message for f in findings)
+
+
+def test_equal_receivable_and_provision_pass_quietly():
+    result = _fund(**{"Fordringar felaktig arbetslöshetsersättning": 3431,
+                      "Avsättningar felaktig arbetslöshetsersättning": 3431})
+    assert validation.validate(result, KEY_DEFS) == []
+
+
+# ----------------------------------------------------- enhet mellan kassor
+AMOUNT = "Totalt belopp återkrav inlämnade till Kronofogdemyndigheten"
+
+
+def _corpus(values: dict) -> dict:
+    return {fund: {"2025": {AMOUNT: {"värde": v}}} for fund, v in values.items()}
+
+
+def test_an_amount_in_the_wrong_unit_is_flagged_against_its_peers():
+    """Bilaga 2 does not state a unit and the funds answered differently: one
+    real column ran from 122 to 5 501 628 and could not be summed."""
+    findings = validation.check_unit_consistency(
+        _corpus({"A": 2706, "B": 3103973, "C": 2937667, "D": 3209000,
+                 "E": 2382439, "F": 1201071}),
+        KEY_DEFS,
+    )
+    assert [f.fund for f in findings] == ["A"]
+    assert "tusental kronor" in findings[0].message
+
+
+def test_a_consistent_column_is_left_alone():
+    findings = validation.check_unit_consistency(
+        _corpus({"A": 3103973, "B": 2937667, "C": 3209000, "D": 2382439,
+                 "E": 1201071}),
+        KEY_DEFS,
+    )
+    assert findings == []
+
+
+def test_counts_are_never_compared_this_way():
+    """Member counts differ by two orders of magnitude between the largest and
+    smallest fund quite legitimately."""
+    counts = {
+        fund: {"2025": {"Totalt antal medlemmar 31 december": {"värde": v}}}
+        for fund, v in {"A": 700000, "B": 500000, "C": 300000, "D": 9000,
+                        "E": 4000}.items()
+    }
+    assert validation.check_unit_consistency(counts, KEY_DEFS) == []
+
+
+def test_a_zero_says_nothing_about_which_unit_was_used():
+    findings = validation.check_unit_consistency(
+        _corpus({"A": 0, "B": 3103973, "C": 2937667, "D": 3209000,
+                 "E": 2382439, "F": 1201071}),
+        KEY_DEFS,
+    )
+    assert findings == []
+
+
+def test_too_few_funds_means_no_peer_group():
+    findings = validation.check_unit_consistency(
+        _corpus({"A": 2706, "B": 3103973, "C": 2937667}), KEY_DEFS
+    )
+    assert findings == []
+
+
+def test_a_moderate_outlier_is_not_called_a_unit_error():
+    """A fund a fifth of its peers is not resolved by this check, by design."""
+    findings = validation.check_unit_consistency(
+        _corpus({"A": 49888, "B": 310397, "C": 293766, "D": 320900,
+                 "E": 238243, "F": 120107}),
+        KEY_DEFS,
+    )
+    assert findings == []

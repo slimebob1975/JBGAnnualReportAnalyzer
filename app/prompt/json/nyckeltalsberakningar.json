@@ -1,0 +1,62 @@
+[
+  {
+    "Nyckeltal": "Kassalikviditet",
+    "Beskrivning": "Omsättningstillgångar exklusive fordringar på staten och felaktig ersättning, i förhållande till skulder exklusive skulder för arbetslöshetsersättning.",
+    "Formel": "({Summa omsättningstillgångar} - {Fordringar statligt bidrag till arbetslöshetsersättning} - {Fordringar felaktig arbetslöshetsersättning} - {Not till Övriga fordringar: Källskatt arbetslöshetsersättning}) / ({Summa skulder} - {Skulder arbetslöshetsersättning} - {Not till Övriga skulder: Källskatt arbetslöshetsersättning})",
+    "Format": "0.00",
+    "Rimligt intervall": [
+      0.05,
+      50
+    ]
+  },
+  {
+    "Nyckeltal": "Soliditet",
+    "Beskrivning": "Eget kapital i förhållande till balansomslutningen, rensad för fordringar som avser staten och felaktig ersättning.",
+    "Formel": "{Summa eget kapital} / ({Summa tillgångar} - {Fordringar statligt bidrag till arbetslöshetsersättning} - {Fordringar felaktig arbetslöshetsersättning} - {Not till Övriga fordringar: Källskatt arbetslöshetsersättning})",
+    "Format": "0.00",
+    "Rimligt intervall": [
+      0.0,
+      1.5
+    ]
+  },
+  {
+    "Nyckeltal": "Kostnadstäckning (månader)",
+    "Beskrivning": "Antal månaders löpande kostnader som det egna kapitalet räcker till.",
+    "Formel": "{Summa eget kapital} / (({Summa administrationskostnader} + {Finansieringsavgift} + {Finansiella kostnader}) / 12)",
+    "Format": "0.0",
+    "Rimligt intervall": [
+      0.25,
+      120
+    ]
+  },
+  {
+    "Nyckeltal": "Administrationskostnad per medlem (kr)",
+    "Beskrivning": "Summa administrationskostnader per medlem vid årets slut. Kostnaderna anges i tkr och räknas här om till kronor.",
+    "Formel": "{Summa administrationskostnader} / {Totalt antal medlemmar 31 december} * 1000",
+    "Format": "0",
+    "Rimligt intervall": [
+      50,
+      5000
+    ]
+  },
+  {
+    "Nyckeltal": "Administrationskostnad per ersättningstagare (kr)",
+    "Beskrivning": "Summa administrationskostnader per medlem som fått ersättning under året, omräknat till kronor.",
+    "Formel": "{Summa administrationskostnader} / {Antal medlemmar som fått ersättning} * 1000",
+    "Format": "0",
+    "Rimligt intervall": [
+      500,
+      100000
+    ]
+  },
+  {
+    "Nyckeltal": "Ersättningstagare per medlem",
+    "Beskrivning": "Andel av medlemmarna som fått ersättning under året.",
+    "Formel": "{Antal medlemmar som fått ersättning} / {Totalt antal medlemmar 31 december}",
+    "Format": "0.000",
+    "Rimligt intervall": [
+      0.002,
+      0.8
+    ]
+  }
+]

@@ -1,6 +1,7 @@
 import csv
 import json
 import logging
+import re
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -159,16 +160,103 @@ class JsonConverter:
                 return PatternFill(start_color=colour, end_color=colour, fill_type="solid")
         return None
 
+    RATIO_GROUP = "📐 Nyckeltalsberäkningar"
+    RATIO_FILENAME = "nyckeltalsberakningar.json"
+    SOURCE_SHEET_SUFFIX = " med källa"
+
+    @classmethod
+    def _load_ratios(cls, ratio_def_path, key_def_path) -> list[dict]:
+        """Ratio definitions, from an explicit path or next to the metrics.
+
+        Missing is not an error: the file is an addition, and an export
+        without it should still produce the figures.
+        """
+        path = Path(ratio_def_path) if ratio_def_path else (
+            Path(key_def_path).parent / cls.RATIO_FILENAME
+        )
+        if not path.is_file():
+            logger.info(f"Inga nyckeltalsberäkningar hittades på {path}.")
+            return []
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError) as ex:
+            logger.warning(f"Kunde inte läsa {path}: {ex}")
+            return []
+
+    def _write_ratio_rows(self, ws, row_idx, ratios, funds, fund_data, column_of) -> int:
+        """Write the derived ratios as live Excel formulas.
+
+        Formulas rather than computed values, because the point of these rows
+        is that a reader can see what was divided by what, and correct an
+        input without waiting for a new run. Each is wrapped in IFERROR so a
+        fund missing a denominator gives an empty cell rather than #DIV/0!,
+        and a fund missing any input at all is skipped entirely rather than
+        being handed a zero that looks like a measurement.
+        """
+        if not ratios:
+            return row_idx
+
+        ws.cell(row=row_idx, column=1, value=self.RATIO_GROUP).font = Font(bold=True)
+        row_idx += 1
+
+        for ratio in ratios:
+            label = ratio.get("Nyckeltal", "")
+            formula = ratio.get("Formel", "")
+            needed = re.findall(r"\{([^}]+)\}", formula)
+
+            name_cell = ws.cell(row=row_idx, column=1, value=label)
+            description = ratio.get("Beskrivning")
+            if description:
+                name_cell.comment = Comment(description, "Årsredovisningsgranskning")
+                name_cell.comment.width = 380
+
+            for fund in funds:
+                column = column_of[fund]
+                metrics = fund_data.get(fund, {})
+                missing = [
+                    name for name in needed
+                    if (metrics.get(name) or {}).get(
+                        JBGAnnualReportAnalyzer.FIELD_VALUE
+                    ) is None
+                ]
+                cell = ws.cell(row=row_idx, column=column)
+                if missing:
+                    # Silence beats a number computed from gaps.
+                    cell.comment = Comment(
+                        "Beräknas inte: värde saknas för "
+                        + ", ".join(sorted(missing)),
+                        "Årsredovisningsgranskning",
+                    )
+                    cell.comment.width = 380
+                    continue
+
+                expression = formula
+                for name in set(needed):
+                    reference = f"{get_column_letter(column)}{self._metric_rows[name]}"
+                    expression = expression.replace(f"{{{name}}}", reference)
+                cell.value = f'=IFERROR({expression},"")'
+                number_format = ratio.get("Format")
+                if number_format:
+                    cell.number_format = number_format
+            row_idx += 1
+
+        return row_idx
+
     def to_excel_by_year(
         self,
         output_path: str | Path,
         key_def_path: str | Path,
         fund_names: None | str | Path = None,
         findings: list | None = None,
+        ratio_def_path: str | Path | None = None,
     ):
         """
         Export JSON data to Excel with:
-        - One sheet per year
+        - Two sheets per year when sources are included: a clean one with the
+          reported figures and the derived ratios, and a second carrying the
+          source reference for every figure. The clean sheet is the one to
+          work in; the other is for tracing a number back to its page.
         - Funds as columns
         - Nyckeltal as rows, grouped and ordered by key_def_path
         - Value cells shaded by the model's own reported certainty
@@ -225,68 +313,96 @@ class JsonConverter:
         wb = Workbook()
         del wb["Sheet"]
 
+        ratios = self._load_ratios(ratio_def_path, key_def_path)
+
         for year in sorted(year_structured):
             fund_data = year_structured[year]
-            ws = wb.create_sheet(title=str(year))
             funds = sorted(fund_data.keys(), key=display_name)
-
-            header = ["Nyckeltal"]
-            for fund in funds:
-                header.append(display_name(fund))
-                if self.include_sources:
-                    header.append("källa")
-            ws.append(header)
-            for col_num in range(1, len(header) + 1):
-                ws.cell(row=1, column=col_num).font = Font(bold=True)
-            ws.freeze_panes = "B2"
-
-            row_idx = 2
-            for group in group_order:
-                ws.cell(row=row_idx, column=1, value=group).font = Font(bold=True)
-                row_idx += 1
-
-                for key in grouped_keys[group]:
-                    ws.cell(row=row_idx, column=1, value=key)
-                    col_idx = 2
-                    for fund in funds:
-                        entry = fund_data.get(fund, {}).get(key) or {}
-                        value = entry.get(JBGAnnualReportAnalyzer.FIELD_VALUE)
-                        certainty = entry.get(JBGAnnualReportAnalyzer.FIELD_CERTAINTY)
-                        source = entry.get(JBGAnnualReportAnalyzer.FIELD_SOURCE, "")
-                        comment = entry.get(JBGAnnualReportAnalyzer.FIELD_COMMENT, "")
-
-                        cell = ws.cell(row=row_idx, column=col_idx, value=value)
-                        problems = flagged.get((fund, str(year), key), [])
-                        if problems:
-                            cell.fill = PatternFill(
-                                start_color=self.FLAGGED_FILL,
-                                end_color=self.FLAGGED_FILL,
-                                fill_type="solid",
-                            )
-                        else:
-                            fill = self._certainty_fill(certainty)
-                            if fill is not None:
-                                cell.fill = fill
-
-                        note = self._build_note(certainty, source, comment, problems)
-                        if note:
-                            # Cell notes keep the model's reasoning available on
-                            # hover without adding three columns per fund.
-                            cell.comment = Comment(note, "JBG nyckeltalsanalys")
-                            cell.comment.width = 380
-                            cell.comment.height = 180
-                        col_idx += 1
-
-                        if self.include_sources:
-                            ws.cell(row=row_idx, column=col_idx, value=source)
-                            col_idx += 1
-                    row_idx += 1
-
-            self._autosize(ws)
+            # The clean sheet first, since that is the one to work in. The
+            # source columns double the width of the sheet and are only
+            # needed when tracing a figure back to its page, so they get a
+            # sheet of their own rather than sitting between the funds.
+            self._write_year_sheet(
+                wb, str(year), year, fund_data, funds, display_name, flagged,
+                group_order, grouped_keys, with_sources=False, ratios=ratios,
+            )
+            if self.include_sources:
+                self._write_year_sheet(
+                    wb, f"{year}{self.SOURCE_SHEET_SUFFIX}", year, fund_data,
+                    funds, display_name, flagged, group_order, grouped_keys,
+                    with_sources=True, ratios=None,
+                )
 
         self._write_legend_sheet(wb, findings or [], resolver)
         wb.save(output_path)
         logger.info(f"Excel file saved to {output_path}")
+
+    def _write_year_sheet(
+        self, wb, title, year, fund_data, funds, display_name, flagged,
+        group_order, grouped_keys, with_sources: bool, ratios: list | None,
+    ):
+        ws = wb.create_sheet(title=self._sanitize_sheetname(title))
+        self._metric_rows = {}
+        column_of = {}
+
+        header = ["Nyckeltal"]
+        for fund in funds:
+            header.append(display_name(fund))
+            column_of[fund] = len(header)
+            if with_sources:
+                header.append("källa")
+        ws.append(header)
+        for col_num in range(1, len(header) + 1):
+            ws.cell(row=1, column=col_num).font = Font(bold=True)
+        ws.freeze_panes = "B2"
+
+        row_idx = 2
+        for group in group_order:
+            ws.cell(row=row_idx, column=1, value=group).font = Font(bold=True)
+            row_idx += 1
+
+            for key in grouped_keys[group]:
+                ws.cell(row=row_idx, column=1, value=key)
+                self._metric_rows[key] = row_idx
+                col_idx = 2
+                for fund in funds:
+                    entry = fund_data.get(fund, {}).get(key) or {}
+                    value = entry.get(JBGAnnualReportAnalyzer.FIELD_VALUE)
+                    certainty = entry.get(JBGAnnualReportAnalyzer.FIELD_CERTAINTY)
+                    source = entry.get(JBGAnnualReportAnalyzer.FIELD_SOURCE, "")
+                    comment = entry.get(JBGAnnualReportAnalyzer.FIELD_COMMENT, "")
+
+                    cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                    problems = flagged.get((fund, str(year), key), [])
+                    if problems:
+                        cell.fill = PatternFill(
+                            start_color=self.FLAGGED_FILL,
+                            end_color=self.FLAGGED_FILL,
+                            fill_type="solid",
+                        )
+                    else:
+                        fill = self._certainty_fill(certainty)
+                        if fill is not None:
+                            cell.fill = fill
+
+                    note = self._build_note(certainty, source, comment, problems)
+                    if note:
+                        # Cell notes keep the model's reasoning available on
+                        # hover without adding three columns per fund.
+                        cell.comment = Comment(note, "Årsredovisningsgranskning")
+                        cell.comment.width = 380
+                        cell.comment.height = 180
+                    col_idx += 1
+
+                    if with_sources:
+                        ws.cell(row=row_idx, column=col_idx, value=source)
+                        col_idx += 1
+                row_idx += 1
+
+        row_idx = self._write_ratio_rows(
+            ws, row_idx + 1, ratios or [], funds, fund_data, column_of
+        )
+        self._autosize(ws)
 
     @staticmethod
     def _build_note(certainty, source, comment, problems) -> str:
@@ -327,6 +443,29 @@ class JsonConverter:
         )
         ws.append([])
         ws.append(["Håll pekaren över ett värde för källa, säkerhet och kommentar."])
+        ws.append([])
+        ws.append(["Flikar"])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+        ws.append([
+            "Årtalsfliken innehåller uppgifterna från årsredovisningarna och, "
+            "längst ned, nyckeltalsberäkningar. Det är fliken att arbeta i."
+        ])
+        ws.append([
+            "Fliken \"med källa\" innehåller samma uppgifter med en källkolumn "
+            "per kassa, för den som vill härleda ett värde till rätt sida."
+        ])
+        ws.append([])
+        ws.append(["Nyckeltalsberäkningar"])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+        ws.append([
+            "Beräkningarna är formler som hänvisar till raderna ovanför, inte "
+            "fasta tal. Rättas ett värde räknas nyckeltalet om direkt. Håll "
+            "pekaren över namnet för vad beräkningen avser."
+        ])
+        ws.append([
+            "En tom cell betyder att någon ingående uppgift saknas för kassan; "
+            "kommentaren på cellen anger vilken."
+        ])
         ws.append([])
 
         ws.append(["Rimlighetskontroller"])
