@@ -3,6 +3,8 @@
 En FastAPI-baserad webbtjänst som extraherar nyckeltal ur svenska
 arbetslöshetskassors årsredovisningar med hjälp av en språkmodell.
 
+Vad som återstår, och vad som väntar på besked från verksamheten, står i [BACKLOG.md](BACKLOG.md).
+
 ## Funktioner
 
 * Ladda upp en PDF eller en ZIP-fil med flera årsredovisningar.
@@ -12,10 +14,19 @@ arbetslöshetskassors årsredovisningar med hjälp av en språkmodell.
   sidhänvisning, säkerhetsbedömning och motivering för varje värde.
   Redovisningsprinciperna ingår inte, och poster som en kassa lägger till
   utöver föreskriften rapporteras inte. Endast innevarande räkenskapsår.
-* Rimlighetskontroller som flaggar värden som inte går ihop aritmetiskt.
-* Resultat som JSON, CSV eller Excel, där Excel färgkodas efter modellens
-  angivna säkerhet.
+* OCR av inskannade rapporter, i två steg, med undersökning av dokumentet
+  när båda misslyckas.
+* Kontroller av fyra slag: aritmetik inom en årsredovisning, omläsning av
+  samma dokument, jämförelse av belopp mellan kassor, och nyckeltal mot
+  rimliga intervall.
+* Normalisering av tecken och enhet i kod, där definitionerna eller de
+  övriga kassorna redan avgör svaret.
+* Resultat som JSON, CSV eller Excel. Excel-filen färgkodas efter modellens
+  angivna säkerhet, har källhänvisning per värde i en egen flik och
+  nyckeltalsberäkningar per kassa.
 * Körs som bakgrundsjobb med löpande statusuppdatering i webbgränssnittet.
+  Ett fel i ett dokument stoppar inte körningen, och delresultat sparas
+  löpande.
 
 ## Krav
 
@@ -159,8 +170,11 @@ att tjänsten ska fungera.
    och hur lång tid som gått.
 3. När jobbet är klart laddas resultatfilen ner automatiskt.
 
-En analys av sju årsredovisningar tar i storleksordningen fyra minuter, varav
-merparten är anrop till språkmodellen.
+En körning av samtliga 24 årsredovisningar tar drygt en timme och kostar
+omkring sex dollar i modellanrop. Merparten av tiden är väntan på
+språkmodellen. Siffror från körningen den 18 september 2026: 72 minuter,
+6,34 USD, 56 anrop, 2 470 uppgifter, 96,3 procent märkta `explicit`, 98
+anmärkningar. Täckningen låg mellan 94 och 107 av 109 uppgifter per kassa.
 
 ### Att läsa resultatet
 
@@ -203,9 +217,13 @@ hoppas över med en tydlig förklaring i loggen, i webbgränssnittets
 slutmeddelande och under nyckeln `_ejanalyserade` i JSON-filen. Övriga filer
 analyseras som vanligt.
 
-Tomma rader är därför ett normalt och förväntat resultat. Vissa nyckeltal redovisas helt enkelt inte av alla kassor: i ett testmaterial med sju
-årsredovisningar saknade fem stycken 'Kortfristiga placeringar' även efter
-riktad omsökning. Det är ett riktigare svar än en gissning, och tjänsten innehåller medvetet inga särregler för enskilda nyckeltal.
+Tomma rader är därför ett normalt och förväntat resultat. Vissa nyckeltal
+redovisas helt enkelt inte av alla kassor: i en körning av 24 årsredovisningar
+fanns `Andra kortfristiga placeringar` hos 6 kassor och `Immateriella
+anläggningstillgångar` hos 14, även efter riktad omsökning. En kassa som inte
+har immateriella anläggningstillgångar redovisar dem inte heller. Det är ett
+riktigare svar än en gissning, och tjänsten innehåller medvetet inga
+särregler för enskilda nyckeltal.
 
 Hittar den första genomgången inte alla nyckeltal görs en riktad omsökning som
 enbart frågar efter de saknade. Värden från omsökningen märks med
@@ -399,7 +417,8 @@ modellerna i formuläret. Varje post har tre satser:
 ```
 
 Cachade prompt-tokens debiteras separat, ofta en tiondel av `in`. Det är ingen
-detalj: i en verklig körning var 88 procent av alla prompt-tokens cachade.
+detalj: i körningen den 18 september 2026 var 826 880 av 1 516 363
+prompt-tokens cachade, alltså drygt hälften.
 
 Ett modellnamn med datumsuffix matchar sin nyckel, så `gpt-5.2-2025-12-11`
 prissätts som `gpt-5.2`. Saknas priset för någon använd modell rapporteras bara
@@ -479,12 +498,18 @@ JBGAnnualReportAnalyzer/
 ├── app/
 │   ├── main.py                     # FastAPI-endpoints
 │   ├── config/                     # extra namn att maskera (ej i git)
-│   ├── prompt/                     # instruktioner och nyckeltalsdefinitioner
+│   ├── prompt/
+│   │   └── json/
+│   │       ├── nyckeltalsdefinitioner.json   # de 108 posterna
+│   │       └── nyckeltalsberakningar.json    # härledda nyckeltal och intervall
 │   ├── src/
 │   │   ├── JBGAnnualReportAnalysis.py   # textextraktion och modellanrop
 │   │   ├── JBGMetricSchema.py           # JSON-schema för svaret
 │   │   ├── JBGFundNames.py              # normalisering av kassanamn
 │   │   ├── JBGValidation.py             # rimlighetskontroller
+│   │   ├── JBGNormalisation.py          # tecken- och enhetsnormalisering
+│   │   ├── JBGPDFDiagnostics.py         # undersökning när OCR inte ger text
+│   │   ├── JBGUsage.py                  # anrop, tokens och kostnad
 │   │   ├── JBGJobs.py                   # bakgrundsjobb och städning
 │   │   ├── JBGJSONConverter.py          # export till CSV och Excel
 │   │   └── masking/JBGPDFMasking.py     # maskning av PDF
@@ -495,6 +520,7 @@ JBGAnnualReportAnalyzer/
 │   └── Ensure-OcrTools.ps1          # installerar tesseract och ghostscript
 ├── run_checks.ps1                  # lint och tester lokalt (Windows)
 ├── tests/
+├── BACKLOG.md                      # vad som återstår och vad som väntar
 ├── pyproject.toml
 ├── requirements.txt
 └── Dockerfile
