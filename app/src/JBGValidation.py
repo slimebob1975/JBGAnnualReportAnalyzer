@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from app.src import JBGMetricSchema as schema
+from app.src import JBGNormalisation as normalisation
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,10 @@ FIELD_CERTAINTY = "säkerhet"
 
 SEVERITY_ERROR = "fel"
 SEVERITY_WARNING = "varning"
+# Inte ett fel, bara något läsaren bör lägga märke till. Kassorna lägger till
+# egna poster och noter utöver föreskriften, så en summa som överstiger sina
+# uppräknade delposter är väntad och inte ett räknefel.
+SEVERITY_INFO = "upplysning"
 
 # Rounding in whole tkr can shift a sum by one either way; anything larger is
 # a real difference. A relative tolerance was far too permissive: on a balance
@@ -68,6 +73,7 @@ class CheckResult:
 
     message: str
     difference: float | None = None
+    severity: str | None = None
 
 
 @dataclass
@@ -289,6 +295,25 @@ def _sum_check(target: str, components: dict[str, float]):
         if scale:
             return scale
 
+        # Föreskriften räknar upp delposterna, men kassorna får lägga till
+        # egna. Summan kan därför med rätta vara större än de uppräknade
+        # posterna - differensen är då kassans extra post, inte ett räknefel.
+        # Alfa-kassans Summa intäkter översteg sina två termer med exakt
+        # 70 691 tkr i fem körningar: avgifter från icke anslutna plus
+        # ersättning från staten, två egna poster.
+        #
+        # Mindre än delposterna går däremot inte ihop: en summa kan inte
+        # understiga poster den själv innehåller.
+        if diff > 0:
+            return CheckResult(
+                f"{target} {_fmt(total)} är {_fmt(diff)} större än "
+                f"{terms} = {_fmt(parts)}. Kassan redovisar sannolikt en eller "
+                "flera egna poster utöver dem föreskriften räknar upp. "
+                "Kontrollera vilka; det är ingen räknefel.",
+                diff,
+                severity=SEVERITY_INFO,
+            )
+
         # A net posted without its sign is a different fault from a wrong
         # figure, and the fix is different too.
         if parts and abs(total + parts) <= _tolerance(parts):
@@ -452,7 +477,11 @@ def validate(result: dict, metrics_path=None) -> list[Finding]:
                         year=str(year),
                         rule=rule.name,
                         message=message,
-                        severity=rule.severity,
+                        severity=(
+                            problem.severity
+                            if isinstance(problem, CheckResult) and problem.severity
+                            else rule.severity
+                        ),
                         metrics=list(rule.metrics),
                         difference=difference,
                     )
@@ -524,10 +553,11 @@ def check_unit_consistency(result: dict, metrics_path=None) -> list[Finding]:
             if len(per_fund) < MIN_FUNDS_FOR_UNIT_CHECK:
                 continue
             for fund, value in sorted(per_fund.items()):
-                peers = sorted(
-                    abs(other) for peer, other in per_fund.items() if peer != fund
-                )
-                median = peers[len(peers) // 2]
+                peers = [other for peer, other in per_fund.items() if peer != fund]
+                # Samma referens som rättaren använder. Räknade de två var för
+                # sig blev de oense om samma kolumn: en kassa kunde lämnas
+                # orörd av normaliseringen och ändå anmärkas av kontrollen.
+                median = normalisation._reference_value(peers)
                 if not median:
                     continue
                 ratio = abs(value) / median
@@ -611,9 +641,11 @@ def log_findings(findings: list[Finding]) -> None:
         return
 
     errors = [f for f in findings if f.severity == SEVERITY_ERROR]
+    notes = [f for f in findings if f.severity == SEVERITY_INFO]
     logger.warning(
-        f"Rimlighetskontrollerna gav {len(findings)} anmärkning(ar), "
-        f"varav {len(errors)} allvarliga. Kontrollera dessa mot källdokumentet."
+        f"Rimlighetskontrollerna gav {len(findings)} anmärkning(ar), varav "
+        f"{len(errors)} allvarliga och {len(notes)} upplysningar som inte är "
+        "fel. Kontrollera övriga mot källdokumentet."
     )
     for finding in findings:
         logger.warning(str(finding))

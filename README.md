@@ -201,6 +201,17 @@ vilken. En kassa vars `Summa skulder` översteg sina delposter med 10 000 hade
 samtidigt en not på 11 781 mot en rad på 1 781: en tappad siffra, två
 anmärkningar.
 
+Föreskriften räknar upp delposterna till varje summa, men kassorna får lägga
+till egna poster och noter. En summa som är **större** än sina uppräknade
+delposter är därför väntad, och redovisas som en upplysning med egen färg i
+Excel-filen, inte som ett fel. Differensen är kassans extra post. Alfa-kassans
+`Summa intäkter` översteg sina två termer med exakt 70 691 tkr i fem körningar:
+avgifter från icke anslutna plus ersättning från staten.
+
+En summa som är **mindre** än sina delposter är däremot en anmärkning som
+förut: en summa kan inte understiga poster den själv innehåller. Balansräkningen
+måste fortfarande gå jämnt ut åt båda håll.
+
 Två avvikelser skiljs ut från vanliga differenser, eftersom de kräver helt
 olika åtgärd. **Omvänt tecken** betyder att noten och den post den
 specificerar är samma belopp med olika tecken; det är en fråga om
@@ -291,6 +302,15 @@ Loggen visar också fördelningen av angiven säkerhet efter varje körning. Om
 nästan alla värden får 1,0 skiljer skalan inte mellan säkra och osäkra värden,
 och färgkodningen säger då lite.
 
+### Dokument som inte kunde analyseras
+
+Filer som hoppats över redovisas i resultatfilen, inte bara i loggen. Överst i
+årtalsfliken står hur många av de uppladdade dokumenten som saknas, och på
+Läsanvisningen står fil och orsak för vart och ett.
+
+En kolumn som saknas är svårare att upptäcka än en cell som är fel: den som
+summerar en rad får ett rimligt tal, bara räknat på färre kassor än hon tror.
+
 ### Flikar i resultatfilen
 
 Per år skrivs två flikar. Årtalsfliken innehåller uppgifterna och, längst ned,
@@ -320,11 +340,36 @@ eller mer på månadsplatsen, och svärtas därför inte längre. Kontrollsiffra
 sig, och en OCR-tolkad siffra som blivit fel ska inte leda till att numret
 lämnas omaskerat.
 
-Efter maskeringen görs två kontroller. Den ena är att de termer som hittats
-inte återfinns i utdata. Den andra sveper utdata efter person- och
-samordningsnummer på nytt, oberoende av termlistan – ett nummer som upptäcktes
-men inte gick att lokalisera passerar den första kontrollen och faller på den
-andra. Med `FAIL_ON_LEAK` kastas filen i båda fallen.
+Namn upptäcks på två sätt. NER-modellen läser den löpande texten. Vid sidan
+av den söks namn som står intill sin roll: i styrelse-, revisors- och
+ledningstabeller står namnet på egen rad, direkt före eller efter
+"Ordförande", "Suppleant", "Kassaföreståndare" och liknande. Det andra spåret
+finns för att det första missar. I en levererad maskerad årsredovisning stod
+fem namn kvar fullt läsbara på styrelsesidan medan ett tjugotal andra på samma
+sida var svärtade. De upptäcktes aldrig, var därför aldrig termer, och
+verifieringen hade ingenting att leta efter.
+
+En term lokaliseras i två steg. Först mot sidans ordlista, som klarar namn
+brutna över en rad. Hittar den ingenting söks termen i radernas spans, sådana
+texten faktiskt är satt, och rektanglarna hämtas därifrån. Ordlistan delar
+texten på sitt eget sätt, och i inskannade eller egendomligt uppbyggda pdf:er
+stämmer den delningen inte med termens ord: två dokument föll på just det,
+med namn som fanns i termlistan, stod läsbara i utdata och ändå inte gick att
+placera. Att tömma sidan är sista utvägen och nås numera sällan.
+
+Svärtningen ändrar sidans radstruktur: när ett namn försvinner ur textlagret
+hamnar raden under direkt intill rollen. Ett namn som inte var rollgranne före
+maskeringen kan därför bli det efteråt. Maskeringen körs om till dess att
+svepet är tyst, högst tre varv, och det svepet hittar läggs till i termlistan
+inför nästa varv. Överlever samma namn trots att det står i listan är det
+svärtningen som inte når texten, och då hjälper inte fler varv.
+
+Efter maskeringen görs tre kontroller. Den ena är att de termer som hittats
+inte återfinns i utdata. Den andra sveper utdata efter namn som
+står intill en roll, och den tredje efter person- och samordningsnummer, båda
+oberoende av termlistan – ett namn som aldrig upptäcktes passerar den
+första kontrollen och faller på den andra. Med `FAIL_ON_LEAK` kastas filen i
+samtliga fall.
 
 Kontrollerna kan bara fånga det som går att upptäcka. Raden "Maskering
 verifierad" betyder att de hittade termerna är borta, inte att dokumentet med

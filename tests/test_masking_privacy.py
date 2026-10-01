@@ -359,9 +359,14 @@ def test_a_page_that_cannot_be_masked_is_emptied(tmp_path, monkeypatch):
         tmp_path / "mix.pdf",
         ["Balansrakning", "Summa tillgangar 63 853", "NAMN: Jenny Soderstrom"],
     )
-    # simulate the real defect: nothing is locatable on the page
+    # simulate the real defect: nothing is locatable on the page. Both
+    # locators have to be disabled now - the span fallback finds what the
+    # word list misses, which is the whole point of it.
     monkeypatch.setattr(
         PDFMasker, "_locate_term", classmethod(lambda cls, page, term, entries=None: [])
+    )
+    monkeypatch.setattr(
+        PDFMasker, "_locate_term_in_spans", classmethod(lambda cls, page, term: [])
     )
     out = tmp_path / "mix_masked.pdf"
     result = _masker().mask_pdf_black_boxes(
@@ -391,8 +396,12 @@ def test_clearing_reports_the_page_numbers(tmp_path, monkeypatch):
     """A cleared page must be visible in the log: if one ever held figures,
     the number is how you would find out."""
     pdf = _pdf(tmp_path / "rep.pdf", ["NAMN: Jenny Soderstrom"])
+    # Båda sökvägarna måste vara ur spel för att sidan ska behöva tömmas.
     monkeypatch.setattr(
         PDFMasker, "_locate_term", classmethod(lambda cls, page, term, entries=None: [])
+    )
+    monkeypatch.setattr(
+        PDFMasker, "_locate_term_in_spans", classmethod(lambda cls, page, term: [])
     )
     doc = pymupdf.open(pdf)
     cleared = PDFMasker._clear_unmaskable_pages(doc, ["Jenny Soderstrom"], logging.getLogger())

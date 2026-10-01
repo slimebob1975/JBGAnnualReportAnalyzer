@@ -32,6 +32,87 @@ IDENTITY_NUMBER_PATTERN = re.compile(
 )
 
 
+# Roller som står intill ett namn i en årsredovisnings styrelse-, revisors-
+# och ledningstabeller. Listan kommer ur lagen om arbetslöshetskassor och ur
+# hur kassorna faktiskt ställer upp sina tabeller.
+ROLE_WORDS = (
+    "ordförande", "ledamot", "suppleant", "ersättare", "revisor",
+    "revisorssuppleant", "kassaföreståndare", "föreståndare", "chefsjurist",
+    "avdelningschef", "enhetschef", "it-chef", "hr-chef", "ekonomichef",
+    "kommunikationschef", "försäkringschef", "administrativ chef",
+    "verkställande", "firmatecknare", "statlig representant",
+    "arbetstagarledamot", "arbetstagarrepresentant", "styrelseledamot",
+    # Signeringssidor som e-tjänsterna fogar till efteråt. Formuleringen är
+    # tillräckligt egenartad för att inte slå fel någon annanstans.
+    "namnet som returnerades", "undertecknat av", "signerat av",
+)
+
+# Ett namnled: inledande versal och inga siffror. Bindestreck och apostrof
+# finns i svenska efternamn (Bergh-Nilsson, O'Brien).
+NAME_TOKEN_PATTERN = re.compile(r"^[A-ZÅÄÖÉÜ][A-Za-zÅÄÖåäöéèüÉÜ'\u2019-]+$")
+# En rad med ett namn i en tabell är kort. Löpande text som råkar innehålla
+# ett rollord är det inte, och ska inte svärtas.
+MAX_NAME_LINE_LENGTH = 40
+MAX_NAME_TOKENS = 4
+
+
+def _is_role_line(line: str) -> bool:
+    low = (line or "").casefold()
+    return any(word in low for word in ROLE_WORDS)
+
+
+def _looks_like_name_line(line: str) -> bool:
+    """En rad som i sin helhet är ett personnamn, inget annat."""
+    line = (line or "").strip()
+    if not line or len(line) > MAX_NAME_LINE_LENGTH:
+        return False
+    if any(ch.isdigit() for ch in line):
+        return False
+    # Citattecken och liknande runt namnet ska inte diskvalificera raden.
+    # Verifikatsidan skriver namnet som "ELISABETH CAMNER", med citattecken,
+    # och det namnet stod kvar i en levererad maskerad fil.
+    tokens = [
+        re.sub(r"^\W+|\W+$", "", token)
+        for token in line.replace(",", " ").split()
+    ]
+    tokens = [token for token in tokens if token]
+    if not 2 <= len(tokens) <= MAX_NAME_TOKENS:
+        return False
+    return all(NAME_TOKEN_PATTERN.match(token) for token in tokens)
+
+
+def find_names_by_role_context(page_texts) -> set[str]:
+    """Namn som står intill sin roll i en tabell.
+
+    Ett andra spår vid sidan av NER-modellen, och skälet är att modellen
+    missar. I en verklig årsredovisning svärtades ett tjugotal namn på
+    styrelsesidan medan fem stod kvar fullt läsbara: två styrelseledamöter,
+    två revisorssuppleanter och en i ledningsgruppen. De var aldrig
+    upptäckta, så verifieringen hade ingenting att leta efter och godkände
+    filen.
+
+    Uppställningen är däremot förutsägbar. Namnet står på egen rad, direkt
+    före eller efter sin roll, och raden innehåller ingenting annat. Den
+    regeln hittade alla fem och ingenting annat i dokumentets 48 sidor.
+
+    Kompletterar NER, ersätter den inte: en kassaföreståndare som nämns mitt
+    i löpande text fångas bara av modellen.
+    """
+    found: set[str] = set()
+    for text in page_texts or []:
+        lines = [line.strip() for line in (text or "").split("\n")]
+        for index, line in enumerate(lines):
+            if not _looks_like_name_line(line) or _is_role_line(line):
+                continue
+            neighbours = [
+                lines[other] for other in (index - 1, index + 1)
+                if 0 <= other < len(lines)
+            ]
+            if any(_is_role_line(neighbour) for neighbour in neighbours):
+                found.add(re.sub(r"^\W+|\W+$", "", line))
+    return found
+
+
 def _luhn_ok(ten_digits: str) -> bool:
     """Kontrollsiffran i ett personnummer, beräknad på de tio siffrorna."""
     total = 0
@@ -175,7 +256,11 @@ class PDFMasker:
         twitter_matches = set(re.findall(r"@[A-Za-z0-9_]{1,15}", full_text))
         dob_matches = set(re.findall(r"\bDOB:\s*(?:19|20)\d{2}/\d{2}/\d{2}\b", full_text))
         extra_fornamn, extra_efternamn = self._get_extra_names()
-        all_terms = sensitive_words.union(pnr_matches, email_matches, twitter_matches, dob_matches, extra_fornamn, extra_efternamn)
+        role_names = find_names_by_role_context(page_texts)
+        all_terms = sensitive_words.union(
+            pnr_matches, email_matches, twitter_matches, dob_matches,
+            extra_fornamn, extra_efternamn, role_names,
+        )
         return self._clean_entities(all_terms)
 
     @staticmethod
@@ -322,6 +407,60 @@ class PDFMasker:
         return entries
 
     @classmethod
+    def _locate_term_in_spans(cls, page, term: str) -> list:
+        """Reserv när ordlistan inte hittar termen.
+
+        Ordlistan från get_text("words") delar texten på sitt eget sätt, och
+        i inskannade eller egendomligt uppbyggda pdf:er stämmer den delningen
+        inte med termens ord. Två dokument föll på just det: namnen fanns i
+        termlistan, stod läsbara i utdata, och gick ändå inte att placera.
+
+        Här matchas termen i stället mot radens text sådan den faktiskt är
+        satt, och rektanglarna hämtas från de spans som matchningen berör.
+        Mellanrum får vara hur många som helst, hårda mellanslag räknas som
+        vanliga, och versalisering spelar ingen roll.
+
+        Träffar bara inom en rad. En term som brutits över två rader klarar
+        ordlistan redan, och det är den som körs först.
+        """
+        tokens = [token for token in (term or "").split() if token]
+        if not tokens:
+            return []
+        pattern = re.compile(
+            r"\s+".join(re.escape(token) for token in tokens), re.IGNORECASE
+        )
+
+        rects = []
+        try:
+            blocks = page.get_text("dict").get("blocks", [])
+        except Exception:
+            return []
+        for block in blocks:
+            for line in block.get("lines", []):
+                text = ""
+                spans = []
+                for span in line.get("spans", []):
+                    # Hårt mellanslag ersätts tecken för tecken, så att
+                    # positionerna fortfarande pekar rätt i spans.
+                    content = (span.get("text") or "").replace("\u00a0", " ")
+                    spans.append((len(text), len(text) + len(content), span.get("bbox")))
+                    text += content
+                for match in pattern.finditer(text):
+                    start, end = match.span()
+                    touched = [
+                        box for first, last, box in spans
+                        if box and first < end and last > start
+                    ]
+                    if not touched:
+                        continue
+                    rect = pymupdf.Rect(touched[0])
+                    for box in touched[1:]:
+                        rect |= pymupdf.Rect(box)
+                    if not rect.is_empty:
+                        rects.append(rect)
+        return rects
+
+    @classmethod
     def _locate_term(cls, page, term: str, entries=None) -> list:
         """Rectangles covering every occurrence of a term on a page.
 
@@ -393,7 +532,11 @@ class PDFMasker:
                 continue
             # Only when nothing can be located: otherwise redaction handles it.
             entries = cls._joined_words(page)
-            if any(cls._locate_term(page, t, entries=entries) for t in still_there):
+            if any(
+                cls._locate_term(page, t, entries=entries)
+                or cls._locate_term_in_spans(page, t)
+                for t in still_there
+            ):
                 continue
             for xref in page.get_contents():
                 doc.update_stream(xref, b" ")
@@ -425,6 +568,9 @@ class PDFMasker:
     # A term shorter than this matches too much to check reliably: "Ek" would
     # fire on "Eket", "Ekonomi" and so on.
     MIN_VERIFIABLE_TERM = 3
+    # Varje varv svärtar det föregående varvet blottlade. Två varv räcker i
+    # praktiken; taket finns för att ingen fil ska kunna snurra.
+    MAX_MASKING_PASSES = 3
 
     # Terms that survive redaction. None is acceptable; the point of masking is
     # that personal data does not leave the network.
@@ -445,6 +591,18 @@ class PDFMasker:
         """
         joined = re.sub(r"-\s*\n\s*", "", text or "")
         return cls._normalise_for_search(joined)
+
+    @staticmethod
+    def find_role_names_in_pdf(pdf_path) -> set:
+        """Namn som står intill sin roll i en färdig pdf.
+
+        Granskningen av termlistan kan bara svara på om det vi hittade är
+        borta. Ett namn som aldrig upptäcktes var aldrig en term, och
+        godkändes därför tyst. Det här svepet läser utdata på nytt och ställer
+        den andra frågan: står det fortfarande ett namn bredvid en roll?
+        """
+        with pymupdf.open(pdf_path) as doc:
+            return find_names_by_role_context([page.get_text() for page in doc])
 
     @staticmethod
     def find_identity_numbers_in_pdf(pdf_path) -> set:
@@ -551,6 +709,11 @@ class PDFMasker:
                 entries = self._joined_words(page)
                 for term in sensitive_terms:
                     rects = self._locate_term(page, term, entries=entries)
+                    if not rects:
+                        # Ordlistan hittade ingenting. Leta i radernas spans
+                        # innan termen ges upp - det är skillnaden mellan en
+                        # svärtad rad och ett namn som står kvar läsbart.
+                        rects = self._locate_term_in_spans(page, term)
                     hits[term] += len(rects)
                     for rect in rects:
                         page.add_redact_annot(rect, fill=(0, 0, 0))
@@ -680,7 +843,52 @@ class PDFMasker:
             sensitive_terms = self.detect_sensitive_terms(page_texts)
             logger.info(f"Identified {len(sensitive_terms)} sensitive term(s)")
             logger.debug(f"Identified sensitive terms: {sensitive_terms}")
-            result_path = self.mask_pdf_black_boxes(sanitized_path, pdf_output_path, sensitive_terms, logger)
+            # Svärtning ändrar sidans radstruktur: när ett namn försvinner
+            # hamnar nästa rad intill rollen i stället. I en levererad fil var
+            # "Peter Pålsson" osynlig för detektorn innan maskeringen, eftersom
+            # ett annat namn låg emellan, och syntes först efteråt. Därför körs
+            # det om: det svepet hittar läggs till i termlistan och hela
+            # maskeringen görs om från originalet.
+            result_path = None
+            for attempt in range(1, self.MAX_MASKING_PASSES + 1):
+                result_path = self.mask_pdf_black_boxes(
+                    sanitized_path, pdf_output_path, sensitive_terms, logger
+                )
+                if result_path is None:
+                    return None
+
+                remaining = self.find_role_names_in_pdf(result_path)
+                if not remaining:
+                    break
+
+                fresh = {name for name in remaining if name not in sensitive_terms}
+                if not fresh:
+                    # Samma namn överlever trots att det står i termlistan:
+                    # då är det svärtningen som inte når texten, och fler varv
+                    # hjälper inte.
+                    logger.error(
+                        f"{len(remaining)} namn står kvar bredvid sin roll i "
+                        f"{result_path.name} trots att de finns i termlistan. "
+                        "Svärtningen når inte texten."
+                    )
+                    if self.FAIL_ON_LEAK:
+                        result_path.unlink(missing_ok=True)
+                        return None
+                    break
+
+                logger.info(
+                    f"Maskeringsvarv {attempt}: {len(fresh)} namn blev synliga "
+                    "intill sin roll först efter svärtningen. Kör om."
+                )
+                sensitive_terms = list(sensitive_terms) + sorted(fresh)
+            else:
+                logger.error(
+                    f"Namn står fortfarande kvar bredvid sin roll efter "
+                    f"{self.MAX_MASKING_PASSES} varv i {pdf_output_path.name}."
+                )
+                if self.FAIL_ON_LEAK:
+                    Path(pdf_output_path).unlink(missing_ok=True)
+                    return None
             if result_path:
                 return result_path
             logger.warning("Masking failed. No output file created.")

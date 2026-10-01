@@ -48,82 +48,22 @@ Ingen av punkterna här går att avgöra från koden. Alla tre återkommer i var
 körning, och tills de besvaras rapporterar verktyget samma sak om och om igen
 utan att någon lär sig något av det.
 
-### B1. Delpostlistorna för tre summor
+### B3. Enhet för belopp — delvis besvarad
 
-**Iakttagelsen.** `Summa skulder` överstiger summan av sina delposter i 5
-kassor, `Summa finansiella poster` i 4 och `Summa omsättningstillgångar` i 2.
-Antalet kassor varierar mellan körningar (8, 6 respektive 2 i föregående
-körning) men mönstret är stabilt, och den rapporterade summan är nästan alltid
-*större* än delposterna.
+**Beskedet.** Enligt ÅRL och BFN:s vägledningar ska belopp anges i hela kronor
+eller tusental kronor, och vilket ska framgå av årsredovisningen, ofta som
+"Belopp anges i tkr om inte annat anges" i sidhuvudet eller under
+redovisningsprinciperna. Tkr är det vanliga, kronor förekommer hos några av de
+minsta kassorna, och i statistikbilagan kan det variera. Hela kronor krävs
+alltid i förslaget till resultatdisposition.
 
-**Frågan.** Har verkliga balansräkningar poster som föreskriftens uppräkning i
-bilaga 2 inte tar upp — skatteskulder, skulder till andra a-kassor,
-personalens källskatt? Eller missar modellen delposter?
+**Vad som gjorts.** Normaliseringen gissar utifrån vad de övriga kassorna
+redovisar, vilket är den kvalificerade gissning verksamheten efterfrågat.
 
-**Vad som behövs.** Någon som öppnar två eller tre årsredovisningar och tittar.
-Tjugo minuter.
-
-**Följd.** Är uppräkningen ofullständig ska kontrollen tillåta att en summa
-överstiger sina listade delposter, och ungefär en femtedel av alla anmärkningar
-försvinner permanent. Är den fullständig har vi en systematisk lucka i
-extraktionen som är värd att jaga.
-
-### B2. Alfa-kassans `Summa intäkter`
-
-**Iakttagelsen.** `Summa intäkter` överstiger `Medlemsavgifter` +
-`Övriga intäkter` med exakt 70 691 tkr. Samma belopp, samma kassa, i fem
-körningar i rad. Reproducerbarhet på den nivån betyder strukturell skillnad,
-inte felläsning.
-
-**Hypotesen.** Alfa administrerar ersättning till icke anslutna och får ett
-särskilt statsbidrag för administration, som föreskriftens tvåtermsformel inte
-täcker.
-
-**Vad som behövs.** Bekräftelse mot Alfas årsredovisning. Stämmer det bör Alfa
-undantas från den kontrollen, eller kontrollen kompletteras med posten.
-
-### B3. Enhet för belopp i bilaga 2
-
-**Iakttagelsen.** Bilaga 2 anger inte i vilken enhet belopp ska redovisas, och
-kassorna svarar olika. `Utbetald arbetslöshetsersättning` löpte från 2 081 till
-1 801 362 020 över kassorna innan normaliseringen. 21 belopp räknas nu om
-automatiskt, men tre kvarstår omärkta och flaggade:
-
-| Kassa | Rapporterat | Trolig innebörd |
-| --- | --- | --- |
-| Akademikernas | 2 924 | miljoner kronor → 2,9 mdkr |
-| Alfa | 2 081 | miljoner kronor → 2,1 mdkr |
-| Kommunalarbetarnas | 3 542 833 | tusental kronor → 3,5 mdkr |
-
-**Frågan.** Vad står det faktiskt i de tre årsredovisningarna? Och, vidare:
-avser föreskriften en bestämd enhet? Gör den det, och kassorna ändå svarar
-olika, är det en tillsynsiakttagelse i sig och inte bara ett städproblem.
-
-**Vad som behövs.** Besked om de tre. Se även C1, som löser fallen tekniskt om
-besked dröjer.
-
----
-
-## C. Klart att bygga
-
-### C1. Iterera enhetsnormaliseringen mot en delad referens
-
-**Felet.** `normalise_units` och `check_unit_consistency` beräknar sin
-referensmedian på olika underlag: den ena före omräkningarna, den andra efter.
-Kommunalarbetarnas mättes mot en median på cirka 186 miljoner och hamnade 52
-gånger under — precis under tröskeln på 100 — och lämnades därför orörd. Efter
-de övriga omräkningarna är medianen 418 miljoner, och samma värde rapporteras
-nu av kontrollen som 118 gånger för lågt. Rättaren och kontrollanten tittar på
-olika kolumner.
-
-**Åtgärden.** Kör normaliseringen om tills inga fler omräkningar sker (med tak,
-förslagsvis fem varv) och låt båda funktionerna använda samma referensfunktion.
-Räknat mot medianen efter första varvet löser sig alla tre fallen i B3 inom
-befintligt residualtest: Kommunal ×1000 → 8,5 gånger medianen, Akademikernas
-×1 000 000 → 7,0, Alfa → 5,0.
-
-**Omfattning.** Liten. `app/src/JBGNormalisation.py` och
-`check_unit_consistency` i `app/src/JBGValidation.py`.
+**Vad som återstår.** Dokumentet anger oftast själv sin enhet. Att läsa den
+uppgiften ur texten vore ett starkare besked än medianen bland kassorna, och
+skulle dessutom fånga en kassa som avviker utan att någon annan gör det. Kräver
+att enheten hämtas vid extraktionen.
 
 ### C2. Namnge nyckeltalet i anmärkningar om instabilitet
 
@@ -161,28 +101,6 @@ kodändring.
 
 **Följd.** Flyttar en del av de 53 oskyddade nyckeltalen in under kontroll till
 i stort sett ingen kostnad.
-
-### C5. Excel som förvalt utdataformat
-
-**Läget.** Formulärets radioknappar står i ordningen JSON, CSV, Excel, med
-JSON förvald (`app/templates/index.html`, raderna 62–64). Serversidan har
-ingen egen förvalning: `format` deklareras som `Form(...)`, alltså obligatorisk,
-så sidans markering är den enda förvalningen som finns.
-
-**Varför det är fel.** Excel är det enda format som bär det verktyget faktiskt
-producerar — färgkodning efter säkerhet, kommentarer med källa och anmärkning,
-nyckeltalsberäkningar och de två flikarna. JSON och CSV är utvecklar- och
-integrationsformat. Den som använder tjänsten för sitt arbete vill ha
-Excel-filen varje gång och måste i dag aktivt välja bort förvalet.
-
-**Åtgärden.** Sätt `checked` på Excel och lägg knapparna i ordningen Excel,
-CSV, JSON, så att ordningen speglar hur ofta formaten faktiskt används. Ge
-samtidigt `format` ett serverförval på `"xlsx"` i stället för `Form(...)`, så
-att förvalet gäller även för anrop som inte kommer från formuläret och inte
-bara är en egenskap hos sidan.
-
-**Omfattning.** `app/templates/index.html` och `app/main.py`. Kontrollera om
-någon av de elva formatberoende testerna utgår från JSON som förval.
 
 ### C6. Flik 3 — sammanfattningar ur förvaltningsberättelsen
 
@@ -251,7 +169,17 @@ Kort historik, så att det går att se vad som redan prövats och varför.
 | 0043 | Stabilitetskontrollen jämför bara det omläsningen också söker efter; teckenkonventionen fastställd i definitionerna; anmärkningar med samma differens kopplas ihop | Instabilitet 105 → 74; not mot räkning 21 → 10 |
 | 0044 | Nyckeltalsberäkningar ur JSON, delade flikar, kontroll av enhet mellan kassor | Enhetskontrollen hittade att fyra beloppsnyckeltal i bilaga 2 rapporterades i blandade enheter |
 | 0045 | Tecken- och enhetsnormalisering i kod, rimliga intervall för nyckeltalen | 21 belopp omräknas automatiskt; teckennormaliseringen utlöses numera nästan aldrig, eftersom 0043 löste problemet uppströms |
+| 0050 | Enhetsnormaliseringen itererar mot en delad referens; faktorn väljs på logaritmiskt avstånd; Excel förvalt utdataformat | Kolumnen `Utbetald arbetslöshetsersättning` hamnar helt i kronor, noll kvarvarande anmärkningar om enhet mot tre tidigare |
 | 0046 | Person- och samordningsnummer i alla former; organisationsnummer undantas; oberoende svep av utdata | Svepet tyst i 24 av 24 dokument; maskerade termer 1 018 → 994, exakt ett färre i 22 dokument, vilket är kassans eget organisationsnummer som tidigare svärtades |
+
+### Latent fel som hittades på vägen
+
+Faktorn för enhetsomräkning valdes på linjärt avstånd från 1, vilket straffar
+en faktor som skjuter över målet långt hårdare än en som hamnar under. För
+2 924 mot medianen 418 miljoner gav ×1000 avståndet 0,99 och ×1 000 000
+avståndet 5,99, så det uppenbart felaktiga tusentalet vann. Syntes aldrig
+förrän iterationen gjorde att fallet över huvud taget prövades. Rättat i 0050;
+avståndet mäts nu logaritmiskt.
 
 ### Öppen observation utan åtgärd
 

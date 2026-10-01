@@ -334,7 +334,13 @@ def api_analyze(
     model_omsokning: str = Form(""),
     model_stabilitet: str = Form(""),
     apikey: str = Form(...),
-    format: str = Form(...),
+    # Excel är det enda formatet som bär det analysen faktiskt producerar:
+    # färgkodningen, kommentarerna med källa och anmärkning,
+    # nyckeltalsberäkningarna och källflikens hänvisningar. JSON och CSV är
+    # formaten för den som ska vidarebearbeta. Förvalet ligger här och inte
+    # bara som `checked` i formuläret, så att det gäller även anrop som inte
+    # kommer därifrån - bägge ingångarna, inte bara den med JavaScript.
+    format: str = Form("xlsx"),
     sources: str = Form(...),
     use_masking: str = Form(...),
 ):
@@ -423,7 +429,13 @@ def upload_file(
     model_omsokning: str = Form(""),
     model_stabilitet: str = Form(""),
     apikey: str = Form(...),
-    format: str = Form(...),
+    # Excel är det enda formatet som bär det analysen faktiskt producerar:
+    # färgkodningen, kommentarerna med källa och anmärkning,
+    # nyckeltalsberäkningarna och källflikens hänvisningar. JSON och CSV är
+    # formaten för den som ska vidarebearbeta. Förvalet ligger här och inte
+    # bara som `checked` i formuläret, så att det gäller även anrop som inte
+    # kommer därifrån - bägge ingångarna, inte bara den med JavaScript.
+    format: str = Form("xlsx"),
     sources: str = Form(...),
     use_masking: str = Form(...),
 ):

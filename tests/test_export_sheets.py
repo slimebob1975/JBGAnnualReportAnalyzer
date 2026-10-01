@@ -168,3 +168,77 @@ def test_an_export_without_a_ratio_file_still_works(tmp_path):
     assert "2025" in wb.sheetnames
     with pytest.raises(AssertionError):
         _row_of(wb["2025"], "Soliditet")
+
+
+# ------------------------------------------- dokument som inte kunde analyseras
+SKIPPED = [
+    {"fil": "GS a-kassa Årsredovisning 2025.pdf",
+     "orsak": "Maskeringen misslyckades: en känslig term står kvar."},
+    {"fil": "Årsredovisning 2025(172140).pdf",
+     "orsak": "Maskeringen misslyckades: ett namn står kvar bredvid sin roll."},
+]
+
+
+def _export_with_skipped(tmp_path, skipped):
+    data = {"Livsmedelsarbetarnas arbetslöshetskassa": {"2025": {
+        name: {"värde": value, "källa": "Sida 7", "säkerhet": "explicit",
+               "kommentar": ""}
+        for name, value in RATIO_INPUTS.items()
+    }}}
+    if skipped:
+        data["_ejanalyserade"] = skipped
+    source = tmp_path / "resultat.json"
+    source.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    out = tmp_path / "out.xlsx"
+    JsonConverter(source, include_sources=True).to_excel_by_year(
+        out, key_def_path=KEY_DEFS, fund_names=KASSOR, findings=[]
+    )
+    return openpyxl.load_workbook(out)
+
+
+def test_overhoppade_dokument_syns_overst_i_bladet(tmp_path):
+    """En kolumn som saknas är svårare att upptäcka än en cell som är fel:
+    den som summerar raden får ett rimligt tal, bara räknat på färre kassor."""
+    ws = _export_with_skipped(tmp_path, SKIPPED)["2025"]
+
+    assert "2 av 3 uppladdade dokument" in ws.cell(1, 1).value
+    assert ws.cell(1, 1).font.bold
+    assert ws.cell(2, 1).value == "Nyckeltal"
+    assert ws.freeze_panes == "B3"
+
+
+def test_utan_overhoppade_ser_bladet_ut_som_forr(tmp_path):
+    ws = _export_with_skipped(tmp_path, [])["2025"]
+
+    assert ws.cell(1, 1).value == "Nyckeltal"
+    assert ws.freeze_panes == "B2"
+
+
+def test_orsaken_star_i_lasanvisningen(tmp_path):
+    ws = _export_with_skipped(tmp_path, SKIPPED)["Läsanvisning"]
+    text = "\n".join(
+        str(ws.cell(r, c).value or "")
+        for r in range(1, ws.max_row + 1) for c in (1, 2)
+    )
+
+    assert "Ej analyserade dokument (2)" in text
+    for entry in SKIPPED:
+        assert entry["fil"] in text
+        assert entry["orsak"] in text
+
+
+def test_nyckeltalsformlerna_foljer_med_nedat(tmp_path):
+    """Banderollen skjuter alla rader ett steg ned. Formlerna byggs av de
+    rader som faktiskt skrevs, så de ska peka rätt ändå."""
+    ws = _export_with_skipped(tmp_path, SKIPPED)["2025"]
+
+    equity = _row_of(ws, "Summa eget kapital")
+    soliditet = ws.cell(_row_of(ws, "Soliditet"), 2).value
+    assert f"B{equity}" in soliditet
+    assert equity > 2, "raderna borde ha förskjutits av banderollen"
+
+
+def test_banderollen_namner_bara_arets_flikar(tmp_path):
+    """Källfliken ska ha samma varning, annars kan den läsas som fullständig."""
+    wb = _export_with_skipped(tmp_path, SKIPPED)
+    assert "uppladdade dokument" in wb["2025 med källa"].cell(1, 1).value

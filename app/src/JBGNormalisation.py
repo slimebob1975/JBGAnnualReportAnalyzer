@@ -26,6 +26,7 @@ is worse than none.
 
 import json
 import logging
+import math
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,12 @@ UNIT_MIN_DEVIATION = 100
 # ... and only when the correction lands near the other funds.
 UNIT_MAX_RESIDUAL = 10
 MIN_FUNDS_FOR_UNIT_NORMALISATION = 5
+# Varje omräkning flyttar kolumnens median, så en kassa som låg strax under
+# tröskeln mot den gamla medianen kan ligga klart över mot den nya. Därför
+# körs normaliseringen om tills ingenting mer ändras. Taket finns för att
+# ingen körning ska kunna fastna, inte för att fem varv skulle behövas: i
+# praktiken är det klart efter två.
+MAX_UNIT_PASSES = 5
 
 
 def _load(metrics_path) -> list[dict]:
@@ -160,23 +167,8 @@ def _reference_value(values: list[float]) -> float | None:
     return basis[len(basis) // 2] if basis else None
 
 
-def normalise_units(result: dict, metrics_path) -> list[tuple[str, str, str, float, float]]:
-    """Convert amounts reported in thousands or millions into kronor.
-
-    Returns what it changed as (fund, year, metric, from, to), so the caller
-    can report it rather than have figures quietly move between runs.
-
-    Deliberately timid. A value must be at least a hundredfold away from what
-    the other funds report before it is touched at all, and the chosen factor
-    must bring it within a factor of ten of them; anything else is left as it
-    stands for a human to judge. This corrects the fund that wrote tkr where
-    the rest wrote kronor. It does not correct a fund that is merely unusual.
-    """
-    metrics = amount_metrics(metrics_path)
-    if not metrics:
-        return []
-
-    # metric -> year -> fund -> value
+def _amount_columns(result: dict, metrics: set) -> dict:
+    """Nuvarande värden per nyckeltal, år och kassa. Byggs om varje varv."""
     columns: dict[str, dict[str, dict[str, float]]] = {}
     for fund, years in (result or {}).items():
         if not isinstance(years, dict):
@@ -189,13 +181,22 @@ def normalise_units(result: dict, metrics_path) -> list[tuple[str, str, str, flo
                 if value is None or value == 0:
                     continue
                 columns.setdefault(name, {}).setdefault(str(year), {})[fund] = value
+    return columns
 
+
+def _normalise_units_once(result: dict, columns: dict, already: set) -> list:
+    """Ett varv. Returnerar vad som räknades om."""
     applied = []
     for name, per_year in columns.items():
         for year, per_fund in per_year.items():
             if len(per_fund) < MIN_FUNDS_FOR_UNIT_NORMALISATION:
                 continue
             for fund, value in sorted(per_fund.items()):
+                if (fund, year, name) in already:
+                    # Ett belopp räknas om en gång. Skulle ett andra varv vilja
+                    # röra samma värde igen är det ett tecken på att referensen
+                    # svajar, inte på att värdet behöver mer korrigering.
+                    continue
                 peers = [v for peer, v in per_fund.items() if peer != fund]
                 reference = _reference_value(peers)
                 if not reference:
@@ -203,9 +204,16 @@ def normalise_units(result: dict, metrics_path) -> list[tuple[str, str, str, flo
                 if abs(value) * UNIT_MIN_DEVIATION > reference:
                     continue  # not far enough off to be a unit
 
+                # Avståndet mäts logaritmiskt. Linjärt avstånd från 1 straffar
+                # en faktor som skjuter över målet långt hårdare än en som
+                # hamnar under: för 2 924 mot medianen 418 miljoner ger ×1000
+                # avståndet 0,99 och ×1 000 000 avståndet 5,99, så det
+                # uppenbart felaktiga tusentalet vann. I log-skala är
+                # förhållandena 1/143 och 7 jämförbara, och den rätta faktorn
+                # vinner.
                 best = min(
                     UNIT_FACTORS,
-                    key=lambda f: abs(abs(value) * f / reference - 1),
+                    key=lambda f: abs(math.log(abs(value) * f / reference)),
                 )
                 converted = value * best
                 residual = max(abs(converted), reference) / min(abs(converted), reference)
@@ -221,7 +229,43 @@ def normalise_units(result: dict, metrics_path) -> list[tuple[str, str, str, flo
                     "Beloppet avvek kraftigt från övriga kassor, som redovisar "
                     "i kronor.",
                 )
+                already.add((fund, year, name))
                 applied.append((fund, str(year), name, value, converted))
+    return applied
+
+
+def normalise_units(result: dict, metrics_path) -> list[tuple[str, str, str, float, float]]:
+    """Convert amounts reported in thousands or millions into kronor.
+
+    Returns what it changed as (fund, year, metric, from, to), so the caller
+    can report it rather than have figures quietly move between runs.
+
+    Deliberately timid. A value must be at least a hundredfold away from what
+    the other funds report before it is touched at all, and the chosen factor
+    must bring it within a factor of ten of them; anything else is left as it
+    stands for a human to judge. This corrects the fund that wrote tkr where
+    the rest wrote kronor. It does not correct a fund that is merely unusual.
+
+    Repeated until nothing more changes, because the reference moves as the
+    column is corrected. Kommunalarbetarnas sat 52 times below a median of
+    some 186 million and was left alone; once eight other funds had been
+    lifted to kronor the median was 418 million, the same value was 118 times
+    below it, and the check then reported a fund the corrector had declined to
+    touch. One pass made the two disagree about the same column.
+    """
+    metrics = amount_metrics(metrics_path)
+    if not metrics:
+        return []
+
+    applied: list = []
+    already: set = set()
+    for _ in range(MAX_UNIT_PASSES):
+        this_pass = _normalise_units_once(
+            result, _amount_columns(result, metrics), already
+        )
+        if not this_pass:
+            break
+        applied.extend(this_pass)
 
     if applied:
         logger.info(

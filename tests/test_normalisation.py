@@ -210,3 +210,87 @@ def test_the_bands_admit_the_whole_observed_range():
     for name, (low, high) in observed.items():
         band_low, band_high = definitions[name]
         assert band_low < low and high < band_high, f"{name} ligger utanför bandet"
+
+
+# --------------------------------------------- referensen rör sig när kolumnen rättas
+def _column(values: dict) -> dict:
+    return {fund: {"2025": {AMOUNT: {"värde": v, "kommentar": ""}}}
+            for fund, v in values.items()}
+
+
+# Kolumnen som den såg ut i körningen den 17 september 2026.
+UTBETALD_2025 = {
+    "Akademikernas": 2924, "Alfa": 2081, "Byggnads": 1234983481,
+    "Elektrikernas": 97084698, "Fastighets": 418273, "Finans": 152011,
+    "GS": 282070914, "Handels": 865087575, "Hotell": 374598000,
+    "IF Metall": 426920012, "Journalisternas": 70133, "Kommunal": 3542833,
+    "Ledarnas": 73226886, "Livs": 186613, "Lärarnas": 291728097,
+    "Pappers": 421904068, "STs": 511450000, "Seko": 1086186476,
+    "Småföretagarnas": 590903, "Sveriges arbetares": 1360979734,
+    "Säljarnas": 192397000, "Transport": 1801362020, "Unionens": 528213,
+    "Vision": 1086186476,
+}
+
+
+def test_hela_kolumnen_hamnar_i_kronor():
+    """Ett varv räckte inte. Kommunalarbetarnas låg 52 gånger under en median
+    på cirka 186 miljoner och lämnades orörd; när åtta andra kassor väl lyfts
+    till kronor var medianen 418 miljoner och samma värde låg 118 gånger
+    under."""
+    result = _column(UTBETALD_2025)
+
+    norm.normalise_units(result, KEY_DEFS)
+
+    assert validation.check_unit_consistency(result, KEY_DEFS) == []
+    assert result["Kommunal"]["2025"][AMOUNT]["värde"] == 3542833000
+    assert result["Akademikernas"]["2025"][AMOUNT]["värde"] == 2924000000
+
+
+def test_kassor_som_redan_var_i_kronor_lamnas_orda():
+    result = _column(UTBETALD_2025)
+    norm.normalise_units(result, KEY_DEFS)
+
+    for fund in ("Byggnads", "Transport", "Säljarnas"):
+        assert result[fund]["2025"][AMOUNT]["värde"] == UTBETALD_2025[fund]
+
+
+def test_ett_belopp_raknas_om_hogst_en_gang():
+    result = _column(UTBETALD_2025)
+    applied = norm.normalise_units(result, KEY_DEFS)
+
+    rort = [(a[0], a[2]) for a in applied]
+    assert len(rort) == len(set(rort))
+    for fund, *_ in applied:
+        assert result[fund]["2025"][AMOUNT]["kommentar"].count("Omräknat") == 1
+
+
+def test_faktorn_valjs_pa_logaritmiskt_avstand():
+    """Linjärt avstånd från 1 straffar en faktor som skjuter över målet långt
+    hårdare än en som hamnar under: för 2 924 mot medianen 418 miljoner ger
+    ×1000 avståndet 0,99 och ×1 000 000 avståndet 5,99, så det uppenbart
+    felaktiga tusentalet vann."""
+    result = _column(UTBETALD_2025)
+    norm.normalise_units(result, KEY_DEFS)
+
+    varde = result["Akademikernas"]["2025"][AMOUNT]["värde"]
+    assert varde == 2924 * 1_000_000
+    assert "miljoner kronor" in result["Akademikernas"]["2025"][AMOUNT]["kommentar"]
+
+
+def test_rattaren_och_kontrollen_anvander_samma_referens():
+    """Räknade de var för sig blev de oense om samma kolumn: en kassa kunde
+    lämnas orörd av normaliseringen och ändå anmärkas av kontrollen."""
+    peers = [v for f, v in UTBETALD_2025.items() if f != "Kommunal"]
+    assert validation.normalisation._reference_value is norm._reference_value
+    assert norm._reference_value(peers) > 0
+
+
+def test_iterationen_stannar_nar_inget_mer_andras():
+    """Taket finns för att ingen körning ska fastna, inte för att det ska
+    behövas."""
+    result = _column(UTBETALD_2025)
+    forsta = norm.normalise_units(result, KEY_DEFS)
+    andra = norm.normalise_units(result, KEY_DEFS)
+
+    assert forsta
+    assert andra == []

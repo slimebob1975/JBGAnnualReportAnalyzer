@@ -39,6 +39,19 @@ class JsonConverter:
             if not name.startswith(self.METADATA_PREFIX) and isinstance(years, dict)
         }
 
+    SKIPPED_KEY = "_ejanalyserade"
+
+    def skipped(self) -> list[dict]:
+        """Dokument som inte kunde analyseras, med orsak.
+
+        Ligger i resultatfilen men filtrerades bort av `_funds`, och syntes
+        därför bara i loggen. En kolumn som saknas är svårare att upptäcka än
+        en cell som är fel: den som summerar raden får ett rimligt tal, bara
+        räknat på färre kassor än hon tror.
+        """
+        recorded = self.data.get(self.SKIPPED_KEY) or []
+        return recorded if isinstance(recorded, list) else []
+
     def findings(self) -> list[dict]:
         """Validation findings recorded in the result file, if any."""
         recorded = self.data.get("_rimlighetskontroller") or []
@@ -150,6 +163,9 @@ class JsonConverter:
         (schema.CERTAINTY_UNCERTAIN, "FFC7CE", "osäker – bör kontrolleras mot källan"),
     ]
     FLAGGED_FILL = "E1BEE7"
+    # Upplysningar är inga fel. De får en egen, lugnare ton, annars läses de
+    # som anmärkningar och dränker dem som verkligen är det.
+    INFO_FILL = "DDEBF7"
 
     @classmethod
     def _certainty_fill(cls, certainty) -> PatternFill | None:
@@ -345,6 +361,23 @@ class JsonConverter:
         self._metric_rows = {}
         column_of = {}
 
+        skipped = self.skipped()
+        if skipped:
+            # Överst, inte i en fotnot: det här ändrar hur hela bladet ska
+            # läsas, och antalet kassor är inte det man tror.
+            ws.append([
+                f"⚠ {len(skipped)} av {len(funds) + len(skipped)} uppladdade "
+                f"dokument kunde inte analyseras och saknas nedan. "
+                "Orsakerna står på fliken Läsanvisning."
+            ])
+            banner = ws.cell(row=1, column=1)
+            banner.font = Font(bold=True)
+            banner.fill = PatternFill(
+                start_color=self.FLAGGED_FILL, end_color=self.FLAGGED_FILL,
+                fill_type="solid",
+            )
+
+        header_row = 2 if skipped else 1
         header = ["Nyckeltal"]
         for fund in funds:
             header.append(display_name(fund))
@@ -353,10 +386,10 @@ class JsonConverter:
                 header.append("källa")
         ws.append(header)
         for col_num in range(1, len(header) + 1):
-            ws.cell(row=1, column=col_num).font = Font(bold=True)
-        ws.freeze_panes = "B2"
+            ws.cell(row=header_row, column=col_num).font = Font(bold=True)
+        ws.freeze_panes = f"B{header_row + 1}"
 
-        row_idx = 2
+        row_idx = header_row + 1
         for group in group_order:
             ws.cell(row=row_idx, column=1, value=group).font = Font(bold=True)
             row_idx += 1
@@ -375,10 +408,16 @@ class JsonConverter:
                     cell = ws.cell(row=row_idx, column=col_idx, value=value)
                     problems = flagged.get((fund, str(year), key), [])
                     if problems:
+                        # Bara upplysningar: kassan redovisar egna poster
+                        # utöver föreskriften, vilket inte är ett räknefel.
+                        only_notes = all(
+                            getattr(problem, "severity", None)
+                            == validation.SEVERITY_INFO
+                            for problem in problems
+                        )
+                        colour = self.INFO_FILL if only_notes else self.FLAGGED_FILL
                         cell.fill = PatternFill(
-                            start_color=self.FLAGGED_FILL,
-                            end_color=self.FLAGGED_FILL,
-                            fill_type="solid",
+                            start_color=colour, end_color=colour, fill_type="solid",
                         )
                     else:
                         fill = self._certainty_fill(certainty)
@@ -441,8 +480,37 @@ class JsonConverter:
         ws.cell(row=ws.max_row, column=1).fill = PatternFill(
             start_color=self.FLAGGED_FILL, end_color=self.FLAGGED_FILL, fill_type="solid"
         )
+        ws.append([
+            "Upplysning: summan överstiger de delposter föreskriften räknar "
+            "upp, sannolikt för att kassan redovisar egna poster. Inget fel."
+        ])
+        ws.cell(row=ws.max_row, column=1).fill = PatternFill(
+            start_color=self.INFO_FILL, end_color=self.INFO_FILL, fill_type="solid"
+        )
         ws.append([])
         ws.append(["Håll pekaren över ett värde för källa, säkerhet och kommentar."])
+        skipped = self.skipped()
+        if skipped:
+            ws.append([])
+            ws.append([f"Ej analyserade dokument ({len(skipped)})"])
+            heading = ws.cell(row=ws.max_row, column=1)
+            heading.font = Font(bold=True)
+            heading.fill = PatternFill(
+                start_color=self.FLAGGED_FILL, end_color=self.FLAGGED_FILL,
+                fill_type="solid",
+            )
+            ws.append([
+                "Dessa filer laddades upp men ingår inte i sammanställningen. "
+                "Kassorna saknas alltså helt i årtalsfliken."
+            ])
+            ws.append(["Fil", "Orsak"])
+            for column in (1, 2):
+                ws.cell(row=ws.max_row, column=column).font = Font(bold=True)
+            for entry in skipped:
+                ws.append([
+                    str(entry.get("fil", "")), str(entry.get("orsak", ""))
+                ])
+
         ws.append([])
         ws.append(["Flikar"])
         ws.cell(row=ws.max_row, column=1).font = Font(bold=True)

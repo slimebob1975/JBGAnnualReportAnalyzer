@@ -262,3 +262,16 @@ def test_rejected_upload_leaves_no_job_directory_behind(client):
         files={"file": ("x.docx", b"x", "application/octet-stream")},
     )
     assert len(list(main.jobs.root.iterdir())) == before
+
+
+def test_excel_ar_forvalt_format(client):
+    """Excel bär det analysen faktiskt producerar: färgkodningen,
+    kommentarerna med källa och anmärkning, nyckeltalsberäkningarna och
+    källfliken. JSON och CSV är formaten för vidarebearbetning."""
+    svar = client.post(
+        "/api/analyze",
+        data={"model": "gpt-5.2", "apikey": "sk-x", "sources": "yes",
+              "use_masking": "no"},
+        files={"file": ("a.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+    assert svar.status_code != 422, "format borde ha ett förval på servern"

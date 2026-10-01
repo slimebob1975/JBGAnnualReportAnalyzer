@@ -977,3 +977,51 @@ def test_a_moderate_outlier_is_not_called_a_unit_error():
         KEY_DEFS,
     )
     assert findings == []
+
+
+# ------------------------------- kassornas egna poster utöver föreskriften
+def test_en_summa_storre_an_delposterna_ar_en_upplysning():
+    """Föreskriften räknar upp delposterna, men kassorna får lägga till egna.
+    Alfa-kassans Summa intäkter översteg sina två termer med exakt 70 691 tkr
+    i fem körningar: avgifter från icke anslutna plus ersättning från staten,
+    två poster som helt enkelt inte står i uppräkningen."""
+    result = _fund(**{"Summa intäkter": 415254, "Medlemsavgifter": 344194,
+                      "Övriga intäkter": 369})
+    findings = validation.validate(result, KEY_DEFS)
+
+    assert len(findings) == 1
+    assert findings[0].severity == validation.SEVERITY_INFO
+    assert "egna poster" in findings[0].message
+    assert "ingen räknefel" in findings[0].message
+
+
+def test_en_summa_mindre_an_delposterna_ar_fortfarande_en_anmarkning():
+    """En summa kan inte understiga poster den själv innehåller."""
+    result = _fund(**{"Summa intäkter": 300000, "Medlemsavgifter": 344194,
+                      "Övriga intäkter": 369})
+    findings = validation.validate(result, KEY_DEFS)
+
+    assert len(findings) == 1
+    assert findings[0].severity == validation.SEVERITY_WARNING
+    assert "stämmer inte med" in findings[0].message
+
+
+def test_balansrakningen_maste_fortfarande_balansera():
+    """Subtraktionsregeln gäller delsummor, inte balansidentiteten: där är
+    ett överskott lika fel som ett underskott."""
+    result = _fund(**{"Summa tillgångar": 100000, "Summa eget kapital": 22020,
+                      "Summa skulder": 23190, "Summa avsättningar": 1539})
+    findings = validation.validate(result, KEY_DEFS)
+
+    assert any(f.severity == validation.SEVERITY_ERROR for f in findings)
+
+
+def test_upplysningar_raknas_for_sig_i_loggen(caplog):
+    import logging
+
+    result = _fund(**{"Summa intäkter": 415254, "Medlemsavgifter": 344194,
+                      "Övriga intäkter": 369})
+    with caplog.at_level(logging.WARNING):
+        validation.log_findings(validation.validate(result, KEY_DEFS))
+
+    assert "1 upplysningar som inte är fel" in caplog.text
