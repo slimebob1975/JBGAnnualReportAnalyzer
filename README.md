@@ -357,6 +357,12 @@ stämmer den delningen inte med termens ord: två dokument föll på just det,
 med namn som fanns i termlistan, stod läsbara i utdata och ändå inte gick att
 placera. Att tömma sidan är sista utvägen och nås numera sällan.
 
+Svepet lägger samma rimlighetsfilter på sitt svar som svärtningen gör på sitt.
+En rad som "TeamEngine E-Signing" har ett namns form, står intill en rollrad
+och är ingen person. Svärtningen sorterade bort den som för vanlig för att vara
+ett namn — den stod på alla trettio sidorna — medan svepet inte gjorde det, och
+underkände därför en hel årsredovisning för en leverantörs banderoll.
+
 Svärtningen ändrar sidans radstruktur: när ett namn försvinner ur textlagret
 hamnar raden under direkt intill rollen. Ett namn som inte var rollgranne före
 maskeringen kan därför bli det efteråt. Maskeringen körs om till dess att

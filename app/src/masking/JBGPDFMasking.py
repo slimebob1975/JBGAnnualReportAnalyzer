@@ -592,17 +592,32 @@ class PDFMasker:
         joined = re.sub(r"-\s*\n\s*", "", text or "")
         return cls._normalise_for_search(joined)
 
-    @staticmethod
-    def find_role_names_in_pdf(pdf_path) -> set:
+    @classmethod
+    def find_role_names_in_pdf(cls, pdf_path) -> set:
         """Namn som står intill sin roll i en färdig pdf.
 
         Granskningen av termlistan kan bara svara på om det vi hittade är
         borta. Ett namn som aldrig upptäcktes var aldrig en term, och
         godkändes därför tyst. Det här svepet läser utdata på nytt och ställer
         den andra frågan: står det fortfarande ett namn bredvid en roll?
+
+        Samma rimlighetsfilter som svärtningen använder läggs på svaret, och
+        av samma skäl. En sidhuvudsrad som "TeamEngine E-Signing" ser ut som
+        ett namn, står på alla trettio sidorna och är inget namn alls.
+        Svärtningen sorterade bort den som för vanlig för att vara en person;
+        svepet gjorde det inte, och underkände därmed Unionens årsredovisning
+        under en hel dag för en leverantörs banderoll.
         """
         with pymupdf.open(pdf_path) as doc:
-            return find_names_by_role_context([page.get_text() for page in doc])
+            candidates = find_names_by_role_context(
+                [page.get_text() for page in doc]
+            )
+        if not candidates:
+            return set()
+        kept, _too_short, _too_common = cls._plausible_terms(
+            Path(pdf_path), sorted(candidates)
+        )
+        return set(kept)
 
     @staticmethod
     def find_identity_numbers_in_pdf(pdf_path) -> set:

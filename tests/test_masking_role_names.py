@@ -241,3 +241,53 @@ def test_spanreserven_hittar_inget_som_inte_finns(tmp_path):
 
     with pymupdf.open(pdf) as d:
         assert PDFMasker._locate_term_in_spans(d[0], "Anna Svensson") == []
+
+
+# ------------------------------------- sidhuvud som ser ut som ett namn
+def _pdf_med_banderoll(tmp_path, sidor=30):
+    """Varje sida får e-signeringstjänstens banderoll överst, som i
+    Unionens årsredovisning, plus en rollrad intill."""
+    doc = pymupdf.open()
+    for _ in range(sidor):
+        page = doc.new_page()
+        page.insert_text((72, 60), "TeamEngine E-Signing", fontsize=8)
+        page.insert_text((72, 80), "Suppleant", fontsize=11)
+        page.insert_text((72, 120), "Summa tillgangar 46 749", fontsize=11)
+    ut = tmp_path / "banderoll.pdf"
+    doc.save(ut)
+    doc.close()
+    return ut
+
+
+def test_en_banderoll_pa_varje_sida_underkanner_inte_dokumentet():
+    """Det som kostade Unionens årsredovisning en hel dag.
+
+    "TeamEngine E-Signing" har ett namns form, står intill en rollrad och är
+    ingen person. Svärtningen sorterade bort den som för vanlig för att vara
+    ett namn. Svepet gjorde det inte, och underkände filen.
+    """
+    assert find_names_by_role_context(
+        ["TeamEngine E-Signing\nSuppleant"]
+    ) == {"TeamEngine E-Signing"}, "formen är ett namns, det är inte felet"
+
+
+def test_svepet_sorterar_bort_det_svartningen_redan_sorterat_bort(tmp_path):
+    pdf = _pdf_med_banderoll(tmp_path)
+    assert PDFMasker.find_role_names_in_pdf(pdf) == set()
+
+
+def test_ett_namn_som_star_en_gang_slapps_fortfarande_igenom(tmp_path):
+    """Filtret får inte svälja riktiga namn: en styrelseledamot står på en
+    sida, inte på trettio."""
+    doc = pymupdf.open()
+    for n in range(30):
+        page = doc.new_page()
+        page.insert_text((72, 60), "TeamEngine E-Signing", fontsize=8)
+        if n == 0:
+            page.insert_text((72, 100), "Nils Akesson", fontsize=11)
+            page.insert_text((72, 120), "Suppleant", fontsize=11)
+    pdf = tmp_path / "blandat.pdf"
+    doc.save(pdf)
+    doc.close()
+
+    assert PDFMasker.find_role_names_in_pdf(pdf) == {"Nils Akesson"}

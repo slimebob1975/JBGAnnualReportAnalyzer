@@ -11,7 +11,7 @@ Siffror i det här dokumentet kommer från körningen den 18 september 2026
 
 ---
 
-## A. Tidskritiskt
+## A. Först
 
 ### A1. Fånga de manuellt inmatade siffrorna medan de finns kvar
 
@@ -170,6 +170,7 @@ Kort historik, så att det går att se vad som redan prövats och varför.
 | 0044 | Nyckeltalsberäkningar ur JSON, delade flikar, kontroll av enhet mellan kassor | Enhetskontrollen hittade att fyra beloppsnyckeltal i bilaga 2 rapporterades i blandade enheter |
 | 0045 | Tecken- och enhetsnormalisering i kod, rimliga intervall för nyckeltalen | 21 belopp omräknas automatiskt; teckennormaliseringen utlöses numera nästan aldrig, eftersom 0043 löste problemet uppströms |
 | 0050 | Enhetsnormaliseringen itererar mot en delad referens; faktorn väljs på logaritmiskt avstånd; Excel förvalt utdataformat | Kolumnen `Utbetald arbetslöshetsersättning` hamnar helt i kronor, noll kvarvarande anmärkningar om enhet mot tre tidigare |
+| 0057 | Svepet efter kvarvarande namn använder samma rimlighetsfilter som svärtningen | Unionens årsredovisning underkändes en hel dag för raden "TeamEngine E-Signing", som står på alla trettio sidorna och är en leverantörs banderoll, inte en person |
 | 0046 | Person- och samordningsnummer i alla former; organisationsnummer undantas; oberoende svep av utdata | Svepet tyst i 24 av 24 dokument; maskerade termer 1 018 → 994, exakt ett färre i 22 dokument, vilket är kassans eget organisationsnummer som tidigare svärtades |
 
 ### Latent fel som hittades på vägen
