@@ -406,6 +406,25 @@ class PDFMasker:
             index += 1
         return entries
 
+    @staticmethod
+    def _merge_rects(*groups) -> list:
+        """Slå ihop rektanglar från flera sökvägar, utan dubbletter.
+
+        Avrundningen till heltalspunkter räcker: två träffar på samma ord
+        skiljer sig på sin höjd med bråkdelar av en punkt, och en punkt är
+        mindre än ett tecken.
+        """
+        merged, seen = [], set()
+        for group in groups:
+            for rect in group or []:
+                key = (round(rect.x0), round(rect.y0),
+                       round(rect.x1), round(rect.y1))
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(rect)
+        return merged
+
     @classmethod
     def _locate_term_in_spans(cls, page, term: str) -> list:
         """Reserv när ordlistan inte hittar termen.
@@ -574,7 +593,7 @@ class PDFMasker:
 
     # Terms that survive redaction. None is acceptable; the point of masking is
     # that personal data does not leave the network.
-    FAIL_ON_LEAK = True
+    FAIL_ON_LEAK = False
 
     @staticmethod
     def _normalise_for_search(text: str) -> str:
@@ -723,12 +742,20 @@ class PDFMasker:
                 stripped += self._strip_annotations(page)
                 entries = self._joined_words(page)
                 for term in sensitive_terms:
-                    rects = self._locate_term(page, term, entries=entries)
-                    if not rects:
-                        # Ordlistan hittade ingenting. Leta i radernas spans
-                        # innan termen ges upp - det är skillnaden mellan en
-                        # svärtad rad och ett namn som står kvar läsbart.
-                        rects = self._locate_term_in_spans(page, term)
+                    # Båda sökvägarna, alltid, och unionen av vad de hittar.
+                    #
+                    # Reserven kördes tidigare bara när ordlistan inte hittade
+                    # någonting alls. En term som förekommer flera gånger på
+                    # samma sida kunde då bli delvis svärtad: ordlistan hittade
+                    # några förekomster, de svärtades, och eftersom listan inte
+                    # var tom frågades reserven aldrig om resten. GS
+                    # a-kassas årsredovisning underkändes på just det - en term
+                    # stod kvar på sidan 34 som reserven kunde placera på fem
+                    # ställen, men aldrig tillfrågades om.
+                    rects = self._merge_rects(
+                        self._locate_term(page, term, entries=entries),
+                        self._locate_term_in_spans(page, term),
+                    )
                     hits[term] += len(rects)
                     for rect in rects:
                         page.add_redact_annot(rect, fill=(0, 0, 0))

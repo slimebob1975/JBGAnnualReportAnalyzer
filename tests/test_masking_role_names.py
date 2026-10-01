@@ -291,3 +291,52 @@ def test_ett_namn_som_star_en_gang_slapps_fortfarande_igenom(tmp_path):
     doc.close()
 
     assert PDFMasker.find_role_names_in_pdf(pdf) == {"Nils Akesson"}
+
+
+# -------------------------------- delvis träff fick tidigare blockera reserven
+def test_bada_sokvagarna_kors_alltid(tmp_path):
+    """Felet som underkände GS a-kassa.
+
+    Reserven kördes bara när ordlistan inte hittade någonting alls. En term
+    som förekommer flera gånger på en sida kunde därmed bli delvis svärtad:
+    ordlistan hittade några förekomster, och eftersom dess lista inte var tom
+    frågades reserven aldrig om resten.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Svensson", fontsize=11)
+    page.insert_text((72, 130), "Svensson", fontsize=11)
+    pdf = tmp_path / "tva.pdf"
+    doc.save(pdf)
+    doc.close()
+
+    with pymupdf.open(pdf) as d:
+        sida = d[0]
+        via_ord = PDFMasker._locate_term(sida, "Svensson")
+        via_span = PDFMasker._locate_term_in_spans(sida, "Svensson")
+        samman = PDFMasker._merge_rects(via_ord, via_span)
+
+    assert len(samman) >= max(len(via_ord), len(via_span)), (
+        "unionen får aldrig vara mindre än den bästa enskilda sökvägen"
+    )
+
+
+def test_samma_rektangel_fran_bada_hallen_raknas_en_gang(tmp_path):
+    """Hittar båda sökvägarna samma förekomst ska den svärtas en gång."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Svensson", fontsize=11)
+    pdf = tmp_path / "en.pdf"
+    doc.save(pdf)
+    doc.close()
+
+    with pymupdf.open(pdf) as d:
+        sida = d[0]
+        via_ord = PDFMasker._locate_term(sida, "Svensson")
+        samman = PDFMasker._merge_rects(via_ord, via_ord)
+
+    assert len(samman) == len(via_ord)
+
+
+def test_merge_klarar_tomma_listor():
+    assert PDFMasker._merge_rects([], None, []) == []

@@ -349,9 +349,12 @@ fem namn kvar fullt läsbara på styrelsesidan medan ett tjugotal andra på samm
 sida var svärtade. De upptäcktes aldrig, var därför aldrig termer, och
 verifieringen hade ingenting att leta efter.
 
-En term lokaliseras i två steg. Först mot sidans ordlista, som klarar namn
-brutna över en rad. Hittar den ingenting söks termen i radernas spans, sådana
-texten faktiskt är satt, och rektanglarna hämtas därifrån. Ordlistan delar
+En term lokaliseras på två sätt, och båda körs alltid: mot sidans ordlista,
+som klarar namn brutna över en rad, och mot radernas spans sådana texten
+faktiskt är satt. Rektanglarna slås ihop. Att köra den andra bara när den
+första gick bom räckte inte — en term som förekommer flera gånger på en sida
+kunde bli delvis svärtad, eftersom en icke tom lista från ordlistan hindrade
+att reserven ens tillfrågades om resten. Ordlistan delar
 texten på sitt eget sätt, och i inskannade eller egendomligt uppbyggda pdf:er
 stämmer den delningen inte med termens ord: två dokument föll på just det,
 med namn som fanns i termlistan, stod läsbara i utdata och ändå inte gick att
