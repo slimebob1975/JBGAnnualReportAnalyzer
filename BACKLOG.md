@@ -102,6 +102,70 @@ kodändring.
 **Följd.** Flyttar en del av de 53 oskyddade nyckeltalen in under kontroll till
 i stort sett ingen kostnad.
 
+### C5. Köra dokumenten parallellt
+
+**Varför det är värt att överväga.** Dokumenten är oberoende av varandra ända
+fram till sammanslagningen. Mätt på körningen den 1 oktober 2026, 84 minuter
+för 24 filer:
+
+| Moment | Tid | Andel |
+| --- | --- | --- |
+| Väntan på språkmodellen | 58 min | 69 % |
+| Maskering (NER på CPU) | 20 min | 24 % |
+| OCR | 5 min | 6 % |
+
+Två olika sorters parallellism, inte en. Väntan på modellen är I/O och klarar
+sig med trådar; GIL:en släpps ändå under anropet. Maskeringen och OCR är
+CPU-arbete och behöver processer eller kärnor för att gå fortare. Att tala om
+"beroende på hårdvaran" träffar alltså bara den mindre tredjedelen — taket för
+den större delen sätts av API:ets hastighetsgränser, inte av maskinen.
+
+**Vad det skulle ge.** Med fyra dokument i taget hamnar en körning i
+storleksordningen 25–30 minuter i stället för 84. Nyttan i drift är måttlig:
+det här är ett satsvis jobb som körs några gånger om året och ingen sitter och
+väntar. Nyttan under utveckling är desto större — den 1 oktober 2026 kördes
+hela materialet fem gånger på en dag, och varje varv kostade drygt en timme av
+väntan innan nästa fel kunde ses.
+
+**Vad som måste göras om först.** Analysen håller tillstånd på instansen som i
+dag bara en tråd rör:
+
+* `skipped_files`, `stability_findings` och `validation_findings` fylls på per
+  fil och behöver antingen lås eller en resultatlista per arbetare som slås
+  ihop efteråt.
+* `usage` räknar anrop och tokens löpande.
+* `_masker` skapas lazy vid första användningen. Två trådar samtidigt där ger
+  två modeller i minnet, eller värre.
+* NER-pipelinen från `transformers` är inte utlovat trådsäker. En maskerare per
+  arbetare, eller ett lås runt anropet.
+* Förloppsrapporteringen (`report(file_index, filnamn)`) förutsätter att
+  filerna blir klara i ordning.
+* Delresultatet (`_save_partial_result`) skrivs efter varje fil och skulle
+  behöva serialiseras.
+
+**Vad som måste ligga kvar efter sammanslagningen.** Enhetsnormaliseringen och
+kontrollen av enhet mellan kassor är korpusnivå: de jämför varje kassa med de
+andra och kan inte köras per dokument.
+
+**Risker värda att väga in.**
+
+* Loggen blir interfolierad. Hela den här veckans felsökning byggde på att
+  läsa ett dokuments rader i ordning; med fyra trådar krävs ett jobb-id eller
+  ett filnamn på varje rad för att det ska gå att följa.
+* Promptcachen värms sekventiellt i dag — 827 000 av 1,5 miljoner
+  prompt-tokens var cachade. Fyra samtidiga anrop i början missar cachen
+  samtidigt, vilket kostar något. Troligen marginellt, men bör mätas.
+* Hastighetsgränser. 1,87 miljoner tokens på 84 minuter är ungefär 22 000
+  tokens per minut; fyra i taget blir närmare 90 000. Vad kontot tål avgör hur
+  många arbetare som är meningsfulla.
+* Samtidighetsfel är den svåraste sorten att felsöka, och det här programmets
+  historia visar att felen sällan syns i koden utan först i en hel körning.
+
+**Förslag.** En arbetspool över dokument med konfigurerbart antal, förval
+lågt (två eller tre), och allt per-dokument-tillstånd flyttat till lokala
+variabler som slås ihop vid join. Inte en omskrivning — slingan i `do_analysis`
+är redan nästan en funktion per fil efter att felisoleringen lades in.
+
 ### C6. Flik 3 — sammanfattningar ur förvaltningsberättelsen
 
 Efterfrågad av verksamheten: en flik med kassorna på rader och tre
