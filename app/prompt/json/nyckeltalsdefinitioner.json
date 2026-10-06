@@ -728,7 +728,12 @@
     "Beskrivning": "Uppgift ur bilaga 2: totalt antal medlemmar 31 december.",
     "Grupp": "👥 Statistik (bilaga 2)",
     "Enhet": "antal",
-    "Specifika instruktioner": "Under MEDLEMMAR. Uppgiften är ett antal, inte ett belopp."
+    "Specifika instruktioner": "Under MEDLEMMAR. Uppgiften är ett antal, inte ett belopp.",
+    "Delposter": {
+      "Antal medlemmar varav män": 1,
+      "Antal medlemmar varav kvinnor": 1
+    },
+    "Formel": "Antal medlemmar varav män + Antal medlemmar varav kvinnor"
   },
   {
     "Nyckeltal": "Antal medlemmar varav män",
@@ -808,7 +813,8 @@
     "Beskrivning": "Uppgift ur bilaga 2: antal medlemmar som fått ersättning.",
     "Grupp": "👥 Statistik (bilaga 2)",
     "Enhet": "antal",
-    "Specifika instruktioner": "Under ARBETSLÖSHETSERSÄTTNING. Uppgiften är ett antal, inte ett belopp."
+    "Specifika instruktioner": "Under ARBETSLÖSHETSERSÄTTNING. Uppgiften är ett antal, inte ett belopp.",
+    "Ingår i": "Totalt antal medlemmar 31 december"
   },
   {
     "Nyckeltal": "Antal beslut underrättelser",
@@ -824,7 +830,8 @@
     "Beskrivning": "Uppgift ur bilaga 2: antal sanktion.",
     "Grupp": "👥 Statistik (bilaga 2)",
     "Enhet": "antal",
-    "Specifika instruktioner": "Under UNDERRÄTTELSER. Uppgiften är ett antal, inte ett belopp."
+    "Specifika instruktioner": "Under UNDERRÄTTELSER. Uppgiften är ett antal, inte ett belopp.",
+    "Ingår i": "Antal beslut underrättelser"
   },
   {
     "Nyckeltal": "Antal beslut omprövning",
@@ -840,7 +847,8 @@
     "Beskrivning": "Uppgift ur bilaga 2: antal beslut omprövning med ändring.",
     "Grupp": "👥 Statistik (bilaga 2)",
     "Enhet": "antal",
-    "Specifika instruktioner": "Under OMPRÖVNINGAR, ÖVERKLAGAN, DOMAR. Uppgiften är ett antal, inte ett belopp."
+    "Specifika instruktioner": "Under OMPRÖVNINGAR, ÖVERKLAGAN, DOMAR. Uppgiften är ett antal, inte ett belopp.",
+    "Ingår i": "Antal beslut omprövning"
   },
   {
     "Nyckeltal": "Antal överklagan",
@@ -856,7 +864,8 @@
     "Beskrivning": "Uppgift ur bilaga 2: antal domar.",
     "Grupp": "👥 Statistik (bilaga 2)",
     "Enhet": "antal",
-    "Specifika instruktioner": "Under OMPRÖVNINGAR, ÖVERKLAGAN, DOMAR. Uppgiften är ett antal, inte ett belopp."
+    "Specifika instruktioner": "Under OMPRÖVNINGAR, ÖVERKLAGAN, DOMAR. Uppgiften är ett antal, inte ett belopp.",
+    "Ingår i": "Antal överklagan"
   },
   {
     "Nyckeltal": "Antal beslut återkrav",
@@ -880,7 +889,8 @@
     "Beskrivning": "Uppgift ur bilaga 2: antal beslut återkrav inlämnade till kronofogdemyndigheten.",
     "Grupp": "👥 Statistik (bilaga 2)",
     "Enhet": "antal",
-    "Specifika instruktioner": "Under ÅTERKRAV. Uppgiften är ett antal, inte ett belopp."
+    "Specifika instruktioner": "Under ÅTERKRAV. Uppgiften är ett antal, inte ett belopp.",
+    "Ingår i": "Antal beslut återkrav"
   },
   {
     "Nyckeltal": "Totalt belopp återkrav inlämnade till Kronofogdemyndigheten",
@@ -888,7 +898,8 @@
     "Beskrivning": "Uppgift ur bilaga 2: totalt belopp återkrav inlämnade till kronofogdemyndigheten.",
     "Grupp": "👥 Statistik (bilaga 2)",
     "Enhet": "belopp",
-    "Specifika instruktioner": "Under ÅTERKRAV."
+    "Specifika instruktioner": "Under ÅTERKRAV.",
+    "Ingår i": "Totalt belopp återkrav"
   },
   {
     "Nyckeltal": "Antal anmälningar till Polismyndigheten",

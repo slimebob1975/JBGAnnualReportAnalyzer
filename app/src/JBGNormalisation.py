@@ -27,6 +27,7 @@ is worse than none.
 import json
 import logging
 import math
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -143,6 +144,44 @@ def normalise_signs(result: dict, metrics_path) -> int:
     if changed:
         logger.info(f"Teckenkonvention: {changed} värden normaliserade.")
     return changed
+
+
+UNIT_TKR = "tkr"
+UNIT_KRONOR = "kronor"
+
+# Årsredovisningslagen och BFN:s vägledningar kräver att enheten framgår, och
+# formuleringarna är få: en rubrikrad "Tkr" under resultaträkningen, eller en
+# mening under redovisningsprinciperna. Ordningen spelar roll - mönstren
+# prövas uppifrån och ned, och de mest uttryckliga står först.
+UNIT_DECLARATIONS = (
+    (re.compile(r"belopp(?:en)?\s+(?:är\s+)?(?:anges|angivna|redovisas)"
+                r"[^.\n]{0,40}?\btkr\b", re.IGNORECASE), UNIT_TKR),
+    (re.compile(r"belopp(?:en)?\s+(?:är\s+)?(?:anges|angivna|redovisas)"
+                r"[^.\n]{0,40}?tusental\s+kronor", re.IGNORECASE), UNIT_TKR),
+    (re.compile(r"belopp(?:en)?\s+(?:är\s+)?(?:anges|angivna|redovisas)"
+                r"[^.\n]{0,40}?\b(?:hela\s+)?kronor\b", re.IGNORECASE), UNIT_KRONOR),
+    (re.compile(r"\(\s*tkr\s*\)|^\s*tkr\s*$", re.IGNORECASE | re.MULTILINE), UNIT_TKR),
+)
+
+
+def detect_declared_unit(text) -> str | None:
+    """Vilken enhet dokumentet säger att det använder, om det säger något.
+
+    Kassorna skriver det nästan alltid, eftersom de måste: "Alla belopp är
+    angivna i tkr om inte annat anges" under redovisningsprinciperna, eller
+    bara "Tkr" som rubrikrad över resultaträkningen.
+
+    Uppgiften gäller de finansiella delarna. Statistiken i bilaga 2 kan följa
+    en annan enhet, och förslaget till resultatdisposition ska alltid vara i
+    hela kronor, så beskedet får inte tillämpas på hela dokumentet rakt av.
+    """
+    haystack = text if isinstance(text, str) else "\n".join(text or [])
+    if not haystack:
+        return None
+    for pattern, unit in UNIT_DECLARATIONS:
+        if pattern.search(haystack):
+            return unit
+    return None
 
 
 def amount_metrics(metrics_path) -> set[str]:

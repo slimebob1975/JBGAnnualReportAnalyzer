@@ -1848,18 +1848,23 @@ class JBGAnnualReportAnalyzer:
                 agreed += 1
                 continue
 
+            # Nyckeltalets namn står först i meddelandet. I Excel färgas rätt
+            # cell ändå, men i loggen gick anmärkningarna inte att analysera i
+            # grupp: ett femtiotal rader som alla sa att "detta nyckeltal"
+            # ändrats, utan att säga vilket.
             if second_value is None:
                 message = (
-                    f"Vid en omkörning av samma dokument hittades inget värde alls "
-                    f"för detta nyckeltal (första avläsningen gav {entry.get(self.FIELD_VALUE)}). "
+                    f"{name}: vid en omkörning av samma dokument hittades "
+                    f"inget värde alls (första avläsningen gav "
+                    f"{entry.get(self.FIELD_VALUE)}). "
                     "Kontrollera mot källdokumentet."
                 )
             else:
                 message = (
-                    f"Två avläsningar av samma dokument gav olika värden: "
-                    f"{entry.get(self.FIELD_VALUE)} respektive "
-                    f"{other.get(self.FIELD_VALUE)}. Det första värdet har behållits. "
-                    "Kontrollera mot källdokumentet."
+                    f"{name}: två avläsningar av samma dokument gav olika "
+                    f"värden, {entry.get(self.FIELD_VALUE)} respektive "
+                    f"{other.get(self.FIELD_VALUE)}. Det första värdet har "
+                    "behållits. Kontrollera mot källdokumentet."
                 )
 
             findings.append(
@@ -2014,6 +2019,8 @@ class JBGAnnualReportAnalyzer:
             raise ValueError("No valid PDF files found.")
 
         total_result = []
+        # Kassa -> den enhet dokumentet säger sig använda.
+        declared_units: dict[str, str] = {}
         self.skipped_files = []
         self.stability_findings = []
         usage.log_roles(self.model_roles, model or self.DEFAULT_MODEL)
@@ -2104,6 +2111,17 @@ class JBGAnnualReportAnalyzer:
                 for result in partial_results:
                     logger.debug(f"{result}")
                 logger.debug(f"In do_analysis: appended_result: {appended_result}")
+                # Dokumentet anger själv sin enhet, och gör det nästan alltid
+                # eftersom ÅRL kräver det. Beskedet knyts till kassan så att
+                # kontrollen kan använda det.
+                declared = normalisation.detect_declared_unit(full_text)
+                if declared:
+                    logger.info(
+                        f"Dokumentet anger att belopp redovisas i {declared}."
+                    )
+                    for fund_name in (appended_result or {}):
+                        declared_units[fund_name] = declared
+
                 if appended_result:
                     appended_result, conflicts = self._merge_json_fund_data(appended_result)
                     if conflicts:
@@ -2196,6 +2214,9 @@ class JBGAnnualReportAnalyzer:
             # These run before the checks, so the checks see the figures a
             # reader will see, and after the names are canonicalised, because
             # the unit comparison needs one column per fund.
+            if declared_units:
+                final_result[validation.DECLARED_UNITS_KEY] = declared_units
+
             if self.metrics_path:
                 normalisation.normalise_signs(final_result, self.metrics_path)
                 normalisation.normalise_units(final_result, self.metrics_path)

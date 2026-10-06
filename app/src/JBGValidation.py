@@ -54,6 +54,15 @@ UNIT_OUTLIER_FACTOR = 100
 # Below this many funds there is no peer group to compare against.
 MIN_FUNDS_FOR_UNIT_CHECK = 5
 UNIT_CHECK_RULE = "Enhet avviker från övriga kassor"
+DECLARED_UNIT_RULE = "Belopp i annan enhet än dokumentet anger"
+# Enheten per kassa läggs i resultatet som metadata, utanför kassornas egna
+# nycklar, och filtreras därför bort av exporten som allt annat med inledande
+# understreck.
+DECLARED_UNITS_KEY = "_redovisningsenhet"
+# Ett enskilt belopp tusen gånger större än kassans övriga poster är ingen
+# ovanligt stor post, det är en annan enhet. Alfa-kassans största post är
+# knappt hundra gånger dess median, så marginalen är god.
+DECLARED_UNIT_FACTOR = 1000
 RATIO_RULE = "Nyckeltal utanför rimligt intervall"
 RATIO_FILENAME = "nyckeltalsberakningar.json"
 # Reports state amounts in tkr; a figure lifted from running text is often in
@@ -372,6 +381,31 @@ def _equality_check(target: str, other: str):
     return check
 
 
+def _containment_check(part: str, whole: str):
+    """En delmängd kan inte vara större än mängden den ingår i.
+
+    Statistiken i bilaga 2 har få summor men gott om inneslutningar: besluten
+    som lämnats till Kronofogden är en delmängd av alla återkravsbeslut,
+    omprövningar med ändring en delmängd av alla omprövningar. Det är ingen
+    aritmetisk identitet och kan inte uttryckas som `Delposter`, men det är
+    lika kontrollerbart - och det är den sortens kontroll de här 23
+    nyckeltalen hittills helt saknat.
+    """
+
+    def check(values: dict[str, float]) -> "str | CheckResult | None":
+        inner, outer = values[part], values[whole]
+        if inner <= outer + _tolerance(outer):
+            return None
+        return CheckResult(
+            f"{part} är {_fmt(inner)}, alltså fler än {whole} som är "
+            f"{_fmt(outer)}. Den förra är en delmängd av den senare och kan "
+            "inte vara större.",
+            inner - outer,
+        )
+
+    return check
+
+
 def rules_from_definitions(metrics_path) -> list[Rule]:
     """Turn every "Delposter" in the metric definitions into a check.
 
@@ -397,6 +431,19 @@ def rules_from_definitions(metrics_path) -> list[Rule]:
                     description=entry.get("Formel", ""),
                     metrics=[target, *components],
                     check=_sum_check(target, components),
+                    severity=SEVERITY_WARNING,
+                )
+            )
+
+        # "Ingår i" säger att nyckeltalet är en delmängd av ett annat.
+        whole = entry.get("Ingår i")
+        if whole:
+            built.append(
+                Rule(
+                    name=f"Delmängd: {target}",
+                    description=f"{target} kan inte vara fler än {whole}.",
+                    metrics=[target, whole],
+                    check=_containment_check(target, whole),
                     severity=SEVERITY_WARNING,
                 )
             )
@@ -488,6 +535,9 @@ def validate(result: dict, metrics_path=None) -> list[Finding]:
                 )
 
     findings.extend(check_unit_consistency(result, metrics_path))
+    findings.extend(
+        check_declared_unit(result, metrics_path, (result or {}).get(DECLARED_UNITS_KEY))
+    )
     findings.extend(check_ratio_plausibility(result, metrics_path))
     link_related_findings(findings)
     return findings
@@ -798,6 +848,74 @@ def check_ratio_plausibility(result: dict, metrics_path=None, ratio_path=None
                         ),
                         severity=SEVERITY_WARNING,
                         metrics=sorted(set(names)),
+                    )
+                )
+    return findings
+
+
+def check_declared_unit(result: dict, metrics_path=None, declared_units=None
+                        ) -> list[Finding]:
+    """Belopp som motsäger den enhet dokumentet självt anger.
+
+    Årsredovisningslagen kräver att enheten framgår, och kassorna skriver
+    den: "Alla belopp är angivna i tkr om inte annat anges". Säger dokumentet
+    tkr men en post är tusen gånger större än kassans övriga, är posten läst i
+    kronor. Småföretagarnas finansieringsavgift kom som 117 308 746 där resten
+    av resultaträkningen var i tusental.
+
+    Till skillnad från jämförelsen mellan kassor fungerar den här kontrollen
+    på en ensam kassa, och fångar därmed det fall medianen strukturellt inte
+    kan se: en kassa som avviker utan att någon annan gör det.
+
+    Gäller bara de finansiella delarna. Statistiken i bilaga 2 kan följa en
+    annan enhet, och förslaget till resultatdisposition ska alltid vara i hela
+    kronor, så de nyckeltalen hålls utanför.
+    """
+    if not declared_units:
+        return []
+    statistics = normalisation.amount_metrics(metrics_path) if metrics_path else set()
+
+    findings: list[Finding] = []
+    for fund, unit in declared_units.items():
+        if unit != normalisation.UNIT_TKR:
+            continue
+        years = (result or {}).get(fund)
+        if not isinstance(years, dict):
+            continue
+        for year, metrics in years.items():
+            if not isinstance(metrics, dict):
+                continue
+            values = {
+                name: _numeric(entry)
+                for name, entry in metrics.items()
+                if name not in statistics
+            }
+            magnitudes = sorted(
+                abs(value) for value in values.values() if value
+            )
+            if len(magnitudes) < MIN_VALUES_FOR_CERTAINTY_CHECK:
+                continue
+            median = magnitudes[len(magnitudes) // 2]
+            if not median:
+                continue
+
+            for name, value in sorted(values.items()):
+                if not value or abs(value) < median * DECLARED_UNIT_FACTOR:
+                    continue
+                findings.append(
+                    Finding(
+                        fund=fund,
+                        year=str(year),
+                        rule=DECLARED_UNIT_RULE,
+                        message=(
+                            f"{name} är {_fmt(value)}, omkring "
+                            f"{_fmt(abs(value) / median)} gånger kassans "
+                            f"övriga poster. Dokumentet anger att belopp "
+                            f"redovisas i tusental kronor, så posten är "
+                            "sannolikt läst i kronor."
+                        ),
+                        severity=SEVERITY_WARNING,
+                        metrics=[name],
                     )
                 )
     return findings

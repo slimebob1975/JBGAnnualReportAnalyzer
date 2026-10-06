@@ -1025,3 +1025,57 @@ def test_upplysningar_raknas_for_sig_i_loggen(caplog):
         validation.log_findings(validation.validate(result, KEY_DEFS))
 
     assert "1 upplysningar som inte är fel" in caplog.text
+
+
+# --------------------------------- statistiken i bilaga 2 får kontroller
+def test_konsfordelningen_ska_summera_till_totalen():
+    """Första aritmetiska kontrollen någonsin på bilaga 2:s statistik."""
+    result = _fund(**{"Totalt antal medlemmar 31 december": 30253,
+                      "Antal medlemmar varav män": 19913,
+                      "Antal medlemmar varav kvinnor": 10340})
+    assert validation.validate(result, KEY_DEFS) == []
+
+
+def test_en_felaktig_konsfordelning_upptacks():
+    result = _fund(**{"Totalt antal medlemmar 31 december": 30253,
+                      "Antal medlemmar varav män": 19913,
+                      "Antal medlemmar varav kvinnor": 1034})
+    findings = validation.validate(result, KEY_DEFS)
+    assert any("Totalt antal medlemmar" in f.message for f in findings)
+
+
+@pytest.mark.parametrize("del_, helhet, bra, daligt", [
+    ("Antal beslut återkrav inlämnade till Kronofogdemyndigheten",
+     "Antal beslut återkrav", (19, 269), (300, 269)),
+    ("Antal beslut omprövning med ändring", "Antal beslut omprövning",
+     (25, 116), (120, 116)),
+    ("Totalt belopp återkrav inlämnade till Kronofogdemyndigheten",
+     "Totalt belopp återkrav", (1201071, 2017845), (3000000, 2017845)),
+])
+def test_en_delmangd_kan_inte_vara_storre_an_helheten(del_, helhet, bra, daligt):
+    """Statistiken har få summor men gott om inneslutningar: besluten som
+    lämnats till Kronofogden är en delmängd av alla återkravsbeslut."""
+    assert validation.validate(_fund(**{del_: bra[0], helhet: bra[1]}), KEY_DEFS) == []
+
+    findings = validation.validate(_fund(**{del_: daligt[0], helhet: daligt[1]}), KEY_DEFS)
+    assert any("delmängd" in f.message for f in findings)
+
+
+def test_lika_stora_mangder_ar_inget_fel():
+    """Alla återkravsbeslut kan ha lämnats till Kronofogden."""
+    result = _fund(**{"Antal beslut återkrav inlämnade till Kronofogdemyndigheten": 269,
+                      "Antal beslut återkrav": 269})
+    assert validation.validate(result, KEY_DEFS) == []
+
+
+def test_statistiken_omfattas_nu_av_kontroller():
+    """Före det här var samtliga 23 statistikuppgifter oskyddade."""
+    import app.src.JBGMetricSchema as schema
+
+    names = set(schema.load_metric_names(KEY_DEFS))
+    covered = set()
+    for rule in validation.RULES + validation.rules_from_definitions(KEY_DEFS):
+        covered.update(rule.metrics)
+    statistik = {n for n in names if n.startswith(("Antal", "Totalt"))}
+
+    assert len(statistik & covered) >= 8, "statistiken ska inte längre vara oskyddad"

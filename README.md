@@ -190,6 +190,12 @@ resultaträkningens rader med liknande namn. Flera kassor kallar
 `Not 7: Årets avstående från återkrav` för *eftergift*; det tolkas som samma
 sak.
 
+Utöver summor kontrolleras inneslutningar: ett nyckeltal märkt `Ingår i` kan
+inte vara större än det det ingår i. Statistiken i bilaga 2 har få summor men
+gott om sådana samband — besluten som lämnats till Kronofogden är en delmängd
+av alla återkravsbeslut — och det är den kontroll de 23 statistikuppgifterna
+hittills helt saknat.
+
 Varje delsumma i föreskriften kontrolleras aritmetiskt mot sina delposter.
 Kontrollerna byggs ur `Delposter` i nyckeltalsdefinitionerna, så ett nytt
 nyckeltal med delposter ger en ny kontroll utan kodändring.
@@ -421,6 +427,25 @@ pekar ut de ingående posterna.
 Intervallen är vida med avsikt. Över 24 kassor löpte kostnadstäckningen från
 0,02 till 8,5 månader och kassalikviditeten från 0,28 till 10,3. Kontrollen
 ska fånga omöjligheter, inte kassor som är ovanliga.
+
+### Enheten dokumentet självt anger
+
+Årsredovisningslagen kräver att enheten framgår, och kassorna skriver den:
+"Alla belopp är angivna i tkr om inte annat anges" under
+redovisningsprinciperna, eller bara "Tkr" som rubrikrad över
+resultaträkningen. Uppgiften läses ur texten och antecknas i loggen.
+
+Säger dokumentet tkr men en post i räkningarna är tusen gånger större än
+kassans övriga, är posten läst i kronor. Småföretagarnas finansieringsavgift
+kom som 117 308 746 där resten av resultaträkningen var i tusental.
+
+Till skillnad från jämförelsen mellan kassor fungerar den kontrollen på en
+ensam kassa, och fångar därmed det fall medianen strukturellt inte kan se: en
+kassa som avviker utan att någon annan gör det.
+
+Kontrollen gäller bara de finansiella delarna. Statistiken i bilaga 2 kan följa
+en annan enhet, och förslaget till resultatdisposition ska alltid vara i hela
+kronor.
 
 ### Enhet i bilaga 2
 

@@ -294,3 +294,91 @@ def test_iterationen_stannar_nar_inget_mer_andras():
 
     assert forsta
     assert andra == []
+
+
+# ------------------------------------------ enheten som dokumentet själv anger
+@pytest.mark.parametrize("text,vantat", [
+    ("Alla belopp är angivna i tkr om inte annat anges.", "tkr"),
+    ("Beloppen anges i tusental kronor om inte annat anges.", "tkr"),
+    ("Resultaträkning Not 2025 2024\nTkr\n\nIntäkter", "tkr"),
+    ("Utbetald ersättning (tkr) 2025 2024", "tkr"),
+    ("Alla belopp redovisas i hela kronor.", "kronor"),
+    ("Styrelsen avger härmed årsredovisning för verksamheten 2025.", None),
+])
+def test_enheten_lases_ur_dokumentets_egen_text(text, vantat):
+    assert norm.detect_declared_unit(text) == vantat
+
+
+def test_sidlistor_fungerar_lika_bra_som_en_strang():
+    assert norm.detect_declared_unit(
+        ["Förvaltningsberättelse", "Alla belopp är angivna i tkr."]
+    ) == "tkr"
+
+
+# Alfa-kassans verkliga räkningar, allt i tusental kronor.
+ALFA = {
+    "Anslutnas avgifter": 344194, "Övriga intäkter": 369,
+    "Summa intäkter": 415254, "Personalkostnader": 166917,
+    "Övriga externa kostnader": 59717, "Avskrivningar": 3209,
+    "Summa administrationskostnader": 229843, "Finansieringsavgift": 191453,
+    "Summa avgifter till staten": 191453, "Finansiella intäkter": 2359,
+    "Finansiella kostnader": 1, "Summa finansiella poster": 7184,
+    "Årets resultat": 1141, "Statligt bidrag till arbetslöshetsersättning": 2060878,
+    "Kostnad arbetslöshetsersättning": 2060878, "Summa tillgångar": 435643,
+    "Summa eget kapital": 180374, "Summa avsättningar": 31929,
+    "Summa skulder": 223339, "Inventarier": 4583, "Konst": 303,
+    "Kassa och bank": 40555, "Leverantörsskulder": 4901,
+    "Övriga skulder": 43593, "Övriga fordringar": 45031,
+}
+
+
+def _med_enhet(metrics, enhet="tkr", kassa="Kassan"):
+    return {
+        kassa: {"2025": {k: {"värde": v} for k, v in metrics.items()}},
+        validation.DECLARED_UNITS_KEY: {kassa: enhet},
+    }
+
+
+def test_en_riktig_arsredovisning_i_tkr_ger_inga_anmarkningar():
+    result = _med_enhet(ALFA)
+    assert validation.check_declared_unit(
+        result, KEY_DEFS, result[validation.DECLARED_UNITS_KEY]
+    ) == []
+
+
+def test_en_post_i_kronor_dar_dokumentet_sager_tkr_fangas():
+    """Småföretagarnas finansieringsavgift kom som 117 308 746 där resten av
+    resultaträkningen var i tusental."""
+    metrics = dict(ALFA, **{"Finansieringsavgift": 117308746})
+    result = _med_enhet(metrics)
+    findings = validation.check_declared_unit(
+        result, KEY_DEFS, result[validation.DECLARED_UNITS_KEY]
+    )
+
+    assert [f.metrics for f in findings] == [["Finansieringsavgift"]]
+    assert "tusental kronor" in findings[0].message
+
+
+def test_kontrollen_fungerar_pa_en_ensam_kassa():
+    """Det fall jämförelsen mellan kassor strukturellt inte kan se: en kassa
+    som avviker utan att någon annan gör det."""
+    metrics = dict(ALFA, **{"Finansieringsavgift": 117308746})
+    result = _med_enhet(metrics)
+    assert len(result) == 2, "bara en kassa plus metadata"
+    assert validation.check_declared_unit(
+        result, KEY_DEFS, result[validation.DECLARED_UNITS_KEY]
+    )
+
+
+def test_statistiken_i_bilaga_2_halls_utanfor():
+    """Bilaga 2 kan följa en annan enhet än räkningarna."""
+    metrics = dict(ALFA, **{"Utbetald arbetslöshetsersättning": 2081496000})
+    result = _med_enhet(metrics)
+    assert validation.check_declared_unit(
+        result, KEY_DEFS, result[validation.DECLARED_UNITS_KEY]
+    ) == []
+
+
+def test_utan_besked_om_enhet_gors_ingen_kontroll():
+    result = _med_enhet(dict(ALFA, **{"Finansieringsavgift": 117308746}), enhet=None)
+    assert validation.check_declared_unit(result, KEY_DEFS, {"Kassan": None}) == []
