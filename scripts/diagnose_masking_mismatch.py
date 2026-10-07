@@ -29,7 +29,6 @@ import pymupdf  # noqa: E402
 
 from app.src.masking.JBGPDFMasking import (  # noqa: E402
     PDFMasker,
-    find_names_by_role_context,
 )
 
 

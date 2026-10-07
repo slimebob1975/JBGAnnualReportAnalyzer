@@ -380,6 +380,7 @@ out = Path("app/prompt/json/nyckeltalsdefinitioner.json")
 out.write_text(json.dumps(metrics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 print(f"wrote {len(metrics)} metrics")
 from collections import Counter
+
 for g, n in Counter(e["Grupp"] for e in metrics).most_common():
     print(f"   {g:34} {n}")
 print(f"   sums with components: {sum(1 for e in metrics if e.get('Delposter'))}")

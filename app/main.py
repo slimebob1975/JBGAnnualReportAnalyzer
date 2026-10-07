@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.src import JBGLogContext as log_context
 from app.src import JBGUsage as usage
 from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
 from app.src.JBGAnnualReportExceptions import EmptyOutputException, FileTypeException
@@ -41,12 +42,17 @@ LOG_LEVEL = os.getenv("JBG_LOG_LEVEL", "INFO").upper()
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format="%(asctime)s [%(levelname)s] %(message)s",
+    # Dokumentets namn mellan nivån och meddelandet. Tomt när ingen fil
+    # behandlas, så vanliga rader ser ut som förut.
+    format="%(asctime)s [%(levelname)s]%(document)s %(message)s",
     handlers=[
         logging.FileHandler(LOG_FILE, encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
+# Filtret sitter på hanterarna, så att även rader från openai och httpx får
+# fältet. Utan det kraschar formateringen på en KeyError.
+log_context.install()
 
 # Third-party libraries log one INFO line per HTTP request, which buried the
 # application's own messages. Raise their threshold.

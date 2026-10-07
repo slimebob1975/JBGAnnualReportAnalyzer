@@ -90,6 +90,58 @@ Nyttan ligger i utvecklingstempo snarare än i drift: den 1 oktober 2026 kördes
 hela materialet fem gånger på en dag, och varje varv kostade drygt en timme av
 väntan innan nästa fel kunde ses.
 
+**Steg ett är mätt, inte byggt.** `scripts/measure_concurrency.py` skickar
+egna anrop av samma storleksordning som en nyckeltalsextraktion, med ett, två,
+fyra och åtta i taget, och rapporterar genomströmning, mediantid och
+hastighetsgränser. Inga återförsök, eftersom poängen är att se gränserna och
+inte dölja dem. Visar mätningen att kontot inte orkar mer än två samtidiga är
+resten av punkten inte värd att bygga.
+
+**Loggen är spårbar sedan 0075.** Varje rad som hör till ett dokument bär dess
+namn, så att loggen går att följa även flätad. Byggt före trådningen och inte
+efter, eftersom det är verktyget man behöver just när något går fel.
+
+**Vad slingan rör, genomgånget.** Slingan är 174 rader och rör följande
+tillstånd på analysobjektet. Listan är avstämd mot koden, inte minnet.
+
+*Måste göras om innan trådning:*
+
+| Tillstånd | Problem |
+| --- | --- |
+| `self._masker` | `_get_masker` kollar och sätter i två steg. Två trådar hinner båda se `None` och bygger var sin BERT-modell, omkring 2 GB styck. Behöver lås. |
+| `self.last_ocr_diagnosis` | `_run_ocr` skriver, `_ensure_readable_pdf` läser efteråt för felmeddelandet. Två dokument samtidigt kan ge det enas diagnos till det andras avbrott. Ska vara returvärde, inte fält. |
+| `report(file_index + 1, namn)` | Förutsätter att filerna blir klara i ordning. |
+| `_save_partial_result(total_result, ...)` | Skriver en fil ur en delad lista. Samtidiga skrivningar flätas. Behöver serialisering. |
+| `_warn_on_year_collision(total_result, ...)` | Läser `total_result` medan andra trådar hinner lägga till. |
+
+*Går tekniskt bra men ger ostabil ordning:*
+
+`self.skipped_files.append()` (fyra ställen), `self.stability_findings.extend()`
+och `total_result.append()` är atomära under GIL:en, men ordningen blir
+slumpmässig. Utdata bör vara likadan mellan två körningar av samma material, så
+de bör samlas per dokument och slås ihop i filordning efteråt.
+
+`declared_units[kassa]` och `management_summaries[kassa]` är lokala i
+`do_analysis` och nycklade på kassa. Ordningen spelar ingen roll där.
+
+*Redan trådsäkert:*
+
+`self.usage` har ett `threading.Lock` i `record`. Räknaren för anrop och
+tokens behöver inget mer.
+
+*Oförändrat:* enhetsnormaliseringen och enhetskontrollen mellan kassor är
+korpusnivå och ligger efter sammanslagningen, där de hör hemma.
+
+**Slutsats.** Inget svårare än väntat, och inget som kräver att slingan skrivs
+om från grunden. Steg två är att låta per-dokument-arbetet returnera sitt
+resultat i stället för att skriva till `self`, utan trådning — en ändring vars
+hela anspråk är att ingenting ändras, och som därför bör mätas mot en känd
+körning av hela materialet.
+
+**Loggen är spårbar sedan 0075.** Varje rad som hör till ett dokument bär dess
+namn, så att loggen går att följa även flätad. Byggt före trådningen och inte
+efter, eftersom det är verktyget man behöver just när något går fel.
+
 **Att göra om först.** `skipped_files`, `stability_findings`,
 `validation_findings` och `usage` fylls på per fil på instansen. `_masker`
 skapas lazy. NER-pipelinen är inte utlovat trådsäker. Förloppsrapporteringen

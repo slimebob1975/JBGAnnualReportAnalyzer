@@ -27,6 +27,7 @@ import logging
 
 from app.src import JBGFindingsRegister as findings_register
 from app.src import JBGHistory as history
+from app.src import JBGLogContext as log_context
 from app.src import JBGManagementReport as management_report
 from app.src import JBGMetricSchema as schema
 from app.src import JBGNormalisation as normalisation
@@ -2164,6 +2165,9 @@ class JBGAnnualReportAnalyzer:
             # Masking first meant the redactor ran against an image-only page,
             # found no text, redacted nothing, and OCR then recovered every
             # name it was supposed to remove.
+            # Varje loggrad under dokumentets behandling bär dess namn, så
+            # att loggen går att följa även när flera körs samtidigt.
+            log_token = log_context.current_document.set(_pdf_path.name)
             try:
                 readable_path = self._ensure_readable_pdf(_pdf_path)
                 was_ocred = readable_path != _pdf_path
@@ -2319,6 +2323,8 @@ class JBGAnnualReportAnalyzer:
                 )
             else:
                 self._save_partial_result(total_result, output_path)
+            finally:
+                log_context.current_document.reset(log_token)
 
             report(file_index + 1, _pdf_path.name)
 

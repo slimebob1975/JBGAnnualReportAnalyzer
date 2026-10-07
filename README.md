@@ -576,6 +576,28 @@ Flera år kan för övrigt ligga i samma körning redan i dag. Året härleds pe
 dokument, resultatet nycklas på kassa och år, och exporten gör en flik per år.
 En zip med 2023, 2024 och 2025 ger alltså tre flikar i samma arbetsbok.
 
+### Loggen
+
+Varje rad som hör till ett dokument bär dokumentets namn mellan nivån och
+meddelandet:
+
+    2026-10-07 11:24:02 [INFO] [GS a-kassa 2025] Kör OCR ...
+
+Namnet kortas till det som skiljer dokumenten åt. Ärendenummer, kopienummer
+och filändelse står på varje rad utan att säga något, och ordet
+"Årsredovisning" finns i nästan alla filnamn — tas det bort ryms kassans namn
+även när det står sist i filnamnet.
+
+Rader utanför ett dokument ser ut som förut. Märkningen finns för att varje
+felsökning i det här projektet byggt på att läsa ett dokuments rader i ordning
+— maskeringen som läckte namn, svärtningen som bara träffade några
+förekomster av en term, årsredovisningen som fick fel räkenskapsår. Körs flera
+dokument samtidigt försvinner den ordningen, och då är namnet det enda som gör
+loggen läsbar.
+
+Namnet hålls i en `ContextVar`, som är trådlokal av sig själv, och filtret
+sitter på hanterarna så att även rader från openai och httpx får fältet.
+
 ### Långa körningar
 
 Livslängden räknas från jobbets senaste livstecken, inte från när det
