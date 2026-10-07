@@ -29,6 +29,7 @@ PURPOSE_SECOND_PASS = "riktad omsökning"
 PURPOSE_STABILITY = "stabilitetskontroll"
 PURPOSE_YEAR = "årtolkning"
 PURPOSE_PAGE_OFFSET = "sidnummeroffset"
+PURPOSE_SUMMARY = "sammanfattning"
 PURPOSE_OTHER = "övrigt"
 
 PRICES_FILENAME = "model_prices.json"
@@ -41,6 +42,7 @@ ROLE_KEYS = {
     PURPOSE_SECOND_PASS: "omsokning",
     PURPOSE_STABILITY: "stabilitet",
     PURPOSE_YEAR: "aar",
+    PURPOSE_SUMMARY: "sammanfattning",
     PURPOSE_PAGE_OFFSET: "sidnummer",
 }
 

@@ -1079,3 +1079,25 @@ def test_statistiken_omfattas_nu_av_kontroller():
     statistik = {n for n in names if n.startswith(("Antal", "Totalt"))}
 
     assert len(statistik & covered) >= 8, "statistiken ska inte längre vara oskyddad"
+
+
+def test_ett_antal_forklaras_inte_som_extra_redovisningsposter():
+    """Akademikernas redovisade 806 037 medlemmar mot 787 411 fördelade på
+    kön. Skillnaden avser rimligen medlemmar utan registrerat kön — men det
+    är en annan sak än en extra resultatpost, och ska inte beskrivas så."""
+    result = _fund(**{"Totalt antal medlemmar 31 december": 806037,
+                      "Antal medlemmar varav män": 393000,
+                      "Antal medlemmar varav kvinnor": 394411})
+    findings = validation.validate(result, KEY_DEFS)
+
+    assert len(findings) == 1
+    assert findings[0].severity == validation.SEVERITY_INFO
+    assert "redovisas inte separat" in findings[0].message
+    assert "egna poster" not in findings[0].message
+
+
+def test_fler_domar_an_overklaganden_ar_inget_fel():
+    """Domstolarna avgör även överklaganden från tidigare år. Akademikernas
+    hade 75 domar mot 43 inkomna överklaganden 2025."""
+    result = _fund(**{"Antal domar": 75, "Antal överklagan": 43})
+    assert validation.validate(result, KEY_DEFS) == []

@@ -284,7 +284,7 @@ RULES: list[Rule] = [
 ]
 
 
-def _sum_check(target: str, components: dict[str, float]):
+def _sum_check(target: str, components: dict[str, float], counts: bool = False):
     """Build a check for one subtotal from the specification."""
 
     def check(values: dict[str, float]) -> "str | CheckResult | None":
@@ -314,6 +314,19 @@ def _sum_check(target: str, components: dict[str, float]):
         # Mindre än delposterna går däremot inte ihop: en summa kan inte
         # understiga poster den själv innehåller.
         if diff > 0:
+            # Ett antal är inte en summa av redovisningsposter, så förklaringen
+            # "kassan har lagt till egna poster" passar inte. Akademikernas
+            # redovisade 806 037 medlemmar mot 787 411 fördelade på kön, och
+            # skillnaden avser rimligen medlemmar utan registrerat kön - men
+            # det är en annan sak än en extra resultatpost.
+            if counts:
+                return CheckResult(
+                    f"{target} {_fmt(total)} är {_fmt(diff)} större än "
+                    f"{terms} = {_fmt(parts)}. Skillnaden redovisas inte "
+                    "separat. Kontrollera vad den avser.",
+                    diff,
+                    severity=SEVERITY_INFO,
+                )
             return CheckResult(
                 f"{target} {_fmt(total)} är {_fmt(diff)} större än "
                 f"{terms} = {_fmt(parts)}. Kassan redovisar sannolikt en eller "
@@ -430,7 +443,9 @@ def rules_from_definitions(metrics_path) -> list[Rule]:
                     name=f"Delsummering: {target}",
                     description=entry.get("Formel", ""),
                     metrics=[target, *components],
-                    check=_sum_check(target, components),
+                    check=_sum_check(
+                        target, components, counts=entry.get("Enhet") == "antal"
+                    ),
                     severity=SEVERITY_WARNING,
                 )
             )

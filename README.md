@@ -308,6 +308,26 @@ Loggen visar också fördelningen av angiven säkerhet efter varje körning. Om
 nästan alla värden får 1,0 skiljer skalan inte mellan säkra och osäkra värden,
 och färgkodningen säger då lite.
 
+### Räkenskapsåret
+
+Året härleds ur dokumentets text, aldrig ur filnamnet: en uttrycklig uppgift
+om räkenskapsåret väger tyngst, därefter årtal på de första sidorna. Hittas
+ingetdera tillfrågas modellen.
+
+Går året ändå inte att fastställa analyseras dokumentet utan årtal, och ger då
+i regel inga nyckeltal alls. Det redovisas då som ej analyserat, med
+räkenskapsåret angivet som trolig orsak.
+
+Prövat och förkastat: att falla tillbaka på det årtal som förekommer oftast i
+dokumentet. Metoden användes två gånger i en körning och blev fel båda
+gångerna — e-signeringssidorna upprepar signeringsdatumet en gång per
+undertecknare och röstar ned tabellrubrikerna, så en rapport om 2024 hamnade
+under 2025 och slogs ihop med det årets riktiga rapport. Ett dokument som
+saknas syns; ett dokument under fel år gör det inte.
+
+Hamnar två dokument ändå på samma kassa och år varnar loggen. Sammanslagningen
+kan inte avgöra vilket av dem som har rätt, men den ska inte ske tyst.
+
 ### Dokument som inte kunde analyseras
 
 Filer som hoppats över redovisas i resultatfilen, inte bara i loggen. Överst i
@@ -316,6 +336,36 @@ Läsanvisningen står fil och orsak för vart och ett.
 
 En kolumn som saknas är svårare att upptäcka än en cell som är fel: den som
 summerar en rad får ett rimligt tal, bara räknat på färre kassor än hon tror.
+
+### Fliken Förvaltningsberättelse
+
+Kassorna på rader och tre frågor i kolumner: årets viktigaste händelser,
+förväntad framtida utveckling och arbetslöshetsnivå, samt hur kassan
+säkerställt kontroll av medelsförvaltningen. Bredvid varje sammanfattning står
+ett ordagrant citat ur dokumentet och sidan det står på.
+
+Det här är den enda del av verktyget som genererar text i stället för att
+hämta den. Ingen aritmetik fångar en sammanfattning som är flytande, rimlig och
+fel, och sådana är svårare att upptäcka än ett felaktigt tal. Citatet är därför
+inte en utsmyckning utan det enda som gör cellen kontrollerbar.
+
+Citaten slås upp i texten innan de skrivs ut, och jämförelsen görs på
+bokstäverna: utan diakriter, utan avstavning och utan radbrytningar. Tre
+skillnader står annars för nästan allt som skiljer ett citat från texten det
+kommer ur, och ingen av dem handlar om innehållet — minst av allt på en
+inskannad sida, där tesseract läser "arbetslöshetsförsäkringen" som
+"arbetsloshetsforsakringen" och modellen skriver av det rättstavat.
+
+Ett citat utan stöd stryks tillsammans med sin sammanfattning: ett påhittat
+citat ser ut som ett belägg och är värre än inget alls. Ett citat som nästan
+stämmer behålls däremot och märks med färg och en kommentar om hur stort
+stödet är. Att kasta uppgiften är inte försiktigt, det är bara tomt.
+
+Kravet på redovisning av medelsförvaltningen väntas först nästa år, så den
+kolumnen är tom för de flesta kassor i år.
+
+Kostar ett extra modellanrop per dokument, ungefär 3–4 USD per körning.
+`SUMMARISE_MANAGEMENT_REPORT = False` stänger av det.
 
 ### Flikar i resultatfilen
 
@@ -462,6 +512,69 @@ definitionerna märkt med `Enhet: belopp` eller `kronor`; antal medlemmar
 skiljer sig med två tiopotenser mellan största och minsta kassa helt legitimt.
 Bara tydliga fall fångas — en kassa som ligger en femtedel under sina
 jämförbara är inte avgjord av den här kontrollen.
+
+### Jämförelse mellan år
+
+Omfattar körningen mer än ett år jämförs varje nyckeltal med samma nyckeltal
+föregående år. Det är den enda kontroll som har en referens utanför
+dokumentet, och den enda som finns kvar när den manuella inmatningen upphör.
+
+Trösklarna är mätta. På 234 jämförbara par mellan 2024 och 2025 var
+medianrörelsen 1,16 gånger, nittionde percentilen 6,4 och nittionionde 24. En
+tröskel vid tio hade alltså anmärkt på var elfte par, och de flesta med rätta:
+Akademikernas finansiella intäkter föll faktiskt från 68 878 till 2 869.
+
+Därför två nivåer. Anmärkning först vid hundra gånger, där rörelsen inte
+rimligen är verklig utan handlar om enhet eller felläsning. Och fliken
+"Förändring mot föregående år", som listar varje rörelse över det dubbla,
+störst först, utan allvarlighetsgrad. Där syns GS a-kassas "Antal
+ersättningsdagar 22 286 → 306 045" nära toppen — en felläsning på 13,7 gånger
+som ingen tröskel vågar anmärka på men som en människa ser direkt.
+
+Golvet gäller det mindre av de två värdena: en notpost som går från −832 till
+1 rör sig 832 gånger utan att betyda något. Ett nyckeltal som saknas det ena
+året är en lucka och ingen rörelse — statistiken i bilaga 2 lades om inför
+2025, och tio av 64 värden saknas i 2023 års rapporter.
+
+### Återkommande anmärkningar
+
+Varje körning räknar upp sina anmärkningar i ett register i historikkatalogen,
+nycklat på kassa, år, kontroll och nyckeltal — inte på meddelandet, vars belopp
+ändras mellan körningar även när det är samma sak som anmärks. Det som
+återkommit minst två gånger listas på fliken "Återkommande anmärkningar", det
+envisaste först.
+
+Skillnaden mellan brus och mönster avgör vad som är värt att åtgärda, och den
+syns inte i en enskild körning. Alfa-kassans Summa intäkter avvek med exakt
+70 691 fem körningar i rad innan någon kände igen beloppet; Visions Summa
+tillgångar avvek med 99 670 en gång och aldrig mer.
+
+### Körningens siffror
+
+Läsanvisningen redovisar hur många dokument som laddades upp, hur många som
+inte kunde analyseras, och hur många kombinationer av kassa och år som kom ut.
+Stämmer de inte överens sägs det rakt ut: ett dokument har då hamnat på samma
+kassa och år som ett annat, eller gett fler än ett år. En kassa som tappats på
+vägen syns annars bara genom att någon råkar räkna kolumner.
+
+### Historik mellan år
+
+Varje färdig körning sparas som en resultatfil i historikkatalogen, förvalt
+`app/config/historik`. Katalogen styrs av `JBG_HISTORY_DIR` och bör läggas på
+en säkerhetskopierad plats: jobbkatalogen städas efter en timmes overksamhet,
+så utan detta är fjolårets körning borta innan någon hunnit jämföra mot den.
+
+Historiken är resultatfiler, inte en egen databas. En myndighet behöver kunna
+svara på vad en jämförelse gjordes mot, och filerna är samma format som
+tjänsten redan skriver — en historikfil kan därför laddas upp igen efter en
+ominstallation.
+
+Filnamnet är `<år>_<tidsstämpel>_<antal>kassor.json`. En körning som innehåller
+flera år namnges efter det senaste; filen innehåller ändå alla.
+
+Flera år kan för övrigt ligga i samma körning redan i dag. Året härleds per
+dokument, resultatet nycklas på kassa och år, och exporten gör en flik per år.
+En zip med 2023, 2024 och 2025 ger alltså tre flikar i samma arbetsbok.
 
 ### Långa körningar
 

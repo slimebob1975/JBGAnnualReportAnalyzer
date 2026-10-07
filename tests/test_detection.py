@@ -397,3 +397,20 @@ def test_ocr_availability_is_cached():
     mod.ocr_availability.cache_clear()
     first = mod.ocr_availability()
     assert mod.ocr_availability() is first
+
+
+# ------------------------------------- räkenskapsåret när omslaget är en bild
+def test_ett_uttryckligt_rakenskapsar_gar_fore_lostryckta_artal():
+    """En flerårsöversikt som räknar upp 2019 fem gånger per sida ska inte
+    kunna rösta ned omslaget."""
+    sidor = ["Årsredovisning för räkenskapsåret 2024-01-01 - 2024-12-31",
+             "2019 2019 2019 2019 2019"]
+    assert JBGAnnualReportAnalyzer._year_from_pages(sidor) == 2024
+
+
+def test_vanligaste_artalet_anvands_inte_som_reserv():
+    """Prövat och förkastat: metoden användes två gånger i en körning och
+    blev fel båda gångerna. E-signeringssidorna upprepar signeringsdatumet en
+    gång per undertecknare och röstar ned tabellrubrikerna, så en rapport om
+    2024 hamnade under 2025 — och slogs ihop med det årets riktiga rapport."""
+    assert not hasattr(JBGAnnualReportAnalyzer, "_most_common_year")

@@ -6,11 +6,15 @@ from pathlib import Path
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from app.src import JBGFindingsRegister as findings_register
+from app.src import JBGHistory as history
+from app.src import JBGManagementReport as management_report
 from app.src import JBGMetricSchema as schema
 from app.src import JBGValidation as validation
+from app.src import JBGYearComparison as comparison
 from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer
 from app.src.JBGFundNames import FundNameResolver
 
@@ -40,6 +44,17 @@ class JsonConverter:
         }
 
     SKIPPED_KEY = "_ejanalyserade"
+    MANAGEMENT_REPORT_KEY = "_forvaltningsberattelse"
+    MANAGEMENT_SHEET = "Förvaltningsberättelse"
+    COMPARISON_SHEET = "Förändring mot föregående år"
+    SUMMARY_KEY = "_korningen"
+    REGISTER_SHEET = "Återkommande anmärkningar"
+    MIN_OCCURRENCES_LISTED = 2
+
+    def management_summaries(self) -> dict:
+        """Sammanfattningarna ur förvaltningsberättelsen, per kassa."""
+        recorded = self.data.get(self.MANAGEMENT_REPORT_KEY) or {}
+        return recorded if isinstance(recorded, dict) else {}
 
     def skipped(self) -> list[dict]:
         """Dokument som inte kunde analyseras, med orsak.
@@ -349,6 +364,9 @@ class JsonConverter:
                     with_sources=True, ratios=None,
                 )
 
+        self._write_comparison_sheet(wb, display_name)
+        self._write_register_sheet(wb, display_name)
+        self._write_management_sheet(wb, display_name)
         self._write_legend_sheet(wb, findings or [], resolver)
         wb.save(output_path)
         logger.info(f"Excel file saved to {output_path}")
@@ -366,9 +384,11 @@ class JsonConverter:
             # Överst, inte i en fotnot: det här ändrar hur hela bladet ska
             # läsas, och antalet kassor är inte det man tror.
             ws.append([
-                f"⚠ {len(skipped)} av {len(funds) + len(skipped)} uppladdade "
-                f"dokument kunde inte analyseras och saknas nedan. "
-                "Orsakerna står på fliken Läsanvisning."
+                f"⚠ {len(skipped)} uppladdat dokument kunde inte analyseras "
+                "och saknas nedan. Orsakerna står på fliken Läsanvisning."
+                if len(skipped) == 1 else
+                f"⚠ {len(skipped)} uppladdade dokument kunde inte analyseras "
+                "och saknas nedan. Orsakerna står på fliken Läsanvisning."
             ])
             banner = ws.cell(row=1, column=1)
             banner.font = Font(bold=True)
@@ -466,6 +486,147 @@ class JsonConverter:
             )
             ws.column_dimensions[letter].width = max(8, min(longest + 2, 40))
 
+    def _write_register_sheet(self, wb, display_name) -> None:
+        """Anmärkningar som kommit tillbaka, det envisaste först.
+
+        Skillnaden mellan brus och mönster avgör vad som är värt att åtgärda,
+        och den syns inte i en enskild körning. Alfa-kassans avvikelse på
+        70 691 kom tillbaka fem gånger innan någon kände igen den; Visions
+        på 99 670 kom en gång och aldrig mer.
+
+        Bara det som återkommit listas. En engångsföreteelse står redan på
+        årtalsfliken.
+        """
+        entries = [
+            entry for entry in findings_register.summary(history.history_dir())
+            if entry.get("antal", 0) >= self.MIN_OCCURRENCES_LISTED
+        ]
+        if not entries:
+            return
+
+        ws = wb.create_sheet(title=self.REGISTER_SHEET)
+        ws.append(["Gånger", "Kassa", "År", "Kontroll", "Nyckeltal",
+                   "Först sedd", "Senast sedd", "Senaste lydelse"])
+        for column in range(1, 9):
+            ws.cell(row=1, column=column).font = Font(bold=True)
+        ws.freeze_panes = "A2"
+
+        for entry in entries:
+            ws.append([
+                entry.get("antal", 0),
+                display_name(entry.get("kassa", "")),
+                entry.get("ar", ""),
+                entry.get("kontroll", ""),
+                ", ".join(entry.get("nyckeltal") or []),
+                entry.get("forst", ""),
+                entry.get("senast", ""),
+                entry.get("senaste_meddelande", ""),
+            ])
+
+        for column, width in zip("ABCDEFGH", (8, 26, 7, 34, 34, 12, 12, 70),
+                                 strict=False):
+            ws.column_dimensions[column].width = width
+        for row in ws.iter_rows(min_row=2):
+            row[-1].alignment = Alignment(wrap_text=True, vertical="top")
+
+    def _write_comparison_sheet(self, wb, display_name) -> None:
+        """Varje rörelse mellan år över det dubbla, störst först.
+
+        Inget allvarlighetsbegrepp och ingen färg: trösklarna visade att en
+        rörelse på tio gånger oftast är verklig, så en anmärkning hade varit
+        fel. Men GS a-kassas "Antal ersättningsdagar 22 286 -> 306 045" är en
+        felläsning på 13,7 gånger, och den syns direkt när allt står sorterat.
+        """
+        movements = comparison.compare(self._funds())
+        if not movements:
+            return
+
+        ws = wb.create_sheet(title=self.COMPARISON_SHEET)
+        ws.append([
+            "Kassa", "Nyckeltal", "Från år", "Till år", "Före", "Efter",
+            "Gånger", "Tecken",
+        ])
+        for column in range(1, 9):
+            ws.cell(row=1, column=column).font = Font(bold=True)
+        ws.freeze_panes = "A2"
+
+        for move in movements:
+            ws.append([
+                display_name(move["kassa"]), move["nyckeltal"],
+                move["fran_ar"], move["till_ar"], move["fran"], move["till"],
+                round(move["kvot"], 1), "byter tecken" if move["teckenbyte"] else "",
+            ])
+            if move["kvot"] >= comparison.FINDING_RATIO:
+                # Så stora rörelser är sällan verkliga. De är också
+                # anmärkningar i egen rätt, men raden ska synas här med.
+                for column in range(1, 9):
+                    ws.cell(row=ws.max_row, column=column).fill = PatternFill(
+                        start_color=self.FLAGGED_FILL,
+                        end_color=self.FLAGGED_FILL, fill_type="solid",
+                    )
+
+        for column, width in zip("ABCDEFGH", (28, 52, 9, 9, 16, 16, 9, 14),
+                                 strict=False):
+            ws.column_dimensions[column].width = width
+
+    def _write_management_sheet(self, wb, display_name) -> None:
+        """Kassorna på rader, sammanfattning och stödcitat i par av kolumner.
+
+        Citatet står bredvid den sammanfattning det stöder, inte samlat i en
+        egen spalt längst ut: den som läser en sammanfattning ska kunna
+        kontrollera den utan att leta.
+        """
+        summaries = self.management_summaries()
+        if not summaries:
+            return
+
+        ws = wb.create_sheet(title=self.MANAGEMENT_SHEET)
+        header = ["Kassa"]
+        for topic in management_report.TOPICS:
+            header += [topic["heading"], "Citat som stöder", "Sida"]
+        ws.append(header)
+        for column in range(1, len(header) + 1):
+            ws.cell(row=1, column=column).font = Font(bold=True)
+        ws.freeze_panes = "B2"
+
+        for fund in sorted(summaries, key=display_name):
+            row = [display_name(fund)]
+            for topic in management_report.TOPICS:
+                entry = (summaries.get(fund) or {}).get(topic["key"]) or {}
+                row += [
+                    entry.get("sammanfattning", ""),
+                    entry.get("citat", ""),
+                    entry.get("sida") or "",
+                ]
+            ws.append(row)
+
+            # Ett ungefärligt citat märks, inte stryks. Läsaren ska kunna
+            # bedöma det själv.
+            for index, topic in enumerate(management_report.TOPICS):
+                entry = (summaries.get(fund) or {}).get(topic["key"]) or {}
+                if entry.get("citat_kontroll") != management_report.QUOTE_APPROXIMATE:
+                    continue
+                cell = ws.cell(row=ws.max_row, column=3 + index * 3)
+                cell.fill = PatternFill(
+                    start_color=self.FLAGGED_FILL, end_color=self.FLAGGED_FILL,
+                    fill_type="solid",
+                )
+                cell.comment = Comment(
+                    "Citatet återfanns inte ordagrant i dokumentet, men har "
+                    f"stöd till {entry.get('citat_stod', 0):.0%}. Vanligt när "
+                    "sidan är inskannad: modellen skriver av en felläst text "
+                    "rättstavat. Kontrollera mot källan.",
+                    "JBG nyckeltalsanalys",
+                )
+                cell.comment.width = 380
+
+        widths = [28] + [60, 48, 6] * len(management_report.TOPICS)
+        for index, width in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(index)].width = width
+        for row in ws.iter_rows(min_row=2):
+            for cell in row:
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+
     def _write_legend_sheet(self, wb, findings: list, resolver) -> None:
         """A short reading guide, plus any sanity checks that failed."""
         ws = wb.create_sheet(title="Läsanvisning")
@@ -510,6 +671,30 @@ class JsonConverter:
                 ws.append([
                     str(entry.get("fil", "")), str(entry.get("orsak", ""))
                 ])
+
+        summary = self.data.get(self.SUMMARY_KEY) or {}
+        if summary:
+            ws.append([])
+            ws.append(["Körningen"])
+            ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+            uploaded = summary.get("uppladdade_dokument", 0)
+            skipped_count = summary.get("ej_analyserade", 0)
+            combinations = summary.get("kassa_ar_kombinationer", 0)
+            ws.append([f"Uppladdade dokument: {uploaded}"])
+            ws.append([f"Ej analyserade: {skipped_count}"])
+            ws.append([f"Kombinationer av kassa och år i utdata: {combinations}"])
+            if combinations != uploaded - skipped_count:
+                # En kassa som tappats på vägen syns annars bara genom att
+                # någon råkar räkna kolumner.
+                ws.append([
+                    "⚠ Antalet stämmer inte: något dokument har hamnat på "
+                    "samma kassa och år som ett annat, eller gett fler än "
+                    "ett år. Kontrollera loggen."
+                ])
+                ws.cell(row=ws.max_row, column=1).fill = PatternFill(
+                    start_color=self.FLAGGED_FILL, end_color=self.FLAGGED_FILL,
+                    fill_type="solid",
+                )
 
         ws.append([])
         ws.append(["Flikar"])

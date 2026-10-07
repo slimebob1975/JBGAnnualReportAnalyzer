@@ -864,8 +864,7 @@
     "Beskrivning": "Uppgift ur bilaga 2: antal domar.",
     "Grupp": "👥 Statistik (bilaga 2)",
     "Enhet": "antal",
-    "Specifika instruktioner": "Under OMPRÖVNINGAR, ÖVERKLAGAN, DOMAR. Uppgiften är ett antal, inte ett belopp.",
-    "Ingår i": "Antal överklagan"
+    "Specifika instruktioner": "Under OMPRÖVNINGAR, ÖVERKLAGAN, DOMAR. Uppgiften är ett antal, inte ett belopp."
   },
   {
     "Nyckeltal": "Antal beslut återkrav",

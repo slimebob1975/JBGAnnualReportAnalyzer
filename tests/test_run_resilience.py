@@ -212,3 +212,63 @@ def test_any_exception_type_is_contained(tmp_path, failure):
     _run(analyzer, tmp_path)
 
     assert len(analyzer.skipped_files) == 1
+
+
+# ----------------------------- ett dokument som inte gav något ska ändå synas
+def test_ett_dokument_utan_nyckeltal_redovisas_som_ej_analyserat(tmp_path):
+    """Alfa-kassans årsredovisning för 2024 försvann spårlöst: ingen rad i
+    _ejanalyserade, ingen banderoll, bara en kolumn färre än någon väntade
+    sig."""
+    good = {"Kassan": {"2025": {"Summa tillgångar": {"värde": 1}}}}
+    analyzer = _Stub({"a": good, "b": {}, "c": good})
+
+    out = _run(analyzer, tmp_path)
+
+    reasons = dict(analyzer.skipped_files)
+    assert "b.pdf" in reasons, "dokumentet måste synas någonstans"
+    assert "Inga nyckeltal" in reasons["b.pdf"]
+
+    written = json.loads(Path(out).read_text(encoding="utf-8"))
+    skipped = written.get(JBGAnnualReportAnalyzer.SKIPPED_KEY, [])
+    assert any(entry["fil"] == "b.pdf" for entry in skipped)
+
+
+def test_de_ovriga_dokumenten_analyseras_som_vanligt(tmp_path):
+    good = {"Kassan": {"2025": {"Summa tillgångar": {"värde": 1}}}}
+    analyzer = _Stub({"a": good, "b": {}, "c": good})
+
+    out = _run(analyzer, tmp_path)
+
+    assert "Kassan" in json.loads(Path(out).read_text(encoding="utf-8"))
+    assert len(analyzer.skipped_files) == 1
+
+
+# ------------------------------------- två dokument på samma kassa och år
+def test_tva_dokument_pa_samma_kassa_och_ar_rapporteras(tmp_path, caplog):
+    """Lärarnas årsredovisning för 2024 fick fel räkenskapsår och slogs ihop
+    med 2025 års rapport. Kolumnen såg fullständig ut och var det inte."""
+    import logging
+
+    samma = {"Lärarnas arbetslöshetskassa": {"2025": {"Summa tillgångar": {"värde": 1}}}}
+    analyzer = _Stub({"a": samma, "b": samma})
+
+    with caplog.at_level(logging.WARNING):
+        _run(analyzer, tmp_path)
+
+    assert "fanns redan från ett annat dokument" in caplog.text
+    assert "Lärarnas arbetslöshetskassa 2025" in caplog.text
+
+
+def test_olika_ar_for_samma_kassa_ar_helt_i_sin_ordning(tmp_path, caplog):
+    """Tre årgångar i samma körning är hela poängen med jämförelsen."""
+    import logging
+
+    analyzer = _Stub({
+        "a": {"Kassan": {"2024": {"Summa tillgångar": {"värde": 1}}}},
+        "b": {"Kassan": {"2025": {"Summa tillgångar": {"värde": 2}}}},
+    })
+
+    with caplog.at_level(logging.WARNING):
+        _run(analyzer, tmp_path)
+
+    assert "fanns redan" not in caplog.text

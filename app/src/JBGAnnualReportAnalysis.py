@@ -25,11 +25,15 @@ RETRYABLE_OPENAI_ERRORS = (
 )
 import logging
 
+from app.src import JBGFindingsRegister as findings_register
+from app.src import JBGHistory as history
+from app.src import JBGManagementReport as management_report
 from app.src import JBGMetricSchema as schema
 from app.src import JBGNormalisation as normalisation
 from app.src import JBGPDFDiagnostics as diagnostics
 from app.src import JBGUsage as usage
 from app.src import JBGValidation as validation
+from app.src import JBGYearComparison as year_comparison
 from app.src.JBGAnnualReportExceptions import FileTypeException
 from app.src.JBGFundNames import FundNameResolver, normalise_result_fund_names
 from app.src.masking.JBGPDFMasking import PDFMasker
@@ -144,6 +148,14 @@ class JBGAnnualReportAnalyzer:
     # Written after every document so that a run which dies part-way still
     # leaves the documents it finished.
     PARTIAL_SUFFIX = "_delvis.json"
+    # Sammanfattningarna ur förvaltningsberättelsen är ett extra modellanrop
+    # per dokument. Av med den här om en körning ska gå så billigt som möjligt.
+    SUMMARISE_MANAGEMENT_REPORT = True
+    MANAGEMENT_REPORT_KEY = "_forvaltningsberattelse"
+    SUMMARY_KEY = "_korningen"
+    # Varje färdig körning sparas som historik, så att nästa år har något att
+    # jämföra mot. Katalogen styrs av JBG_HISTORY_DIR.
+    KEEP_HISTORY = True
     # One extra, narrowly-scoped call per file when the first pass missed
     # something. Skipped entirely when nothing is missing.
     USE_SECOND_PASS_FOR_MISSING = True
@@ -521,6 +533,14 @@ class JBGAnnualReportAnalyzer:
     @staticmethod
     def _year_from_pages(pages: list[str]) -> int | None:
         """Find the fiscal year using the phrasing Swedish annual reports use.
+
+        Note on what was tried and rejected: falling back to the year that
+        occurs most often in the document. It was used twice in one run and
+        was wrong both times - 2009 for one report, and 2025 for a report
+        about 2024, because the e-signing pages repeat the signing date once
+        per signatory and outvote the table headings. The second error merged
+        two annual reports into the same fund and year. A missing document is
+        visible; a document filed under the wrong year is not.
 
         Two passes. An explicit statement of the reporting period ("för
         räkenskapsåret 2024-01-01 - 2024-12-31") decides the question on its
@@ -1976,6 +1996,99 @@ class JBGAnnualReportAnalyzer:
             )
         return result
 
+    def _summarise_management_report(self, text: str, model: str = "") -> dict:
+        """Sammanfatta förvaltningsberättelsen, med citat som stöd.
+
+        Misslyckas anropet returneras en tom uppslagsbok. Sammanfattningarna
+        är ett tillägg; de ska inte kunna fälla en analys som i övrigt gick
+        bra.
+        """
+        section = management_report.extract_section(text)
+        if not section:
+            return {}
+        try:
+            raw = self._make_openai_api_call(
+                management_report.SYSTEM_PROMPT.format(
+                    not_stated=management_report.NOT_STATED
+                ),
+                management_report.build_request(section),
+                model=model,
+                response_schema=management_report.RESPONSE_SCHEMA,
+                purpose=usage.PURPOSE_SUMMARY,
+            )
+        except Exception as ex:
+            logger.warning(f"Kunde inte sammanfatta förvaltningsberättelsen: {ex}")
+            return {}
+
+        summaries = management_report.parse_response(raw)
+        if not summaries:
+            return {}
+
+        # Varje citat bedöms mot texten det påstås komma ur. Ett citat helt
+        # utan stöd är ett påhitt som ser ut som ett belägg, och stryks. Ett
+        # som nästan stämmer behålls och märks: på ett inskannat dokument
+        # städar modellen bort tesseracts felläsningar när den citerar, och
+        # att kasta uppgiften då är inte försiktigt utan bara tomt.
+        verdicts = management_report.classify_quotes(summaries, section)
+        approximate = unsupported = 0
+        for key, (verdict, ratio) in verdicts.items():
+            summaries[key]["citat_kontroll"] = verdict
+            summaries[key]["citat_stod"] = round(ratio, 2)
+            if verdict == management_report.QUOTE_APPROXIMATE:
+                approximate += 1
+            elif verdict == management_report.QUOTE_UNSUPPORTED:
+                unsupported += 1
+                summaries[key].update({
+                    "sammanfattning": management_report.NOT_STATED,
+                    "citat": "",
+                    "sida": 0,
+                })
+        if unsupported:
+            logger.warning(
+                f"{unsupported} av {len(management_report.TOPICS)} citat saknar "
+                "stöd i förvaltningsberättelsen och har strukits tillsammans "
+                "med sina sammanfattningar."
+            )
+        if approximate:
+            logger.info(
+                f"{approximate} av {len(management_report.TOPICS)} citat "
+                "återfanns inte ordagrant men har tillräckligt stöd. De är "
+                "märkta i utdata."
+            )
+        return summaries
+
+    def _warn_on_year_collision(self, total_result: list, appended_result: dict,
+                                source: str) -> None:
+        """Säg till när två dokument hamnar på samma kassa och år.
+
+        Sammanslagningen är tyst: det andra dokumentets värden läggs ovanpå
+        det förstas utan att någon får veta. I en körning med tre årgångar
+        fick Lärarnas årsredovisning för 2024 fel räkenskapsår och slogs ihop
+        med 2025 års rapport. Kolumnen såg fullständig ut och var det inte.
+
+        Det här kan inte avgöra vilket dokument som har rätt. Det kan bara
+        vägra göra det tyst.
+        """
+        seen = {}
+        for earlier in total_result:
+            for fund, years in (earlier or {}).items():
+                if not isinstance(years, dict):
+                    continue
+                for year in years:
+                    seen[(fund, str(year))] = True
+
+        for fund, years in (appended_result or {}).items():
+            if not isinstance(years, dict):
+                continue
+            for year in years:
+                if seen.get((fund, str(year))):
+                    logger.warning(
+                        f"{source}: {fund} {year} fanns redan från ett annat "
+                        "dokument i samma körning. Värdena slås ihop och det "
+                        "senare dokumentet skriver över. Kontrollera att inte "
+                        "två årsredovisningar fått samma räkenskapsår."
+                    )
+
     def _save_partial_result(self, total_result: list, output_path) -> None:
         """Write everything analysed so far, after each document.
 
@@ -2021,6 +2134,8 @@ class JBGAnnualReportAnalyzer:
         total_result = []
         # Kassa -> den enhet dokumentet säger sig använda.
         declared_units: dict[str, str] = {}
+        # Kassa -> sammanfattningar ur förvaltningsberättelsen.
+        management_summaries: dict[str, dict] = {}
         self.skipped_files = []
         self.stability_findings = []
         usage.log_roles(self.model_roles, model or self.DEFAULT_MODEL)
@@ -2114,6 +2229,14 @@ class JBGAnnualReportAnalyzer:
                 # Dokumentet anger själv sin enhet, och gör det nästan alltid
                 # eftersom ÅRL kräver det. Beskedet knyts till kassan så att
                 # kontrollen kan använda det.
+                if self.SUMMARISE_MANAGEMENT_REPORT:
+                    summaries = self._summarise_management_report(
+                        full_text, model=model
+                    )
+                    for fund_name in (appended_result or {}):
+                        if summaries:
+                            management_summaries[fund_name] = summaries
+
                 declared = normalisation.detect_declared_unit(full_text)
                 if declared:
                     logger.info(
@@ -2161,7 +2284,25 @@ class JBGAnnualReportAnalyzer:
                             )
                         )
 
+                    self._warn_on_year_collision(
+                        total_result, appended_result, _pdf_path.name
+                    )
                     total_result.append(appended_result)
+                else:
+                    # Ett dokument som inte gav några nyckeltal försvann
+                    # tidigare spårlöst: ingen rad i _ejanalyserade, ingen
+                    # banderoll, bara en kolumn färre än någon väntade sig.
+                    # Alfa-kassans årsredovisning för 2024 gjorde just det -
+                    # räkenskapsåret gick inte att fastställa, modellen fick en
+                    # fråga utan årtal och svarade med ingenting.
+                    reason = "Inga nyckeltal kunde läsas ut ur dokumentet."
+                    if the_year is None:
+                        reason += (
+                            " Räkenskapsåret gick inte att fastställa, vilket "
+                            "är den troliga orsaken."
+                        )
+                    logger.warning(f"{_pdf_path.name}: {reason}")
+                    self.skipped_files.append((_pdf_path.name, reason))
             except FileTypeException as ex:
                 logger.error(f"Hoppar över {_pdf_path.name}: {ex.message}")
                 self.skipped_files.append((_pdf_path.name, ex.message))
@@ -2216,10 +2357,29 @@ class JBGAnnualReportAnalyzer:
             # the unit comparison needs one column per fund.
             if declared_units:
                 final_result[validation.DECLARED_UNITS_KEY] = declared_units
+            if management_summaries:
+                final_result[self.MANAGEMENT_REPORT_KEY] = management_summaries
 
             if self.metrics_path:
                 normalisation.normalise_signs(final_result, self.metrics_path)
                 normalisation.normalise_units(final_result, self.metrics_path)
+
+            # Jämförelsen mellan år är den enda kontroll som har en referens
+            # utanför dokumentet. Den kräver att körningen innehåller mer än
+            # ett år - från samma uppladdning eller från historiken.
+            year_findings = [
+                validation.Finding(
+                    fund=note["kassa"],
+                    year=note["ar"],
+                    rule=year_comparison.RULE_NAME,
+                    message=note["meddelande"],
+                    severity=validation.SEVERITY_WARNING,
+                    metrics=[note["nyckeltal"]],
+                )
+                for note in year_comparison.findings(
+                    year_comparison.compare(final_result)
+                )
+            ]
 
             # Arithmetic sanity checks. These do not change the data; they tell
             # the reader which figures to verify against the source document.
@@ -2229,9 +2389,35 @@ class JBGAnnualReportAnalyzer:
             self._canonicalise_finding_funds()
 
             self.validation_findings = (
-                validation.validate(final_result, self.metrics_path) + self.stability_findings
+                validation.validate(final_result, self.metrics_path)
+                + self.stability_findings
+                + year_findings
             )
             validation.log_findings(self.validation_findings)
+            if self.KEEP_HISTORY:
+                findings_register.record(
+                    self.validation_findings, history.history_dir()
+                )
+
+            # Vad som kom in och vad som kom ut. En kassa som tappats på vägen
+            # syns annars bara genom att någon räknar kolumner.
+            analysed = sum(
+                len(years) for fund, years in final_result.items()
+                if not fund.startswith("_") and isinstance(years, dict)
+            )
+            final_result[self.SUMMARY_KEY] = {
+                "uppladdade_dokument": total_files,
+                "ej_analyserade": len(self.skipped_files),
+                "kassa_ar_kombinationer": analysed,
+            }
+            expected = total_files - len(self.skipped_files)
+            if analysed != expected:
+                logger.warning(
+                    f"{expected} dokument analyserades men gav "
+                    f"{analysed} kombinationer av kassa och år. Något dokument "
+                    "har hamnat på samma kassa och år som ett annat, eller "
+                    "gett fler än ett år."
+                )
             validation.log_certainty_histogram(final_result)
 
             # The findings go into the JSON as well, not just the log and the
@@ -2252,6 +2438,12 @@ class JBGAnnualReportAnalyzer:
 
             output_path.write_text(json.dumps(final_result, ensure_ascii=False, indent=2), encoding=self.STANDARD_ENCODING)
             logger.info(f"Analysresultat sparat till: {output_path}")
+
+            # Jobbkatalogen städas efter en timmes overksamhet. En körning av
+            # fjolårets material hade alltså varit borta innan någon hunnit
+            # jämföra mot den, så resultatet sparas även som historik.
+            if self.KEEP_HISTORY:
+                history.save(final_result)
             return output_path
         else:
             logger.warning("Inga resultat sparades.")

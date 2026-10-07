@@ -201,7 +201,9 @@ def test_overhoppade_dokument_syns_overst_i_bladet(tmp_path):
     den som summerar raden får ett rimligt tal, bara räknat på färre kassor."""
     ws = _export_with_skipped(tmp_path, SKIPPED)["2025"]
 
-    assert "2 av 3 uppladdade dokument" in ws.cell(1, 1).value
+    # Nämnaren var antalet kassor i fliken, vilket inte är antalet uppladdade
+    # dokument så snart körningen omfattar flera år.
+    assert "2 uppladdade dokument" in ws.cell(1, 1).value
     assert ws.cell(1, 1).font.bold
     assert ws.cell(2, 1).value == "Nyckeltal"
     assert ws.freeze_panes == "B3"
@@ -242,3 +244,129 @@ def test_banderollen_namner_bara_arets_flikar(tmp_path):
     """Källfliken ska ha samma varning, annars kan den läsas som fullständig."""
     wb = _export_with_skipped(tmp_path, SKIPPED)
     assert "uppladdade dokument" in wb["2025 med källa"].cell(1, 1).value
+
+
+# ------------------------------------------ fliken med förvaltningsberättelsen
+SUMMARIES = {"Livsmedelsarbetarnas arbetslöshetskassa": {
+    "handelser": {"sammanfattning": "Nytt regelverk trädde i kraft.",
+                  "citat": "Nytt regelverk gällande arbetslöshetsförsäkringen",
+                  "sida": 3},
+    "utveckling": {"sammanfattning": "Fortsatt hög arbetslöshet väntas.",
+                   "citat": "förhållandevis hög arbetslöshet", "sida": 3},
+    "medelsforvaltning": {"sammanfattning": "Framgår inte av årsredovisningen",
+                          "citat": "", "sida": 0}}}
+
+
+def _export_with_summaries(tmp_path, summaries):
+    data = {"Livsmedelsarbetarnas arbetslöshetskassa": {"2025": {
+        "Summa tillgångar": {"värde": 46749, "källa": "Sida 5",
+                             "säkerhet": "explicit", "kommentar": ""}}}}
+    if summaries:
+        data["_forvaltningsberattelse"] = summaries
+    source = tmp_path / "resultat.json"
+    source.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    out = tmp_path / "out.xlsx"
+    JsonConverter(source, include_sources=True).to_excel_by_year(
+        out, key_def_path=KEY_DEFS, fund_names=KASSOR, findings=[]
+    )
+    return openpyxl.load_workbook(out)
+
+
+def test_citatet_star_bredvid_den_sammanfattning_det_stoder(tmp_path):
+    """Inte samlat längst ut: den som läser en sammanfattning ska kunna
+    kontrollera den utan att leta."""
+    ws = _export_with_summaries(tmp_path, SUMMARIES)["Förvaltningsberättelse"]
+    rubriker = [ws.cell(1, c).value for c in range(1, 11)]
+
+    assert rubriker[0] == "Kassa"
+    assert rubriker[2] == "Citat som stöder"
+    assert rubriker[3] == "Sida"
+    assert ws.cell(2, 2).value.startswith("Nytt regelverk")
+    assert ws.cell(2, 3).value.startswith("Nytt regelverk gällande")
+
+
+def test_tom_uppgift_sager_att_den_saknas(tmp_path):
+    """Kravet på medelsförvaltning väntas först nästa år. Tomma celler är rätt
+    utfall — men de ska vara tomma av rätt skäl."""
+    ws = _export_with_summaries(tmp_path, SUMMARIES)["Förvaltningsberättelse"]
+    assert ws.cell(2, 8).value == "Framgår inte av årsredovisningen"
+    assert not ws.cell(2, 9).value
+
+
+def test_ingen_flik_nar_inga_sammanfattningar_finns(tmp_path):
+    wb = _export_with_summaries(tmp_path, None)
+    assert "Förvaltningsberättelse" not in wb.sheetnames
+
+
+def test_texten_radbryts_sa_att_den_gar_att_lasa(tmp_path):
+    ws = _export_with_summaries(tmp_path, SUMMARIES)["Förvaltningsberättelse"]
+    assert ws.cell(2, 2).alignment.wrap_text
+    assert ws.column_dimensions["B"].width > 40
+
+
+def test_ett_ungefarligt_citat_markeras_i_stallet_for_att_strykas(tmp_path):
+    """GS a-kassa fick två av tre sammanfattningar strukna trots att de var
+    riktiga. Att kasta uppgiften är inte försiktigt, det är bara tomt."""
+    summaries = {"Livsmedelsarbetarnas arbetslöshetskassa": {
+        "handelser": {"sammanfattning": "Nytt regelverk trädde i kraft.",
+                      "citat": "Nytt regelverk gällande arbetslöshetsförsäkringen",
+                      "sida": 3, "citat_kontroll": "ungefärligt",
+                      "citat_stod": 0.72},
+        "utveckling": {"sammanfattning": "Hög arbetslöshet väntas.",
+                       "citat": "förhållandevis hög arbetslöshet", "sida": 3,
+                       "citat_kontroll": "återfunnet", "citat_stod": 1.0},
+        "medelsforvaltning": {"sammanfattning": "Framgår inte av årsredovisningen",
+                              "citat": "", "sida": 0,
+                              "citat_kontroll": "saknas", "citat_stod": 0.0}}}
+    ws = _export_with_summaries(tmp_path, summaries)["Förvaltningsberättelse"]
+
+    ungefarligt, aterfunnet = ws.cell(2, 3), ws.cell(2, 6)
+    assert ungefarligt.value, "citatet ska finnas kvar, inte strykas"
+    assert ungefarligt.fill.start_color.rgb[-6:] == JsonConverter.FLAGGED_FILL
+    assert "72" in ungefarligt.comment.text
+    assert aterfunnet.comment is None, "ett återfunnet citat ska inte märkas"
+
+
+# ----------------------------------------- vad som kom in och vad som kom ut
+def _export_with_summary(tmp_path, summary):
+    data = {"Livsmedelsarbetarnas arbetslöshetskassa": {"2025": {
+        "Summa tillgångar": {"värde": 46749, "källa": "Sida 5",
+                             "säkerhet": "explicit", "kommentar": ""}}}}
+    if summary:
+        data["_korningen"] = summary
+    source = tmp_path / "resultat.json"
+    source.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    out = tmp_path / "out.xlsx"
+    JsonConverter(source, include_sources=True).to_excel_by_year(
+        out, key_def_path=KEY_DEFS, fund_names=KASSOR, findings=[]
+    )
+    return openpyxl.load_workbook(out)
+
+
+def _lasanvisning_text(wb):
+    ws = wb["Läsanvisning"]
+    return "\n".join(
+        str(ws.cell(r, c).value or "")
+        for r in range(1, ws.max_row + 1) for c in (1, 2)
+    )
+
+
+def test_korningens_siffror_star_i_lasanvisningen(tmp_path):
+    wb = _export_with_summary(tmp_path, {
+        "uppladdade_dokument": 24, "ej_analyserade": 1,
+        "kassa_ar_kombinationer": 23})
+    text = _lasanvisning_text(wb)
+
+    assert "Uppladdade dokument: 24" in text
+    assert "Ej analyserade: 1" in text
+    assert "Kombinationer av kassa och år i utdata: 23" in text
+    assert "Antalet stämmer inte" not in text
+
+
+def test_en_kassa_som_tappats_pa_vagen_sags_ut(tmp_path):
+    """Syns annars bara genom att någon råkar räkna kolumner."""
+    wb = _export_with_summary(tmp_path, {
+        "uppladdade_dokument": 24, "ej_analyserade": 1,
+        "kassa_ar_kombinationer": 22})
+
+    assert "Antalet stämmer inte" in _lasanvisning_text(wb)

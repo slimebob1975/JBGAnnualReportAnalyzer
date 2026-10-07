@@ -73,106 +73,9 @@ siffrorna väl finns.
 
 ---
 
-## B. Klart att bygga
+## B. Senare
 
-### B1. Jämförelse mellan år
-
-**Varför den är viktigast av de byggbara.** Alla kontroller utom
-enhetsjämförelsen arbetar *inom* en enskild årsredovisning. När den manuella
-inmatningen upphör försvinner den sista externa referensen — om det inte finns
-ett föregående år att jämföra mot.
-
-Ett värde som rört sig tusen gånger, bytt tecken eller hoppat en tiopotens
-mellan två år är nästan säkert fel, och varken modellen eller någon aritmetisk
-identitet märker det.
-
-**Hur historiken ska hållas — avgjort.** Inte som dold lokal status. Skälen:
-
-* En lokal fil går förlorad vid ominstallation, byte av maskin eller när en
-  kollega kör i stället.
-* En myndighet behöver kunna svara på vad en jämförelse gjordes mot. "Värdet
-  har rört sig tusen gånger sedan i fjol" är inte kontrollerbart om ingen vet
-  vilken fjolårsfil som avsågs.
-* Tyst jämförelse mot något användaren inte vet finns är en obehaglig
-  egenskap hos ett granskningsverktyg.
-
-**Föreslagen lösning.** Två vägar in, samma mekanism:
-
-1. Varje avslutad körning sparar sin resultat-JSON i en historikkatalog i
-   installationen, med kassa, år och körningsdatum i filnamnet. Katalogen är
-   konfigurerbar så att den kan läggas på en säkerhetskopierad plats.
-2. Användaren kan dessutom ladda upp en tidigare resultatfil att jämföra mot.
-   Det är den vägen som överlever en ominstallation.
-
-I formuläret en kryssruta "Jämför med historik", gråad när ingen historik
-finns. När den är ikryssad ska det framgå **vad** jämförelsen görs mot — år,
-filnamn och datum — både i gränssnittet och i Läsanvisningen. Resultatfilen bör
-notera samma uppgifter, annars går en anmärkning inte att härleda i efterhand.
-
-**Att tänka på.** Kassor byter namn och slås samman; jämförelsen måste gå via
-kassanummer och namnupplösningen, inte via rubriken i kolumnen. Ett nyckeltal
-som saknas det ena året är ingen avvikelse utan en lucka, och ska inte
-rapporteras som en rörelse.
-
-### B2. Flik 3 — sammanfattningar ur förvaltningsberättelsen
-
-Efterfrågad av verksamheten och numera prioriterad: kassorna på rader och tre
-textkolumner — årets viktigaste händelser, förväntad framtida utveckling och
-arbetslöshetsnivå, samt hur kassan säkerställt kontroll av medelsförvaltningen.
-
-**Avgjort: stödcitatet får en egen kolumn.** Varje sammanfattning följs av ett
-ordagrant citat med sidhänvisning. Saknas stöd ska cellen läsa "Framgår inte av
-årsredovisningen" i stället för att modellen skriver något rimligt.
-
-**Varför kravet på citat inte är förhandlingsbart.** Det här är generering, inte
-extraktion. Ingen aritmetik fångar ett fel, och en flytande, rimlig men
-felaktig sammanfattning är betydligt svårare att upptäcka än en felaktig
-siffra. En cell med ett citat går att kontrollera på tio sekunder; en cell utan
-går inte att kontrollera alls.
-
-**Den tredje kolumnen är tom i år.** Kravet på redovisning av
-medelsförvaltningen väntas först nästa år. Tomma celler är därför rätt utfall,
-men de måste vara tomma av rätt skäl.
-
-**Maskeringen är inget hinder.** Kontrollerat mot Alfa-kassans maskerade fil:
-den löpande texten i förvaltningsberättelsen är i stort sett orörd, eftersom
-svärtningen träffar styrelse- och revisorstabellerna, inte prosan.
-
-**Kostnad.** Ett extra modellanrop per dokument över redan uttagen text,
-ungefär 3–4 USD per körning.
-
-### B3. Kontrollera att antalet kassor stämmer med antalet dokument
-
-Banderollen överst i bladet fångar dokument som pipelinen vägrar. Den fångar
-inte en kassa vars namn inte går att lösa upp, eller två filer som hamnar i
-samma kolumn. Räkna uppladdade dokument mot kolumner i utdata och säg till när
-de inte går ihop, på samma plats och samma sätt som banderollen.
-
-### B4. Register över återkommande anmärkningar
-
-**Idén.** Spara anmärkningarna från varje körning i installationen, med antal
-förekomster per kassa, nyckeltal och kontroll. Sortera fallande på antal.
-
-**Vad det ger.** Skillnaden mellan brus och mönster blir synlig utan att någon
-behöver minnas. En anmärkning som återkommer varje körning är något att
-åtgärda; en som dykt upp en gång är sannolikt slumpvariation. Just den
-skillnaden fick vi under hösten 2026 bara genom att en människa råkade känna
-igen samma belopp fem körningar i rad.
-
-**Två öppna ändar som registret hade hanterat.** `Summa tillgångar` för Vision
-avvek med 99 670 tkr i en enda körning och aldrig mer. Den sexteckens term i
-GS a-kassa som numera svärtas utan att någon vet om det var en person eller ett
-vanligt ord. Båda ligger i dag som fotnoter i det här dokumentet, vilket är
-fel plats.
-
-**Hör ihop med B1.** Samma lagringsmekanism, samma fråga om vad som händer vid
-ominstallation, och samma krav på att användaren ska veta vad som sparas.
-
----
-
-## C. Senare
-
-### C1. Köra dokumenten parallellt
+### B1. Köra dokumenten parallellt
 
 Kvar i backloggen, inte aktuell nu. Mätt på körningen den 1 oktober 2026,
 84 minuter för 24 filer: väntan på språkmodellen 58 minuter (69 procent),
@@ -201,9 +104,9 @@ efter.
 
 ---
 
-## D. Beslut, inte kod
+## C. Beslut, inte kod
 
-### D1. Dåliga skanningar
+### C1. Dåliga skanningar
 
 Pappersindustriarbetarnas årsredovisning är skevt inskannad och dess textlager
 positionsförskjutet. Ungefär 30 procent av dess värden ändras mellan två
@@ -221,7 +124,7 @@ utdata, inte tystas ned för att få snyggare siffror.
 
 ---
 
-## E. Avklarat
+## D. Avklarat
 
 Kort historik, så att det går att se vad som redan prövats och varför.
 
@@ -234,6 +137,14 @@ Kort historik, så att det går att se vad som redan prövats och varför.
 | 0045 | Tecken- och enhetsnormalisering i kod, rimliga intervall för nyckeltalen | 21 belopp omräknas automatiskt; teckennormaliseringen utlöses numera nästan aldrig, eftersom 0043 löste problemet uppströms |
 | 0050 | Enhetsnormaliseringen itererar mot en delad referens; faktorn väljs på logaritmiskt avstånd; Excel förvalt utdataformat | Kolumnen `Utbetald arbetslöshetsersättning` hamnar helt i kronor, noll kvarvarande anmärkningar om enhet mot tre tidigare |
 | 0061 | Statistiken i bilaga 2 får kontroller: en summa och sex inneslutningar via det nya fältet `Ingår i`; nyckeltalets namn står först i instabilitetsanmärkningar | Täckningen gick från 55 till 69 av 108 nyckeltal; de oskyddade statistikuppgifterna från 23 till 9 |
+| 0070 | Register över återkommande anmärkningar; körningens siffror i Läsanvisningen | Alfa-kassans avvikelse på 70 691 kom tillbaka fem gånger innan någon kände igen den |
+| 0069 | Jämförelse mellan år: anmärkning vid hundra gånger, flik som listar varje rörelse över det dubbla | Trösklarna mätta på 234 par: median 1,16 och p99 24, så en tröskel vid tio hade anmärkt på var elfte par |
+| 0068 | Reserven med det vanligaste årtalet borttagen; varning när två dokument hamnar på samma kassa och år | Reserven blev fel båda gångerna den användes och slog ihop Lärarnas rapporter för 2024 och 2025 |
+| 0067 | Ett dokument utan nyckeltal redovisas som ej analyserat; räkenskapsåret kan härledas ur det vanligast förekommande årtalet | Alfa-kassans årsredovisning för 2024 försvann spårlöst ur en körning sedan året inte gick att fastställa |
+| 0066 | Varje färdig körning sparas som historik, så att nästa år har något att jämföra mot | Jobbkatalogen städas efter en timme; utan detta vore en körning av fjolårets material borta innan den kunde användas |
+| 0065 | Citat jämförs på bokstäverna, utan diakriter och avstavning; ett citat som nästan stämmer märks i stället för att strykas | GS a-kassa fick två av tre riktiga sammanfattningar strukna för att modellen rättstavat det tesseract läst fel |
+| 0064 | Förvaltningsberättelsen avgränsas till den längsta förekomsten av rubriken; inneslutningen för Antal domar borttagen; antal beskrivs inte som redovisningsposter | GS a-kassa fick tre tomma sammanfattningar ur ett avsnitt hämtat från innehållsförteckningen; Akademikernas 75 domar mot 43 överklaganden var inget fel |
+| 0063 | Fliken Förvaltningsberättelse: tre sammanfattningar per kassa med ordagrant stödcitat och sida | Citat som inte går att återfinna i texten stryks tillsammans med sin sammanfattning |
 | 0062 | Enheten läses ur dokumentets egen text och används för att hitta poster i fel enhet | Småföretagarnas finansieringsavgift, 117 308 746 där räkningen var i tusental, fångas på en ensam kassa — det fall jämförelsen mellan kassor inte kan se |
 | 0057 | Svepet efter kvarvarande namn använder samma rimlighetsfilter som svärtningen | Unionens årsredovisning underkändes en hel dag för raden "TeamEngine E-Signing", som står på alla trettio sidorna och är en leverantörs banderoll, inte en person |
 | 0046 | Person- och samordningsnummer i alla former; organisationsnummer undantas; oberoende svep av utdata | Svepet tyst i 24 av 24 dokument; maskerade termer 1 018 → 994, exakt ett färre i 22 dokument, vilket är kassans eget organisationsnummer som tidigare svärtades |
@@ -247,7 +158,7 @@ avståndet 5,99, så det uppenbart felaktiga tusentalet vann. Syntes aldrig
 förrän iterationen gjorde att fallet över huvud taget prövades. Rättat i 0050;
 avståndet mäts nu logaritmiskt.
 
-### Öppna ändar, i väntan på registret i B4
+### Öppna ändar, numera i anmärkningsregistret
 
 `Summa tillgångar` för Vision avvek med 99 670 tkr från sina delposter i
 körningen den 17 september 2026. Syntes inte före och inte efter.
@@ -255,5 +166,7 @@ körningen den 17 september 2026. Syntes inte före och inte efter.
 Den sexteckens term i GS a-kassa som svärtas sedan 0058 utan att någon vet om
 det var en person eller ett vanligt svenskt ord som NER tog fel på.
 
-Båda är exempel på varför B4 behövs: i dag är det en människas minne som
-avgör om något är ett mönster eller en engångsföreteelse.
+Båda var exempel på varför registret behövdes: det var en människas minne som
+avgjorde om något var ett mönster eller en engångsföreteelse. Sedan 0070 räknar
+registret i stället, och en anmärkning som kommer tillbaka flyter upp av sig
+själv.
