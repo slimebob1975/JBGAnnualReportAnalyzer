@@ -414,3 +414,69 @@ def test_a_clean_page_is_never_cleared(tmp_path):
     doc = pymupdf.open(pdf)
     assert PDFMasker._clear_unmaskable_pages(doc, ["Anna Svensson"], logging.getLogger()) == []
     doc.close()
+
+
+# ------------------------------------------------- modellen och dess enhet
+def test_namnen_hittas_oavsett_hur_texten_styckas():
+    """Bitarna skickas numera som en lista i stället för en i taget. Samma
+    namn ska komma ut."""
+    class FalskPipeline:
+        batch_size = 4
+
+        def __call__(self, chunks):
+            # Pipelinen returnerar en lista per bit när den får en lista.
+            if isinstance(chunks, str):
+                chunks = [chunks]
+            return [
+                [{"word": "Anna Andersson", "entity_group": "PER"}]
+                if "Anna" in chunk else []
+                for chunk in chunks
+            ]
+
+    masker = PDFMasker(ner=FalskPipeline())
+    terms = masker.detect_sensitive_terms(
+        ["x" * 600 + " Anna Andersson " + "y" * 600], max_chunk_chars=512
+    )
+    assert "Anna Andersson" in terms
+
+
+def test_ett_fel_i_modellen_stoppar_inte_maskeringen():
+    class Trasig:
+        def __call__(self, chunks):
+            raise RuntimeError("slut på minne")
+
+    masker = PDFMasker(ner=Trasig())
+    # Personnummer och rollnamn hittas ändå: de kommer inte från modellen.
+    terms = masker.detect_sensitive_terms(["Ordförande\nAnna Bergström\n650412-1234"])
+    assert "650412-1234" in terms
+
+
+def test_grafikkort_valjs_nar_det_finns(monkeypatch):
+    """Samma kod ska gå på en maskin utan kort."""
+    import app.src.masking.JBGPDFMasking as masking
+
+    class FalskTorch:
+        class cuda:
+            @staticmethod
+            def is_available():
+                return True
+
+            @staticmethod
+            def get_device_name(index):
+                return "NVIDIA RTX 6000"
+
+    monkeypatch.setitem(sys.modules, "torch", FalskTorch)
+    assert masking._select_device() == 0
+
+
+def test_processorn_valjs_nar_inget_kort_finns(monkeypatch):
+    import app.src.masking.JBGPDFMasking as masking
+
+    class FalskTorch:
+        class cuda:
+            @staticmethod
+            def is_available():
+                return False
+
+    monkeypatch.setitem(sys.modules, "torch", FalskTorch)
+    assert masking._select_device() == -1

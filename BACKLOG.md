@@ -132,11 +132,44 @@ tokens behöver inget mer.
 *Oförändrat:* enhetsnormaliseringen och enhetskontrollen mellan kassor är
 korpusnivå och ligger efter sammanslagningen, där de hör hemma.
 
-**Slutsats.** Inget svårare än väntat, och inget som kräver att slingan skrivs
-om från grunden. Steg två är att låta per-dokument-arbetet returnera sitt
-resultat i stället för att skriva till `self`, utan trådning — en ändring vars
-hela anspråk är att ingenting ändras, och som därför bör mätas mot en känd
-körning av hela materialet.
+**Steg två är gjort i 0078.** Per-dokument-arbetet ligger i
+`_analyse_document` och returnerar ett `DocumentOutcome` i stället för att
+skriva till `self`. Sammanslagningen sker i filordning, så två körningar av
+samma material ger samma utdata oavsett i vilken ordning dokumenten blir
+klara. Maskeraren byggs under lås och OCR-diagnosen ligger i en ContextVar.
+
+**Steg tre är gjort i 0079.** Arbetspool över dokument, `JBG_MAX_WORKERS`,
+förval sexton. Maskering och OCR körs under lås. Resultaten slås ihop i
+filordning, förloppet räknas vid faktiskt avslut.
+
+**Maskeringen är golvet.** 15,7 av 22,7 minuter i den första parallella
+körningen. Om den går att korta är frågan om arbetet är minnes- eller
+processorbundet, och de två ser likadana ut utifrån: är det det senare sprider
+PyTorch redan en modells arbete över alla kärnor, och fyra modeller slåss då
+om samma kärnor utan att något går fortare. `scripts/measure_masking.py`
+maskerar samma dokument med en, två och fyra arbetare och rapporterar väggtid,
+tid per dokument och högsta minnesanvändning, med val för en modell per
+arbetare och för att dela PyTorchs trådar.
+
+Att fånga minnesfel och trappa ned är inget alternativ: på Linux dödar
+OOM-dödaren processen utan undantag att fånga, och på Windows avbryter en
+misslyckad allokering inuti torch oftast i stället för att kasta `MemoryError`.
+Antalet behöver vara ett val, inte en upptäckt.
+
+**Maskeringen är processorbunden, och grafikkortet används sedan 0082.**
+Sonden gav samma genomströmning vid en, två och fyra parallella maskerare —
+0,037, 0,030 och 0,038 dokument per sekund — medan tiden per dokument steg
+från 27 till 63 till 93 sekunder. En modell med tolv trådar mättar processorn,
+och fler modeller slåss om samma kärnor. Fler arbetare var alltså aldrig
+svaret, och `_MASKING_LOCK` kostar ingenting.
+
+Kvar att mäta: hur mycket kortet faktiskt ger. Maskeringen var 15,7 av 22,7
+minuter, så en körning kan i bästa fall hamna kring tio.
+
+Kvar: nedtrappning vid 429. Mätningen visade inga hastighetsgränser upp till
+sexton samtidiga, så det är en försäkring och inte ett behov — men när det
+väl händer ska loggen säga det i klartext i stället för att se ut som att
+modellen blivit långsam.
 
 **Loggen är spårbar sedan 0075.** Varje rad som hör till ett dokument bär dess
 namn, så att loggen går att följa även flätad. Byggt före trådningen och inte

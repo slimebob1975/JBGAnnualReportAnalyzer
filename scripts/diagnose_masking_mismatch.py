@@ -105,7 +105,7 @@ def main(pdf_path):
 
         # Går strängen att placera på sidan över huvud taget?
         with pymupdf.open(pdf) as doc:
-            for sidnr, sida in enumerate(doc, 1):
+            for _sidnr, sida in enumerate(doc, 1):
                 if namn not in sida.get_text():
                     continue
                 via_ord = PDFMasker._locate_term(sida, namn)

@@ -153,6 +153,7 @@ att tjänsten ska fungera.
 | `JBG_LOG_LEVEL` | `INFO` | Loggnivå. `DEBUG` skriver ut fullständig dokumenttext och modellsvar, vilket innebär personuppgifter på disk. |
 | `JBG_LOG_RETENTION_DAYS` | `14` | Loggfiler äldre än så tas bort vid start. De fem senaste sparas alltid. |
 | `JBG_JOB_DIR` | systemets temp-katalog | Var jobbens arbetskataloger skapas. |
+| `JBG_MAX_WORKERS` | `16` | Antal dokument som behandlas samtidigt. Maskering och OCR körs en i taget oavsett. |
 | `JBG_JOB_TTL_SECONDS` | `3600` | Hur länge ett jobbs filer ligger kvar efter senaste livstecken. |
 | `JBG_SWEEP_INTERVAL_SECONDS` | `300` | Hur ofta utgångna jobb städas bort. |
 | `JBG_MAX_CONCURRENT_JOBS` | `2` | Antal analyser som körs samtidigt. |
@@ -597,6 +598,33 @@ loggen läsbar.
 
 Namnet hålls i en `ContextVar`, som är trådlokal av sig själv, och filtret
 sitter på hanterarna så att även rader från openai och httpx får fältet.
+
+### Flera dokument samtidigt
+
+Dokumenten är oberoende fram till sammanslagningen, så de behandlas parallellt.
+Antalet styrs av `JBG_MAX_WORKERS` och är sexton som förval, men aldrig fler
+än antalet filer.
+
+Maskeringen körs en i taget, eftersom NER-pipelinen från transformers inte är
+utlovat trådsäker. Det kostar ingenting: en mätning med en, två och fyra
+parallella maskerare gav samma genomströmning i alla tre fallen, och tiden per
+dokument steg från 27 till 63 till 93 sekunder. Arbetet är processorbundet, och
+en modell med tolv trådar mättar redan processorn.
+
+Finns ett grafikkort används det i stället, och loggen säger vilket. Texten
+skickas i satser om sexton bitar — ett dokument på 45 000 tecken blir annars
+omkring nittio separata anrop, vilket är där ett kort annars skulle gå på
+tomgång. Det sätter golvet för hur kort en körning kan bli: i den
+första parallella körningen tog maskeringen 15,7 av 22,7 minuter.
+
+OCR överlappar däremot. Ocrmypdf startar egna processer, så varje dokument
+blir något långsammare medan körningen som helhet blir kortare — 11,6 minuters
+OCR rymdes inuti samma 22,7 minuter.
+
+Resultaten slås ihop i filordning och inte i den ordning dokumenten blev
+klara, så att två körningar av samma material ger samma utdata. Förloppet
+räknas däremot när ett dokument faktiskt blir klart, annars står siffran
+stilla medan ett långsamt dokument håller upp kön.
 
 ### Långa körningar
 

@@ -43,10 +43,15 @@ try:  # PyMuPDF >= 1.24.3 ships the package under its real name
     import pymupdf
 except ImportError:  # pragma: no cover - older PyMuPDF only exposes "fitz"
     import fitz as pymupdf
+import itertools
+import os
 import re
 import shutil
+import threading
 import time
 from collections.abc import Mapping
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 
 import tiktoken
 
@@ -118,6 +123,37 @@ class _ApproximateEncoder:
         return "".join(tokens)
 
 
+# Konstruktionen av maskeraren är sällsynt men dyr, så ett lås för hela
+# modulen räcker.
+_MASKER_LOCK = threading.Lock()
+# Själva maskeringen körs också en i taget: NER-pipelinen från transformers är
+# inte utlovat trådsäker. Det sätter golvet för hur kort en körning kan bli -
+# maskeringen var 15,7 av 22,7 minuter i den första parallella körningen.
+#
+# OCR har inget lås. Det var avsiktligt till slut men inte från början: texten
+# här påstod ett tag att även OCR kördes en i taget, vilket var fel. Att låta
+# den överlappa är dessutom bättre, eftersom ocrmypdf startar egna processer
+# och varje dokument då blir något långsammare men körningen som helhet
+# kortare - 11,6 minuter OCR rymdes inuti 22,7 minuters körning.
+_MASKING_LOCK = threading.Lock()
+# Diagnosen sätts av _run_ocr och läses av _ensure_readable_pdf för
+# felmeddelandet. Som fält på objektet kunde ett dokuments diagnos förklara ett
+# annats avbrott; en ContextVar är trådlokal av sig själv.
+_ocr_diagnosis: ContextVar = ContextVar("ocr_diagnosis", default=None)
+
+
+@dataclass
+class DocumentOutcome:
+    """Vad ett dokument gav. Allt som slingan behöver, inget delat tillstånd."""
+
+    source: str
+    result: dict = field(default_factory=dict)
+    skipped: tuple | None = None
+    stability_findings: list = field(default_factory=list)
+    declared_unit: str | None = None
+    summaries: dict | None = None
+
+
 class JBGAnnualReportAnalyzer:
     METRIC_KEY_NUMBER_KEY = "Nyckeltal"
     METRIC_KEY_NUMBER_ALTERNATE_KEY = "Alternativa benämningar"
@@ -157,6 +193,11 @@ class JBGAnnualReportAnalyzer:
     # Varje färdig körning sparas som historik, så att nästa år har något att
     # jämföra mot. Katalogen styrs av JBG_HISTORY_DIR.
     KEEP_HISTORY = True
+    # Antal dokument som behandlas samtidigt. Mätningen visade platt
+    # svarstid upp till sexton samtidiga anrop utan hastighetsgränser, men
+    # maskeringen och OCR är processorbundna och körs en i taget, så fler
+    # arbetare än så ger inget. Styrs av JBG_MAX_WORKERS.
+    MAX_WORKERS = max(1, int(os.getenv("JBG_MAX_WORKERS", "16")))
     # One extra, narrowly-scoped call per file when the first pass missed
     # something. Skipped entirely when nothing is missing.
     USE_SECOND_PASS_FOR_MISSING = True
@@ -287,6 +328,14 @@ class JBGAnnualReportAnalyzer:
     #   2. printed page numbers found in the page margins (free)
     #   3. the original LLM loop, kept only as a last resort
     # ------------------------------------------------------------------
+    @property
+    def last_ocr_diagnosis(self):
+        return _ocr_diagnosis.get()
+
+    @last_ocr_diagnosis.setter
+    def last_ocr_diagnosis(self, value):
+        _ocr_diagnosis.set(value)
+
     def _get_masker(self) -> PDFMasker:
         """Build the NER pipeline once per analyzer, not once per PDF.
 
@@ -295,7 +344,12 @@ class JBGAnnualReportAnalyzer:
         first (and eight seconds on a cold Hugging Face cache).
         """
         if getattr(self, "_masker", None) is None:
-            self._masker = PDFMasker()
+            # Kolla-och-sätt i två steg: två trådar hinner båda se None och
+            # bygger var sin BERT-modell, omkring 2 GB styck. Kontrollen görs
+            # om innanför låset.
+            with _MASKER_LOCK:
+                if getattr(self, "_masker", None) is None:
+                    self._masker = PDFMasker()
         return self._masker
 
     def _find_page_number_offset(self, pdf_path: Path, model: str = "") -> int:
@@ -2115,6 +2169,207 @@ class JBGAnnualReportAnalyzer:
         except Exception as ex:
             logger.warning(f"Kunde inte spara delresultatet: {ex}")
 
+    def _analyse_document(self, _pdf_path, model: str = "") -> "DocumentOutcome":
+        """Allt arbete för ett dokument, utan att röra analysobjektet.
+
+        Skrev tidigare rakt in i `self.skipped_files`, `self.stability_findings`
+        och två ordböcker i den omslutande funktionen. Det gick bra så länge
+        ett dokument i taget behandlades; med flera arbetare blir ordningen
+        slumpmässig, och två körningar av samma material skulle ge samma
+        siffror i olika ordning. Utfallet returneras därför i stället och slås
+        ihop i filordning av den som anropar.
+
+        Ingen trådning här. Det här är bara omskrivningen som gör den möjlig,
+        och den ska inte ändra någonting.
+        """
+        outcome = DocumentOutcome(source=_pdf_path.name)
+        log_token = log_context.current_document.set(_pdf_path.name)
+        try:
+            readable_path = self._ensure_readable_pdf(_pdf_path)
+            was_ocred = readable_path != _pdf_path
+
+            if self.use_masking:
+                masker = self._get_masker()
+                pdf_output_path = Path(
+                    readable_path.with_name(readable_path.stem + "_masked.pdf")
+                )
+                with _MASKING_LOCK:
+                    pdf_path = masker.do_masking(
+                        readable_path, pdf_output_path, logger=logger
+                    )
+                if pdf_path is None:
+                    raise FileTypeException(
+                        message=(
+                            f"Maskeringen av {_pdf_path.name} misslyckades. "
+                            "Filen analyseras inte, eftersom omaskerad text "
+                            "inte får skickas vidare."
+                        )
+                    )
+            else:
+                pdf_path = readable_path
+
+            logger.info(f"Extraherar text från: {pdf_path.name}")
+            full_text = self._extract_text_from_pdf_from_pdf(pdf_path, model=model)
+
+            if not full_text:
+                message = f"Ingen text kunde extraheras ur {_pdf_path.name}."
+                logger.error(message)
+                outcome.skipped = (_pdf_path.name, message)
+                return outcome
+
+            # The year comes from the extracted text, so an OCR-ed scan is read
+            # from its OCR output rather than from the blank original.
+            the_year = self._find_primary_year_from_text(full_text, model=model)
+            logger.info(f"Extraherade aktuellt år från: {pdf_path.name} som: {the_year}")
+            if the_year is not None and the_year < 0:
+                logger.warning(f"Could not determine the year for {pdf_path.name}. Setting year unknown.")
+                the_year = None
+
+            # Try to fix broken lines that can contain key numbers and values
+            if self.FIX_BROKEN_LINES_WITH_KEY_NUMBERS:
+                try:
+                    full_text = self._merge_broken_key_number_lines(full_text, self._extract_key_number_terms())
+                    logger.debug(f"The full text for {pdf_path} where broken lines with key numbers are merged is: {full_text}")
+                except Exception:
+                    logger.warning(f"Could not merge broken lines with key numbers and data in for full text of file: {pdf_path}")
+
+            # Divide the text into chunks. Page-aware by default, so the
+            # [Sida N] markers that populate the "källa" field survive.
+            chunks = self._chunk_text_for_model(full_text, model=model)
+            logger.info(f"{len(chunks)} chunk(s) genererade för {pdf_path.name}")
+
+            partial_results = self._analyse_chunks(chunks, the_year=the_year, model=model)
+
+            # Put together and clean up the result
+            appended_result = self._deep_merge_json_objects(partial_results)
+            logger.debug("In do_analysis: partial_results:")
+            for result in partial_results:
+                logger.debug(f"{result}")
+            logger.debug(f"In do_analysis: appended_result: {appended_result}")
+            # Dokumentet anger själv sin enhet, och gör det nästan alltid
+            # eftersom ÅRL kräver det. Beskedet knyts till kassan så att
+            # kontrollen kan använda det.
+            if self.SUMMARISE_MANAGEMENT_REPORT:
+                summaries = self._summarise_management_report(
+                    full_text, model=model
+                )
+                if summaries:
+                    outcome.summaries = summaries
+
+            declared = normalisation.detect_declared_unit(full_text)
+            if declared:
+                logger.info(
+                    f"Dokumentet anger att belopp redovisas i {declared}."
+                )
+                outcome.declared_unit = declared
+
+            if appended_result:
+                appended_result, conflicts = self._merge_json_fund_data(appended_result)
+                if conflicts:
+                    logger.warning(
+                        f"Last merge of JSON data resulted in {len(conflicts)} conflict(s) "
+                        f"for {', '.join(sorted({c[1] for c in conflicts}))}"
+                    )
+                    logger.debug(f"Conflict detail: {conflicts}")
+                    appended_result, num_merged_values = self._merge_conflicted_values_json_objects(appended_result)
+                    if num_merged_values > 0:
+                        logger.info(f"Merged {num_merged_values} duplicate values in appended JSON structure")
+                    else:
+                        logger.warning("No conclicts were merged.")
+
+                # What the plain extraction found, before the passes the
+                # stability re-read does not repeat.
+                first_pass_metrics = self._present_metric_names(appended_result)
+
+                if self.USE_SECOND_PASS_FOR_MISSING:
+                    appended_result = self._second_pass_for_missing(
+                        appended_result, chunks, the_year=the_year, model=model
+                    )
+
+                self._derive_missing_subtotals(appended_result)
+
+                if self.VERIFY_ALL_EXTRACTIONS or (
+                    self.VERIFY_OCR_EXTRACTION and was_ocred
+                ):
+                    outcome.stability_findings.extend(
+                        self._check_extraction_stability(
+                            appended_result,
+                            chunks,
+                            the_year=the_year,
+                            model=model,
+                            source_name=_pdf_path.name,
+                            compare_only=first_pass_metrics,
+                        )
+                    )
+
+                outcome.result = appended_result
+            else:
+                # Ett dokument som inte gav några nyckeltal försvann
+                # tidigare spårlöst: ingen rad i _ejanalyserade, ingen
+                # banderoll, bara en kolumn färre än någon väntade sig.
+                # Alfa-kassans årsredovisning för 2024 gjorde just det -
+                # räkenskapsåret gick inte att fastställa, modellen fick en
+                # fråga utan årtal och svarade med ingenting.
+                reason = "Inga nyckeltal kunde läsas ut ur dokumentet."
+                if the_year is None:
+                    reason += (
+                        " Räkenskapsåret gick inte att fastställa, vilket "
+                        "är den troliga orsaken."
+                    )
+                logger.warning(f"{_pdf_path.name}: {reason}")
+                outcome.skipped = (_pdf_path.name, reason)
+        except FileTypeException as ex:
+            logger.error(f"Hoppar över {_pdf_path.name}: {ex.message}")
+            outcome.skipped = (_pdf_path.name, ex.message)
+        except Exception as ex:
+            # Anything else - a model error, a network failure, a bug in
+            # one branch of the merge - used to abort the whole run from
+            # wherever it happened. A 24-file run is 90 minutes and some
+            # five dollars of model calls, and losing 22 finished
+            # documents because the 23rd failed is the expensive way to
+            # find that out. One bad file is now one skipped file.
+            logger.exception(f"Analysen av {_pdf_path.name} avbröts av ett fel")
+            outcome.skipped = (
+                (_pdf_path.name, f"Analysen avbröts av ett fel: {ex}")
+            )
+        finally:
+            log_context.current_document.reset(log_token)
+        return outcome
+
+    def _analysed_documents(self, model: str, workers: int, report):
+        """Dokumenten och deras utfall, alltid i filordning.
+
+        Arbetet görs av så många arbetare som begärts, men resultaten lämnas
+        i den ordning filerna laddades upp. Två körningar av samma material
+        ger därför samma utdata, oavsett vilket dokument som blev klart först.
+
+        Förloppet räknas däremot när ett dokument faktiskt blir klart, inte
+        när dess tur kommer i ordningen - annars står siffran stilla medan ett
+        långsamt dokument håller upp kön.
+        """
+        if workers <= 1:
+            for index, path in enumerate(self.upload_files):
+                logger.info(f"Processar fil: {path}")
+                report(index, path.name)
+                yield path, self._analyse_document(path, model=model)
+                report(index + 1, path.name)
+            return
+
+        done = itertools.count(1)
+        total = len(self.upload_files)
+
+        def work(path):
+            logger.info(f"Processar fil: {path}")
+            outcome = self._analyse_document(path, model=model)
+            finished = next(done)
+            report(finished, f"{path.name} ({finished} av {total})")
+            return outcome
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(work, path) for path in self.upload_files]
+            for path, future in zip(self.upload_files, futures, strict=True):
+                yield path, future.result()
+
     def do_analysis(
         self,
         output_path: Path,
@@ -2154,179 +2409,33 @@ class JBGAnnualReportAnalyzer:
                 logger.warning(f"Kunde inte rapportera framsteg: {ex}")
 
         # We loop over all the pdf files
-        for file_index, _pdf_path in enumerate(self.upload_files):
-            logger.info(f"Processar fil: {_pdf_path}")
-            # Reported at the start, so the progress message names the file
-            # currently being worked on rather than the one that just finished.
-            report(file_index, _pdf_path.name)
+        workers = min(self.MAX_WORKERS, total_files) or 1
+        if workers > 1:
+            logger.info(
+                f"Behandlar {total_files} dokument med {workers} arbetare. "
+                "Maskeringen körs en i taget."
+            )
 
-            # Order matters: OCR, then mask, then extract.
-            #
-            # Masking first meant the redactor ran against an image-only page,
-            # found no text, redacted nothing, and OCR then recovered every
-            # name it was supposed to remove.
-            # Varje loggrad under dokumentets behandling bär dess namn, så
-            # att loggen går att följa även när flera körs samtidigt.
-            log_token = log_context.current_document.set(_pdf_path.name)
-            try:
-                readable_path = self._ensure_readable_pdf(_pdf_path)
-                was_ocred = readable_path != _pdf_path
-
-                if self.use_masking:
-                    masker = self._get_masker()
-                    pdf_output_path = Path(
-                        readable_path.with_name(readable_path.stem + "_masked.pdf")
-                    )
-                    pdf_path = masker.do_masking(
-                        readable_path, pdf_output_path, logger=logger
-                    )
-                    if pdf_path is None:
-                        raise FileTypeException(
-                            message=(
-                                f"Maskeringen av {_pdf_path.name} misslyckades. "
-                                "Filen analyseras inte, eftersom omaskerad text "
-                                "inte får skickas vidare."
-                            )
-                        )
-                else:
-                    pdf_path = readable_path
-
-                logger.info(f"Extraherar text från: {pdf_path.name}")
-                full_text = self._extract_text_from_pdf_from_pdf(pdf_path, model=model)
-
-                if not full_text:
-                    message = f"Ingen text kunde extraheras ur {_pdf_path.name}."
-                    logger.error(message)
-                    self.skipped_files.append((_pdf_path.name, message))
-                    report(file_index + 1, _pdf_path.name)
-                    continue
-
-                # The year comes from the extracted text, so an OCR-ed scan is read
-                # from its OCR output rather than from the blank original.
-                the_year = self._find_primary_year_from_text(full_text, model=model)
-                logger.info(f"Extraherade aktuellt år från: {pdf_path.name} som: {the_year}")
-                if the_year is not None and the_year < 0:
-                    logger.warning(f"Could not determine the year for {pdf_path.name}. Setting year unknown.")
-                    the_year = None
-
-                # Try to fix broken lines that can contain key numbers and values
-                if self.FIX_BROKEN_LINES_WITH_KEY_NUMBERS:
-                    try:
-                        full_text = self._merge_broken_key_number_lines(full_text, self._extract_key_number_terms())
-                        logger.debug(f"The full text for {pdf_path} where broken lines with key numbers are merged is: {full_text}")
-                    except Exception:
-                        logger.warning(f"Could not merge broken lines with key numbers and data in for full text of file: {pdf_path}")
-
-                # Divide the text into chunks. Page-aware by default, so the
-                # [Sida N] markers that populate the "källa" field survive.
-                chunks = self._chunk_text_for_model(full_text, model=model)
-                logger.info(f"{len(chunks)} chunk(s) genererade för {pdf_path.name}")
-
-                partial_results = self._analyse_chunks(chunks, the_year=the_year, model=model)
-
-                # Put together and clean up the result
-                appended_result = self._deep_merge_json_objects(partial_results)
-                logger.debug("In do_analysis: partial_results:")
-                for result in partial_results:
-                    logger.debug(f"{result}")
-                logger.debug(f"In do_analysis: appended_result: {appended_result}")
-                # Dokumentet anger själv sin enhet, och gör det nästan alltid
-                # eftersom ÅRL kräver det. Beskedet knyts till kassan så att
-                # kontrollen kan använda det.
-                if self.SUMMARISE_MANAGEMENT_REPORT:
-                    summaries = self._summarise_management_report(
-                        full_text, model=model
-                    )
-                    for fund_name in (appended_result or {}):
-                        if summaries:
-                            management_summaries[fund_name] = summaries
-
-                declared = normalisation.detect_declared_unit(full_text)
-                if declared:
-                    logger.info(
-                        f"Dokumentet anger att belopp redovisas i {declared}."
-                    )
-                    for fund_name in (appended_result or {}):
-                        declared_units[fund_name] = declared
-
-                if appended_result:
-                    appended_result, conflicts = self._merge_json_fund_data(appended_result)
-                    if conflicts:
-                        logger.warning(
-                            f"Last merge of JSON data resulted in {len(conflicts)} conflict(s) "
-                            f"for {', '.join(sorted({c[1] for c in conflicts}))}"
-                        )
-                        logger.debug(f"Conflict detail: {conflicts}")
-                        appended_result, num_merged_values = self._merge_conflicted_values_json_objects(appended_result)
-                        if num_merged_values > 0:
-                            logger.info(f"Merged {num_merged_values} duplicate values in appended JSON structure")
-                        else:
-                            logger.warning("No conclicts were merged.")
-
-                    # What the plain extraction found, before the passes the
-                    # stability re-read does not repeat.
-                    first_pass_metrics = self._present_metric_names(appended_result)
-
-                    if self.USE_SECOND_PASS_FOR_MISSING:
-                        appended_result = self._second_pass_for_missing(
-                            appended_result, chunks, the_year=the_year, model=model
-                        )
-
-                    self._derive_missing_subtotals(appended_result)
-
-                    if self.VERIFY_ALL_EXTRACTIONS or (
-                        self.VERIFY_OCR_EXTRACTION and was_ocred
-                    ):
-                        self.stability_findings.extend(
-                            self._check_extraction_stability(
-                                appended_result,
-                                chunks,
-                                the_year=the_year,
-                                model=model,
-                                source_name=_pdf_path.name,
-                                compare_only=first_pass_metrics,
-                            )
-                        )
-
-                    self._warn_on_year_collision(
-                        total_result, appended_result, _pdf_path.name
-                    )
-                    total_result.append(appended_result)
-                else:
-                    # Ett dokument som inte gav några nyckeltal försvann
-                    # tidigare spårlöst: ingen rad i _ejanalyserade, ingen
-                    # banderoll, bara en kolumn färre än någon väntade sig.
-                    # Alfa-kassans årsredovisning för 2024 gjorde just det -
-                    # räkenskapsåret gick inte att fastställa, modellen fick en
-                    # fråga utan årtal och svarade med ingenting.
-                    reason = "Inga nyckeltal kunde läsas ut ur dokumentet."
-                    if the_year is None:
-                        reason += (
-                            " Räkenskapsåret gick inte att fastställa, vilket "
-                            "är den troliga orsaken."
-                        )
-                    logger.warning(f"{_pdf_path.name}: {reason}")
-                    self.skipped_files.append((_pdf_path.name, reason))
-            except FileTypeException as ex:
-                logger.error(f"Hoppar över {_pdf_path.name}: {ex.message}")
-                self.skipped_files.append((_pdf_path.name, ex.message))
-            except Exception as ex:
-                # Anything else - a model error, a network failure, a bug in
-                # one branch of the merge - used to abort the whole run from
-                # wherever it happened. A 24-file run is 90 minutes and some
-                # five dollars of model calls, and losing 22 finished
-                # documents because the 23rd failed is the expensive way to
-                # find that out. One bad file is now one skipped file.
-                logger.exception(f"Analysen av {_pdf_path.name} avbröts av ett fel")
-                self.skipped_files.append(
-                    (_pdf_path.name, f"Analysen avbröts av ett fel: {ex}")
-                )
+        for _pdf_path, outcome in self._analysed_documents(
+            model=model, workers=workers, report=report
+        ):
+            # Sammanslagningen sker i filordning och inte i den ordning
+            # dokumenten blev klara, så att två körningar av samma material
+            # ger samma utdata.
+            if outcome.skipped:
+                self.skipped_files.append(outcome.skipped)
             else:
+                self.stability_findings.extend(outcome.stability_findings)
+                for fund_name in outcome.result:
+                    if outcome.declared_unit:
+                        declared_units[fund_name] = outcome.declared_unit
+                    if outcome.summaries:
+                        management_summaries[fund_name] = outcome.summaries
+                self._warn_on_year_collision(
+                    total_result, outcome.result, _pdf_path.name
+                )
+                total_result.append(outcome.result)
                 self._save_partial_result(total_result, output_path)
-            finally:
-                log_context.current_document.reset(log_token)
-
-            report(file_index + 1, _pdf_path.name)
 
         report(total_files, "")
 

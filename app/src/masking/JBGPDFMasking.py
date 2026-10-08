@@ -13,7 +13,14 @@ try:  # PyMuPDF >= 1.24.3 ships the package under its real name
 except ImportError:  # pragma: no cover - older PyMuPDF only exposes "fitz"
     import fitz as pymupdf
 
+logger = logging.getLogger(__name__)
+
 NER_MODEL = "KBLab/bert-base-swedish-cased-ner"
+# Texten delas i bitar om 512 tecken, och ett dokument på 45 000 tecken blir
+# därmed omkring nittio anrop. Skickas de i satser i stället för ett i taget
+# blir det färre anrop och fullare tensorer - på ett grafikkort är det där
+# vinsten ligger, och på en processor skadar det inte.
+NER_BATCH_SIZE = 16
 
 # Bindestreck, plus och de streckvarianter pdf-läsare ibland levererar i
 # stället för ett vanligt bindestreck.
@@ -113,6 +120,27 @@ def find_names_by_role_context(page_texts) -> set[str]:
     return found
 
 
+def _select_device() -> int:
+    """Grafikkortet om det finns, annars processorn.
+
+    transformers väljer processorn när inget anges. Samma kod ska gå på en
+    maskin utan kort, så valet görs här och sägs ut i loggen - annars är det
+    svårt att se varför en körning plötsligt tar en femtedel så lång tid.
+    """
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            logger.info(
+                f"NER-modellen körs på {torch.cuda.get_device_name(0)}."
+            )
+            return 0
+    except Exception as ex:
+        logger.debug(f"Kunde inte fråga efter grafikkort: {ex}")
+    logger.info("NER-modellen körs på processorn.")
+    return -1
+
+
 def _luhn_ok(ten_digits: str) -> bool:
     """Kontrollsiffran i ett personnummer, beräknad på de tio siffrorna."""
     total = 0
@@ -198,11 +226,19 @@ class PDFMasker:
                     "formuläret."
                 ) from ex
 
+            # Modellen går till grafikkortet när det finns ett. Mätningen
+            # visade att maskeringen är processorbunden: en modell med tolv
+            # trådar mättar processorn, och fyra modeller gav exakt samma
+            # genomströmning som en. Fler kärnor finns inte att ta av, men ett
+            # kort är en annan storleksordning.
+            device = _select_device()
             self.ner = pipeline(
                 "ner",
                 model=NER_MODEL,
                 tokenizer=NER_MODEL,
                 aggregation_strategy="simple",
+                device=device,
+                batch_size=NER_BATCH_SIZE,
             )
 
     def sanitize_pdf(self, input_pdf: Path, logger: Logger = None) -> Path:
@@ -240,15 +276,22 @@ class PDFMasker:
 
     def detect_sensitive_terms(self, page_texts, max_chunk_chars=512):
         sensitive_words = set()
-        for text in page_texts:
-            for i in range(0, len(text), max_chunk_chars):
-                chunk = text[i:i + max_chunk_chars]
-                try:
-                    ner_results = self.ner(chunk)
-                    names = {r['word'].strip() for r in ner_results if r['entity_group'] == 'PER'}
-                    sensitive_words.update(names)
-                except Exception as e:
-                    print(f"NER-fel: {e}")
+        chunks = [
+            text[i:i + max_chunk_chars]
+            for text in page_texts
+            for i in range(0, len(text), max_chunk_chars)
+        ]
+        if chunks:
+            try:
+                # En lista in i stället för en sträng i taget: pipelinen
+                # grupperar själv efter batch_size.
+                for ner_results in self.ner(chunks):
+                    sensitive_words.update(
+                        r["word"].strip() for r in ner_results
+                        if r["entity_group"] == "PER"
+                    )
+            except Exception as ex:
+                logger.warning(f"NER-fel: {ex}")
         full_text = "\n".join(page_texts)
         pnr_matches = find_identity_numbers(full_text)
         full_text = self._fix_split_emails(full_text)

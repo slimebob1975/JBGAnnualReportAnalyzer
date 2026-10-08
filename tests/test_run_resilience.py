@@ -145,20 +145,23 @@ class _Stub(JBGAnnualReportAnalyzer):
         return ["chunk"]
 
     def _analyse_chunks(self, chunks, the_year=None, model=""):
-        outcome = self.results[Path(self.upload_files[self._index].stem).name]
+        # Vilket dokument som behandlas står i loggkontexten, vilket fungerar
+        # lika bra med flera arbetare som med en.
+        from app.src import JBGLogContext as log_context
+
+        outcome = self.results[Path(log_context.current_document.get()).stem]
         if isinstance(outcome, Exception):
             raise outcome
         return [outcome]
 
 
-def _run(analyzer, tmp_path):
-    """Drive do_analysis over the stub, tracking which file is current."""
-    order = list(analyzer.upload_files)
+def _run(analyzer, tmp_path, workers=1):
+    """Drive do_analysis over the stub."""
+    analyzer.MAX_WORKERS = workers
 
     def progress(done, total, name):
-        analyzer._index = min(done, len(order) - 1)
+        pass
 
-    analyzer._index = 0
     return analyzer.do_analysis(
         tmp_path / "resultat.json", model="gpt-4o", progress_callback=progress
     )
@@ -272,3 +275,119 @@ def test_olika_ar_for_samma_kassa_ar_helt_i_sin_ordning(tmp_path, caplog):
         _run(analyzer, tmp_path)
 
     assert "fanns redan" not in caplog.text
+
+
+# ------------------------- dokumentets arbete rör inte analysobjektet
+def test_ett_dokuments_utfall_returneras_i_stallet_for_att_skrivas(tmp_path):
+    """Skrev tidigare rakt in i self.skipped_files och self.stability_findings.
+    Med flera arbetare blir ordningen slumpmässig, och två körningar av samma
+    material skulle ge samma siffror i olika ordning."""
+    good = {"Kassan": {"2025": {"Summa tillgångar": {"värde": 1}}}}
+    analyzer = _Stub({"a": good})
+    analyzer._index = 0
+
+    outcome = analyzer._analyse_document(Path("a.pdf"), model="gpt-4o")
+
+    assert outcome.result == good
+    assert outcome.skipped is None
+    assert analyzer.skipped_files == [], "metoden ska inte röra analysobjektet"
+    assert analyzer.stability_findings == []
+
+
+def test_ett_misslyckat_dokument_returnerar_sin_orsak(tmp_path):
+    analyzer = _Stub({"a": RuntimeError("modellen svarade inte")})
+    analyzer._index = 0
+
+    outcome = analyzer._analyse_document(Path("a.pdf"), model="gpt-4o")
+
+    assert outcome.result == {}
+    assert outcome.skipped[0] == "a.pdf"
+    assert "avbröts av ett fel" in outcome.skipped[1]
+    assert analyzer.skipped_files == []
+
+
+def test_utfallen_slas_ihop_i_filordning(tmp_path):
+    """Två körningar av samma material ska ge samma utdata."""
+    good = {"Kassan": {"2025": {"Summa tillgångar": {"värde": 1}}}}
+    analyzer = _Stub({"a": good, "b": RuntimeError("x"), "c": good,
+                      "d": RuntimeError("y")})
+
+    _run(analyzer, tmp_path)
+
+    assert [name for name, _ in analyzer.skipped_files] == ["b.pdf", "d.pdf"]
+
+
+def test_ocr_diagnosen_ar_tradlokal():
+    """Som fält på objektet kunde ett dokuments diagnos förklara ett annats
+    avbrott."""
+    import threading
+
+    from app.src.JBGAnnualReportAnalysis import JBGAnnualReportAnalyzer as A
+
+    a = A.__new__(A)
+    a.last_ocr_diagnosis = "huvudtrådens"
+    sett = {}
+
+    def annan():
+        sett["innan"] = a.last_ocr_diagnosis
+        a.last_ocr_diagnosis = "den andra trådens"
+        sett["efter"] = a.last_ocr_diagnosis
+
+    t = threading.Thread(target=annan)
+    t.start()
+    t.join()
+
+    assert sett["efter"] == "den andra trådens"
+    assert a.last_ocr_diagnosis == "huvudtrådens", "trådarna delade fältet"
+
+
+# ------------------------------------------------- flera arbetare
+def test_samma_utdata_med_flera_arbetare(tmp_path):
+    """Hela poängen med att slå ihop i filordning: två körningar av samma
+    material ska ge samma utdata, oavsett vilket dokument som blev klart
+    först."""
+    good = {"Kassan": {"2025": {"Summa tillgångar": {"värde": 1}}}}
+    resultat = {"a": good, "b": RuntimeError("x"), "c": good,
+                "d": RuntimeError("y"), "e": good}
+
+    en_katalog = tmp_path / "en"
+    en_katalog.mkdir()
+    en = _Stub(resultat)
+    _run(en, en_katalog, workers=1)
+
+    flera_katalog = tmp_path / "flera"
+    flera_katalog.mkdir()
+    flera = _Stub(resultat)
+    _run(flera, flera_katalog, workers=4)
+
+    assert flera.skipped_files == en.skipped_files
+    assert [name for name, _ in flera.skipped_files] == ["b.pdf", "d.pdf"]
+
+
+def test_alla_dokument_behandlas_med_flera_arbetare(tmp_path):
+    good = {"Kassan": {"2025": {"Summa tillgångar": {"värde": 1}}}}
+    analyzer = _Stub({namn: good for namn in "abcdefgh"})
+
+    out = _run(analyzer, tmp_path, workers=4)
+
+    assert analyzer.skipped_files == []
+    assert "Kassan" in json.loads(Path(out).read_text(encoding="utf-8"))
+
+
+def test_antalet_arbetare_overstiger_aldrig_antalet_filer(tmp_path):
+    """Sexton arbetare på tre dokument är tretton trådar som inget gör."""
+    good = {"Kassan": {"2025": {"Summa tillgångar": {"värde": 1}}}}
+    analyzer = _Stub({"a": good, "b": good, "c": good})
+    analyzer.MAX_WORKERS = 16
+
+    sedda = []
+    original = analyzer._analysed_documents
+
+    def spion(model, workers, report):
+        sedda.append(workers)
+        return original(model=model, workers=workers, report=report)
+
+    analyzer._analysed_documents = spion
+    _run(analyzer, tmp_path, workers=16)
+
+    assert sedda == [3]
