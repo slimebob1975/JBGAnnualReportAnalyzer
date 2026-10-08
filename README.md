@@ -406,6 +406,11 @@ fem namn kvar fullt läsbara på styrelsesidan medan ett tjugotal andra på samm
 sida var svärtade. De upptäcktes aldrig, var därför aldrig termer, och
 verifieringen hade ingenting att leta efter.
 
+Sidans textstruktur beräknas en gång per sida och återanvänds för alla termer.
+Det gjordes först en gång per term, vilket på en sida med sextio termer blev
+sextio ombyggnader av samma sida — 16,6 av 24 sekunders maskering, mot 0,1 för
+ordlistan som redan fick sin lista färdig.
+
 En term lokaliseras på två sätt, och båda körs alltid: mot sidans ordlista,
 som klarar namn brutna över en rad, och mot radernas spans sådana texten
 faktiskt är satt. Rektanglarna slås ihop. Att köra den andra bara när den

@@ -340,3 +340,46 @@ def test_samma_rektangel_fran_bada_hallen_raknas_en_gang(tmp_path):
 
 def test_merge_klarar_tomma_listor():
     assert PDFMasker._merge_rects([], None, []) == []
+
+
+# --------------------------------- sidans text byggs om en gång, inte per term
+def test_sidans_struktur_beraknas_en_gang_per_sida(tmp_path):
+    """`get_text("dict")` bygger om hela sidans textstruktur vid varje anrop.
+    Reserven anropade den en gång per term: 16,6 av 24 sekunders maskering,
+    mot 0,1 för ordlistan som får sin lista färdig."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    for i, namn in enumerate(("Anna Svensson", "Bertil Nilsson", "Cecilia Ek")):
+        page.insert_text((72, 100 + i * 20), namn, fontsize=11)
+    pdf = tmp_path / "sida.pdf"
+    doc.save(pdf)
+    doc.close()
+
+    with pymupdf.open(pdf) as d:
+        sida = d[0]
+        anrop = []
+        original = sida.get_text
+
+        def rakna(*args, **kwargs):
+            anrop.append(args[0] if args else "")
+            return original(*args, **kwargs)
+
+        sida.get_text = rakna
+        lines = PDFMasker._page_lines(sida)
+        for namn in ("Anna Svensson", "Bertil Nilsson", "Cecilia Ek"):
+            assert PDFMasker._locate_term_in_spans(sida, namn, lines=lines)
+
+        assert anrop.count("dict") == 1, "sidan ska byggas om en gång"
+
+
+def test_reserven_fungerar_aven_utan_forberedda_rader(tmp_path):
+    """Anropas den utan `lines` ska den klara sig själv."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Anna Svensson", fontsize=11)
+    pdf = tmp_path / "ensam.pdf"
+    doc.save(pdf)
+    doc.close()
+
+    with pymupdf.open(pdf) as d:
+        assert PDFMasker._locate_term_in_spans(d[0], "Anna Svensson")

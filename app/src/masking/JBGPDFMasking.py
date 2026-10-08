@@ -468,8 +468,39 @@ class PDFMasker:
                 merged.append(rect)
         return merged
 
+    @staticmethod
+    def _page_lines(page) -> list:
+        """Sidans rader med sina spans, förberedda en gång.
+
+        `get_text("dict")` bygger om hela sidans textstruktur vid varje anrop.
+        Reserven anropade den en gång per term, vilket på en sida med sextio
+        termer blev sextio ombyggnader av samma sida: 16,6 av 24 sekunders
+        maskering, mot 0,1 för ordlistan som får sin lista färdig.
+        """
+        try:
+            blocks = page.get_text("dict").get("blocks", [])
+        except Exception:
+            return []
+
+        lines = []
+        for block in blocks:
+            for line in block.get("lines", []):
+                text = ""
+                spans = []
+                for span in line.get("spans", []):
+                    # Hårt mellanslag ersätts tecken för tecken, så att
+                    # positionerna fortfarande pekar rätt i spans.
+                    content = (span.get("text") or "").replace("\u00a0", " ")
+                    spans.append(
+                        (len(text), len(text) + len(content), span.get("bbox"))
+                    )
+                    text += content
+                if text:
+                    lines.append((text, spans))
+        return lines
+
     @classmethod
-    def _locate_term_in_spans(cls, page, term: str) -> list:
+    def _locate_term_in_spans(cls, page, term: str, lines=None) -> list:
         """Reserv när ordlistan inte hittar termen.
 
         Ordlistan från get_text("words") delar texten på sitt eget sätt, och
@@ -482,6 +513,9 @@ class PDFMasker:
         Mellanrum får vara hur många som helst, hårda mellanslag räknas som
         vanliga, och versalisering spelar ingen roll.
 
+        `lines` kommer från `_page_lines` och bör beräknas en gång per sida av
+        den som anropar. Utan det byggs sidans textstruktur om för varje term.
+
         Träffar bara inom en rad. En term som brutits över två rader klarar
         ordlistan redan, och det är den som körs först.
         """
@@ -491,35 +525,24 @@ class PDFMasker:
         pattern = re.compile(
             r"\s+".join(re.escape(token) for token in tokens), re.IGNORECASE
         )
+        if lines is None:
+            lines = cls._page_lines(page)
 
         rects = []
-        try:
-            blocks = page.get_text("dict").get("blocks", [])
-        except Exception:
-            return []
-        for block in blocks:
-            for line in block.get("lines", []):
-                text = ""
-                spans = []
-                for span in line.get("spans", []):
-                    # Hårt mellanslag ersätts tecken för tecken, så att
-                    # positionerna fortfarande pekar rätt i spans.
-                    content = (span.get("text") or "").replace("\u00a0", " ")
-                    spans.append((len(text), len(text) + len(content), span.get("bbox")))
-                    text += content
-                for match in pattern.finditer(text):
-                    start, end = match.span()
-                    touched = [
-                        box for first, last, box in spans
-                        if box and first < end and last > start
-                    ]
-                    if not touched:
-                        continue
-                    rect = pymupdf.Rect(touched[0])
-                    for box in touched[1:]:
-                        rect |= pymupdf.Rect(box)
-                    if not rect.is_empty:
-                        rects.append(rect)
+        for text, spans in lines:
+            for match in pattern.finditer(text):
+                start, end = match.span()
+                touched = [
+                    box for first, last, box in spans
+                    if box and first < end and last > start
+                ]
+                if not touched:
+                    continue
+                rect = pymupdf.Rect(touched[0])
+                for box in touched[1:]:
+                    rect |= pymupdf.Rect(box)
+                if not rect.is_empty:
+                    rects.append(rect)
         return rects
 
     @classmethod
@@ -594,9 +617,10 @@ class PDFMasker:
                 continue
             # Only when nothing can be located: otherwise redaction handles it.
             entries = cls._joined_words(page)
+            lines = cls._page_lines(page)
             if any(
                 cls._locate_term(page, t, entries=entries)
-                or cls._locate_term_in_spans(page, t)
+                or cls._locate_term_in_spans(page, t, lines=lines)
                 for t in still_there
             ):
                 continue
@@ -784,6 +808,8 @@ class PDFMasker:
             for page in doc:
                 stripped += self._strip_annotations(page)
                 entries = self._joined_words(page)
+                # Samma sak som entries, av samma skäl: en gång per sida.
+                lines = self._page_lines(page)
                 for term in sensitive_terms:
                     # Båda sökvägarna, alltid, och unionen av vad de hittar.
                     #
@@ -797,7 +823,7 @@ class PDFMasker:
                     # ställen, men aldrig tillfrågades om.
                     rects = self._merge_rects(
                         self._locate_term(page, term, entries=entries),
-                        self._locate_term_in_spans(page, term),
+                        self._locate_term_in_spans(page, term, lines=lines),
                     )
                     hits[term] += len(rects)
                     for rect in rects:

@@ -366,7 +366,8 @@ def test_a_page_that_cannot_be_masked_is_emptied(tmp_path, monkeypatch):
         PDFMasker, "_locate_term", classmethod(lambda cls, page, term, entries=None: [])
     )
     monkeypatch.setattr(
-        PDFMasker, "_locate_term_in_spans", classmethod(lambda cls, page, term: [])
+        PDFMasker, "_locate_term_in_spans",
+        classmethod(lambda cls, page, term, lines=None: [])
     )
     out = tmp_path / "mix_masked.pdf"
     result = _masker().mask_pdf_black_boxes(
@@ -401,7 +402,8 @@ def test_clearing_reports_the_page_numbers(tmp_path, monkeypatch):
         PDFMasker, "_locate_term", classmethod(lambda cls, page, term, entries=None: [])
     )
     monkeypatch.setattr(
-        PDFMasker, "_locate_term_in_spans", classmethod(lambda cls, page, term: [])
+        PDFMasker, "_locate_term_in_spans",
+        classmethod(lambda cls, page, term, lines=None: [])
     )
     doc = pymupdf.open(pdf)
     cleared = PDFMasker._clear_unmaskable_pages(doc, ["Jenny Soderstrom"], logging.getLogger())
