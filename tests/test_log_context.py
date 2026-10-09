@@ -133,8 +133,9 @@ def test_tomt_namn_ger_ingen_markering():
     ("Årsredovisning Livs a-kassa 2025(175097) (0).pdf", "Livs a-kassa 2025"),
     # Understreck är ett ordtecken, så "ÅR" däremellan har inga ordgränser.
     ("Säljarnas_ÅR_2025-signed-document(174093) (0).pdf", "Säljarnas 2025-sign\u2026"),
-    # Filnamnet säger ingenting om kassan. Då finns inget att rädda.
-    ("Årsredovisning 2025(172140) (0).pdf", "2025"),
+    # Filnamnet säger ingenting om kassan. Då är ärendenumret det enda som
+    # skiljer dokumenten åt, och får stå kvar.
+    ("Årsredovisning 2025(172140) (0).pdf", "2025 172140"),
 ])
 def test_filnamnet_kortas_till_det_som_skiljer_dokumenten_at(filnamn, vantat):
     assert log_context.shorten(filnamn) == vantat
@@ -157,3 +158,26 @@ def test_ett_kort_namn_lamnas_som_det_ar():
 def test_tomt_namn_ger_tom_markning():
     assert log_context.shorten("") == ""
     assert log_context.shorten(None) == ""
+
+
+def test_arendenumret_behalls_nar_filnamnet_inte_namner_nagon_kassa():
+    """Fyra av tjugofyra filer i en körning hette "Årsredovisning
+    2025(nnnnnn)" och fick alla taggen "2025". I en flätad logg gick de inte
+    att skilja åt — precis det märkningen fanns till för."""
+    filer = [
+        "Årsredovisning 2025(172140) (0).pdf",
+        "Årsredovisning 2025(172422) (0).pdf",
+        "Årsredovisning 2025(173056) (0).pdf",
+        "Årsredovisning 2025(175139) (0).pdf",
+    ]
+    taggar = [log_context.shorten(f) for f in filer]
+
+    assert len(set(taggar)) == len(filer), "taggarna måste gå att skilja åt"
+    assert taggar[0] == "2025 172140"
+
+
+def test_arendenumret_tas_bort_nar_kassan_framgar():
+    """Numret är skräp så länge filnamnet säger något annat."""
+    assert log_context.shorten(
+        "Akademikernas Årsredovisning 2025(173007) (0).pdf"
+    ) == "Akademikernas 2025"

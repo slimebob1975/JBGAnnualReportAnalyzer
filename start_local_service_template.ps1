@@ -1,3 +1,11 @@
+param(
+    # auto: anvand kortet om det finns och torch ar byggd for det
+    # on:   installera CUDA-bygget aven om nvidia-smi inte hittas
+    # off:  anvand processorn, oavsett vad maskinen har
+    [ValidateSet('auto', 'on', 'off')]
+    [string]$Gpu = 'auto'
+)
+
 # ===================== CONFIG (edit these) ==================================
 # Base folders
 $TempDir   = 'C:\...'
@@ -57,6 +65,24 @@ if (-not (Test-Path $Py)) {
 Invoke-InDir -Path $DevRoot -ScriptBlock {
     git.exe pull
     & $Pip install -r $VenvRequirements
+}
+
+# ===================== TORCH: PROCESSOR ELLER GRAFIKKORT ====================
+# Logiken ligger i en egen fil av samma skal som OCR-uppsattningen nedan: den
+# har mallen kopieras och fylls i lokalt, sa en rattelse har skulle annars bara
+# na mallen och aldrig din arbetskopia.
+#
+# Maste ligga EFTER "pip install -r requirements.txt". Den filen pinnar
+# processorbygget, sa ett CUDA-bygge som installeras fore skrivs over igen.
+#
+# Kan ocksa koras fristaende:
+#     .\scripts\Ensure-TorchBuild.ps1 -Py <venv-python> -DevRoot <projektrot>
+
+$TorchSetup = Join-Path $DevRoot 'scripts\Ensure-TorchBuild.ps1'
+if (Test-Path $TorchSetup) {
+    . $TorchSetup -Py $Py -DevRoot $DevRoot -Gpu $Gpu
+} else {
+    Write-Host "Hittade inte $TorchSetup - hoppar over torch-kontrollen." -ForegroundColor Yellow
 }
 
 # NOTE: an unconditional "pip install --upgrade uvicorn[standard]" used to sit

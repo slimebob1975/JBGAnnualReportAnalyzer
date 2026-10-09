@@ -153,6 +153,7 @@ att tjänsten ska fungera.
 | `JBG_LOG_LEVEL` | `INFO` | Loggnivå. `DEBUG` skriver ut fullständig dokumenttext och modellsvar, vilket innebär personuppgifter på disk. |
 | `JBG_LOG_RETENTION_DAYS` | `14` | Loggfiler äldre än så tas bort vid start. De fem senaste sparas alltid. |
 | `JBG_JOB_DIR` | systemets temp-katalog | Var jobbens arbetskataloger skapas. |
+| `JBG_USE_GPU` | `1` | `0` kör NER-modellen på processorn även när ett kort finns. Startskriptets `-Gpu off` sätter den. |
 | `JBG_MAX_WORKERS` | `16` | Antal dokument som behandlas samtidigt. Maskering och OCR körs en i taget oavsett. |
 | `JBG_JOB_TTL_SECONDS` | `3600` | Hur länge ett jobbs filer ligger kvar efter senaste livstecken. |
 | `JBG_SWEEP_INTERVAL_SECONDS` | `300` | Hur ofta utgångna jobb städas bort. |
@@ -616,7 +617,23 @@ parallella maskerare gav samma genomströmning i alla tre fallen, och tiden per
 dokument steg från 27 till 63 till 93 sekunder. Arbetet är processorbundet, och
 en modell med tolv trådar mättar redan processorn.
 
-Finns ett grafikkort används det i stället, och loggen säger vilket. Texten
+Finns ett grafikkort används det i stället, och loggen säger vilket. Det
+kräver att torch är byggd för CUDA: PyPI:s hjul för Windows är
+processorbundna, så `requirements-gpu.txt` installeras ovanpå och *efter*
+`requirements.txt`. Startskriptet gör det av sig själv när `nvidia-smi` finns
+och bygget är processorbundet. Logiken ligger i
+`scripts\Ensure-TorchBuild.ps1` och kan köras fristående — startskriptet är en
+mall som kopieras lokalt, så en rättelse i själva mallen når aldrig en
+befintlig arbetskopia. Flaggan `-Gpu` styr det: `auto` är förvalet,
+`on` installerar CUDA-bygget även när `nvidia-smi` inte hittas, och `off` kör
+på processorn utan att avinstallera något — det senare för att kunna jämföra
+de två utan att vänta på en ominstallation.
+
+Ordningen är inte en detalj. Startskriptet kör `pip install -r
+requirements.txt` vid varje start, så ett CUDA-bygge som installerats för hand
+byts tillbaka mot processorbygget nästa gång tjänsten startas — sonden såg
+`cuda:0`, tjänsten skrev "NER-modellen körs på processorn", och skillnaden var
+en omstart. Texten
 skickas i satser om sexton bitar — ett dokument på 45 000 tecken blir annars
 omkring nittio separata anrop, vilket är där ett kort annars skulle gå på
 tomgång. Det sätter golvet för hur kort en körning kan bli: i den

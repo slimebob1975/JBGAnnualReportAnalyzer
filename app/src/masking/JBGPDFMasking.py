@@ -127,6 +127,12 @@ def _select_device() -> int:
     maskin utan kort, så valet görs här och sägs ut i loggen - annars är det
     svårt att se varför en körning plötsligt tar en femtedel så lång tid.
     """
+    if os.getenv("JBG_USE_GPU", "1") == "0":
+        # Avstangt med flagga. Finns for att kunna jamfora kort och processor
+        # utan att installera om torch, vilket tar ett par GB och nagra
+        # minuter.
+        logger.info("NER-modellen körs på processorn (JBG_USE_GPU=0).")
+        return -1
     try:
         import torch
 

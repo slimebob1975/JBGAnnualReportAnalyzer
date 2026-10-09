@@ -482,3 +482,26 @@ def test_processorn_valjs_nar_inget_kort_finns(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "torch", FalskTorch)
     assert masking._select_device() == -1
+
+
+def test_flaggan_stanger_av_kortet(monkeypatch):
+    """Finns för att kunna jämföra kort och processor utan att installera om
+    torch, vilket tar ett par GB och några minuter."""
+    import app.src.masking.JBGPDFMasking as masking
+
+    class FalskTorch:
+        class cuda:
+            @staticmethod
+            def is_available():
+                return True
+
+            @staticmethod
+            def get_device_name(index):
+                return "NVIDIA RTX 6000"
+
+    monkeypatch.setitem(sys.modules, "torch", FalskTorch)
+    monkeypatch.setenv("JBG_USE_GPU", "0")
+    assert masking._select_device() == -1
+
+    monkeypatch.setenv("JBG_USE_GPU", "1")
+    assert masking._select_device() == 0

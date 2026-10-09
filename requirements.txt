@@ -28,6 +28,15 @@ openpyxl==3.1.5
 # followed by NameError: name 'torch' is not defined, at the first masking call.
 # Drop both lines, and set use_masking=no, for a slim deployment (~2 GB less).
 transformers==4.57.1
+# Den här bygget av torch är processorbundet. På Windows är PyPI:s hjul alltid
+# det, och ett grafikkort används inte oavsett vad maskinen har.
+#
+# Finns ett kort: installera i stället CUDA-bygget med requirements-gpu.txt.
+# Gör det EFTER den här filen, eftersom startskriptet kör
+# "pip install -r requirements.txt" vid varje start och annars installerar
+# processorbygget ovanpå igen - vilket är precis vad som hände: sonden såg
+# cuda:0, tjänsten skrev "NER-modellen körs på processorn", och skillnaden var
+# en omstart.
 torch==2.14.0
 
 # --- optional: OCR for scanned reports --------------------------------------

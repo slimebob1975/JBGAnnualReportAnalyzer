@@ -23,9 +23,16 @@ from contextvars import ContextVar
 # Ärendenummer, kopienummer och filändelse säger ingenting om vilket dokument
 # raden gäller, och står på varenda rad. "Alfa-kassans årsredovisning 2025
 # signed(173301) (0).pdf" blir "Alfa-kassans årsred…".
+CASE_NUMBER = re.compile(r"\((\d{5,})\)")
 NOISE = re.compile(
     r"\(\d{5,}\)|\(\d\)|\.pdf$|_ocr(_masked)?|_masked", re.IGNORECASE
 )
+# Ärendenumret är skräp så länge filnamnet säger något annat. Säger det inte
+# det är numret det enda som skiljer dokumenten åt: fyra av tjugofyra filer i
+# en körning hette "Årsredovisning 2025(nnnnnn)" och fick alla taggen "2025",
+# vilket gjorde dem omöjliga att skilja på i en flätad logg - precis det
+# märkningen fanns till för.
+MIN_LETTERS = 3
 # "Årsredovisning" står i nästan varje filnamn och skiljer inget från något.
 # Tas det bort ryms kassans namn även när det står sist: "Årsredovisning 2024
 # Lärarnas a-kassa" blir "2024 Lärarnas a-kas…" i stället för "Årsredovisning
@@ -60,8 +67,12 @@ def shorten(name: str) -> str:
     Hela namnet stod på varje rad, och fyrtio av dess femtiofyra tecken var
     desamma varje gång. Det som skiljer dokumenten åt står först.
     """
+    case = CASE_NUMBER.search(name or "")
     trimmed = SEPARATORS.sub(" ", NOISE.sub(" ", name or ""))
     trimmed = SEPARATORS.sub(" ", GENERIC.sub(" ", trimmed)).strip(" _-")
+    if sum(char.isalpha() for char in trimmed) < MIN_LETTERS and case:
+        # Inget namn att gå på. Då är ärendenumret bättre än ingenting.
+        trimmed = f"{trimmed} {case.group(1)}".strip()
     if len(trimmed) <= MAX_TAG_LENGTH:
         return trimmed
     return trimmed[:MAX_TAG_LENGTH - 1].rstrip() + "\u2026"
