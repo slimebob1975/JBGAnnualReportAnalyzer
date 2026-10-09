@@ -626,7 +626,9 @@ och bygget är processorbundet. Logiken ligger i
 mall som kopieras lokalt, så en rättelse i själva mallen når aldrig en
 befintlig arbetskopia. Flaggan `-Gpu` styr det: `auto` är förvalet,
 `on` installerar CUDA-bygget även när `nvidia-smi` inte hittas, och `off` kör
-på processorn utan att avinstallera något — det senare för att kunna jämföra
+på processorn utan att avinstallera något. `-CudaIndex cu126` tvingar ett
+visst index — normalt onödigt, eftersom versionen härleds ur `nvidia-smi`, men
+användbart när installationen ska vara förutsägbar i stället för upptäckt — det senare för att kunna jämföra
 de två utan att vänta på en ominstallation.
 
 Ordningen är inte en detalj. Startskriptet kör `pip install -r

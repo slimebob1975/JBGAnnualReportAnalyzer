@@ -141,6 +141,21 @@ def _select_device() -> int:
                 f"NER-modellen körs på {torch.cuda.get_device_name(0)}."
             )
             return 0
+        if torch.version.cuda:
+            # Ratt bygge men kortet gar inte att na. Loggen sa tidigare bara
+            # "körs på processorn", vilket ser likadant ut som ett
+            # processorbygge och kostade en eftermiddags letande.
+            logger.info(
+                f"NER-modellen körs på processorn: torch är byggd för CUDA "
+                f"{torch.version.cuda} men inget kort går att nå. "
+                "Kontrollera drivrutinerna — nvidia-smi visar vilken "
+                "CUDA-version de stöder."
+            )
+            return -1
+        logger.info(
+            "NER-modellen körs på processorn: torch är byggd utan CUDA-stöd."
+        )
+        return -1
     except Exception as ex:
         logger.debug(f"Kunde inte fråga efter grafikkort: {ex}")
     logger.info("NER-modellen körs på processorn.")

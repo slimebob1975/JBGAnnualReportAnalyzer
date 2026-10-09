@@ -3,7 +3,12 @@ param(
     # on:   installera CUDA-bygget aven om nvidia-smi inte hittas
     # off:  anvand processorn, oavsett vad maskinen har
     [ValidateSet('auto', 'on', 'off')]
-    [string]$Gpu = 'auto'
+    [string]$Gpu = 'auto',
+
+    # Tvinga ett visst CUDA-index, t.ex. 'cu126'. Normalt onodigt: versionen
+    # harleds ur nvidia-smi. Finns for en driftsattning dar installationen
+    # ska vara forutsagbar i stallet for upptackt.
+    [string]$CudaIndex = ''
 )
 
 # ===================== CONFIG (edit these) ==================================
@@ -80,7 +85,7 @@ Invoke-InDir -Path $DevRoot -ScriptBlock {
 
 $TorchSetup = Join-Path $DevRoot 'scripts\Ensure-TorchBuild.ps1'
 if (Test-Path $TorchSetup) {
-    . $TorchSetup -Py $Py -DevRoot $DevRoot -Gpu $Gpu
+    . $TorchSetup -Py $Py -DevRoot $DevRoot -Gpu $Gpu -CudaIndex $CudaIndex
 } else {
     Write-Host "Hittade inte $TorchSetup - hoppar over torch-kontrollen." -ForegroundColor Yellow
 }

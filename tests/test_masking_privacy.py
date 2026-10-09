@@ -505,3 +505,44 @@ def test_flaggan_stanger_av_kortet(monkeypatch):
 
     monkeypatch.setenv("JBG_USE_GPU", "1")
     assert masking._select_device() == 0
+
+
+def test_loggen_skiljer_pa_processorbygge_och_onabart_kort(monkeypatch, caplog):
+    """Loggen sa tidigare bara "körs på processorn" i båda fallen, vilket ser
+    likadant ut och kostade en eftermiddags letande: ett cu130-hjul
+    installerades utan knot på en maskin vars drivrutiner stannade vid 12.x."""
+    import logging
+
+    import app.src.masking.JBGPDFMasking as masking
+
+    class ByggdForCuda:
+        class version:
+            cuda = "13.0"
+
+        class cuda:
+            @staticmethod
+            def is_available():
+                return False
+
+    monkeypatch.setitem(sys.modules, "torch", ByggdForCuda)
+    monkeypatch.delenv("JBG_USE_GPU", raising=False)
+    with caplog.at_level(logging.INFO):
+        assert masking._select_device() == -1
+    assert "byggd för CUDA 13.0" in caplog.text
+    assert "drivrutinerna" in caplog.text
+
+    caplog.clear()
+
+    class UtanCuda:
+        class version:
+            cuda = None
+
+        class cuda:
+            @staticmethod
+            def is_available():
+                return False
+
+    monkeypatch.setitem(sys.modules, "torch", UtanCuda)
+    with caplog.at_level(logging.INFO):
+        assert masking._select_device() == -1
+    assert "utan CUDA-stöd" in caplog.text

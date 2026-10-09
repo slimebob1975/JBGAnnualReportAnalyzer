@@ -1,22 +1,21 @@
-# Torch byggd för CUDA, för maskiner med ett grafikkort.
+# CUDA-bygget av torch installeras inte harifran, utan av
+# scripts\Ensure-TorchBuild.ps1. Filen finns kvar som dokumentation av vad
+# som behovs och varfor.
 #
-# Installeras OVANPÅ requirements.txt och efter den:
+# Tva saker gor det har krangligare an en vanlig pinne:
 #
-#     pip install -r requirements.txt
-#     pip install -r requirements-gpu.txt
+# 1. Processor- och CUDA-hjulen har samma versionsnummer. pip ser darfor
+#    "torch==X already satisfied" och hamtar ingenting, hur ratt indexet an
+#    ar. Det kraver --force-reinstall.
 #
-# Startskriptet gör det i den ordningen av sig självt när det hittar ett kort.
+# 2. Vilket CUDA-index som har ett hjul for en viss torch-version gar inte
+#    att rakna ut. cu124 visade sig bara ha torch 2.6.0 medan pinnen var
+#    2.14.0. Skriptet provar darfor flera index, nyast forst.
 #
-# Varför en egen fil: PyPI:s torch-hjul för Windows är processorbundna, och
-# CUDA-bygget ligger på ett eget index. Att peka om indexet i requirements.txt
-# skulle tvinga på varje maskin ett 2,5 GB stort hjul som inte går att använda
-# utan drivrutiner.
+# Versionen tas ur requirements.txt, sa att de tva inte kan glida isar.
+# Manuellt motsvarar det:
 #
-# Vinsten är måttlig men verklig: maskeringens NER-steg gick från omkring fem
-# sekunder till 1,2 per dokument. Resten av maskeringen är pdf-arbete som
-# kortet inte rör.
+#     pip install --force-reinstall --no-deps \
+#         --index-url https://download.pytorch.org/whl/cu128 torch==2.14.0
 #
-# Byt cu124 mot den version drivrutinerna stöder. "nvidia-smi" visar vilken
-# CUDA-version kortet klarar.
---index-url https://download.pytorch.org/whl/cu124
-torch==2.14.0
+# https://download.pytorch.org/whl/torch visar vilka hjul som finns.
