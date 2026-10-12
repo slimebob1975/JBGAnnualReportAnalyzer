@@ -18,33 +18,37 @@ långt. Det riktiga provet görs under våren 2026 mot en helt ny uppsättning
 årsredovisningar. Tre frågor hänger på det provet och kan inte avgöras före
 det.
 
-### A1. Mät träffsäkerheten mot det nya materialet
+### A1. Träffsäkerheten — första mätningen finns
 
-**Läget.** Alla kvalitetsmått verktyget har är inre konsistens: aritmetiska
-identiteter, omläsning av samma dokument, jämförelse mellan kassor. Ingenting
-mäter om siffrorna är *rätt*. Ett värde kan stämma aritmetiskt, ge samma
-resultat vid två avläsningar, märkas som `explicit` och ändå vara hämtat från
-fel rad.
+**Vad som mättes.** Verksamheten jämförde körningen den 9 oktober 2026 mot
+sitt manuella underlag: 269 av 278 jämförbara uppgifter stämde, 96,8 procent.
+89 uppgifter gick inte att jämföra rättvist, främst de beräknade nyckeltalen
+och Alfas uppdelning på anslutna och icke anslutna.
 
-Stickproven på 2025 års material är ett gott tecken men inte ett mått: ingen
-vet hur många celler som kontrollerades, eller om de som kontrollerades var
-representativa för dem som inte var det.
+**Vad de nio avvikelserna visade sig vara.** Två var fel i det manuella
+underlaget, som verktyget alltså hittade: Elektrikernas årets resultat och
+Livsmedelsarbetarnas administrationskostnad. Båda är rättade hos
+verksamheten. Fyra av de övriga följer av tre verkliga fel i avläsningen:
 
-**Vad våren 2026 bör ge.** Kör det nya materialet och jämför mot det som matas
-in för hand samma säsong, medan båda finns. Rapportera träffsäkerhet per
-nyckeltalsgrupp, per säkerhetsnivå (`explicit` / `härledd` / `osäker`) och per
-om cellen var anmärkt eller inte.
+| Kassa | Uppgift | Vad som hände |
+| --- | --- | --- |
+| Pappersindustriarbetarnas | Årets resultat | Den skeva skanningen. Känd sedan tidigare, se C1. |
+| GS | Antal anställda | Noll kvinnor och noll män, med 17 920 tkr i personalkostnad. Fångas sedan 0096. |
+| Journalisternas | Antal anställda | Fel med en person. Ingen kontroll kan se det. |
 
-**Vad det svarar på.** Betyder `explicit` någonting? Är `explicit` och oanmärkt
-rätt i 99,4 procent av fallen kan man granska de dryga nittio anmärkningarna
-och lita på resten — och säga det med belägg. Har `explicit` och `osäker` samma
-träffsäkerhet är färgkodningen dekoration och bör beskrivas som sådan i
-Läsanvisningen.
+Tre oberoende fel på 278 uppgifter, alltså, och två fynd i verksamhetens eget
+underlag. Det är det första externa måttet projektet haft.
 
-**Att förbereda i förväg.** Jämförelsemodulen bör finnas klar när materialet
-kommer, inte byggas medan det ligger på bordet. Formatet på de manuellt
-inmatade siffrorna avgör hur den ska se ut, så fråga efter ett exempel i god
-tid.
+**Vad mätningen inte svarar på.** Om `explicit` betyder något. De 2 367
+uppgifter som märkts explicit jämfördes inte mot något annat än de 278, och
+märkningen varierade med femton enheter mellan två körningar av samma
+dokument. Frågan kvarstår till våren: är explicit och oanmärkt rätt oftare än
+övriga?
+
+**Kvar att göra inför våren 2026.** Samma jämförelse mot det nya materialet,
+men uppdelad: per nyckeltalsgrupp, per säkerhetsnivå, och per om cellen var
+anmärkt eller inte. Be om ett exempel på hur de manuella siffrorna ser ut i
+god tid, så att jämförelsen är byggd när materialet kommer.
 
 ### A2. Vem äger anmärkningarna
 

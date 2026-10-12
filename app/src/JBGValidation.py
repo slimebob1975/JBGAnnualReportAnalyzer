@@ -63,6 +63,46 @@ DECLARED_UNITS_KEY = "_redovisningsenhet"
 # ovanligt stor post, det är en annan enhet. Alfa-kassans största post är
 # knappt hundra gånger dess median, så marginalen är god.
 DECLARED_UNIT_FACTOR = 1000
+ZERO_RULE = "Noll där noll inte är rimligt"
+# Nyckeltal som inte kan vara noll i en kassa som bedriver verksamhet, och
+# vilket annat värde som visar att verksamheten bedrivs. GS a-kassa
+# redovisade noll anställda, både kvinnor och män, samtidigt som
+# personalkostnaden var 17 920 tkr. Granskaren såg det; ingen kontroll gjorde
+# det. Av 24 kassor var GS den enda - alla andra hade rimliga tal.
+#
+# Paren står här och inte i nyckeltalsdefinitionerna därför att villkoret
+# gäller två nyckeltal tillsammans: en ensam nolla bland kvinnor eller män är
+# fullt möjlig i en liten kassa, men inte båda när det finns löner att betala.
+IMPLAUSIBLE_ZEROS = (
+    {
+        "metrics": (
+            "Not till Personalkostnader: Medelantal anställda kvinnor",
+            "Not till Personalkostnader: Medelantal anställda män",
+        ),
+        "when": "Personalkostnader",
+        "message": (
+            "Kassan redovisas ha noll anställda, varken kvinnor eller män, "
+            "samtidigt som personalkostnaden är {when}. Uppgiften är "
+            "sannolikt inte inläst."
+        ),
+    },
+)
+
+PEER_SCALE_RULE = "Beloppen avviker i storleksordning från övriga kassor"
+# Kassorna är olika stora, men inte godtyckligt olika. Mätt på 106 nyckeltal
+# över 24 kassor var den största kassans värde tio gånger medianen i median,
+# och nittionionde percentilen 48. En tröskel vid hundra har alltså god
+# marginal till verklig spridning.
+PEER_SCALE_FACTOR = 100
+# Under så här många jämförbara kassor säger medianen för lite.
+MIN_PEERS_FOR_SCALE = 8
+# Är merparten av en kassas belopp ur skala är det inte enskilda poster som
+# är fel, utan hela redovisningen som lästs i fel enhet. Sekos årsredovisning
+# kom in i kronor fast dokumentet anger tusental, och 71 av 78 belopp låg då
+# omkring tusen gånger över de andra kassornas. En anmärkning om det är
+# begriplig; sjuttioen är det inte.
+WHOLE_FUND_SHARE = 0.5
+MIN_METRICS_FOR_WHOLE_FUND = 10
 RATIO_RULE = "Nyckeltal utanför rimligt intervall"
 RATIO_FILENAME = "nyckeltalsberakningar.json"
 # Reports state amounts in tkr; a figure lifted from running text is often in
@@ -550,6 +590,8 @@ def validate(result: dict, metrics_path=None) -> list[Finding]:
                 )
 
     findings.extend(check_unit_consistency(result, metrics_path))
+    findings.extend(check_scale_against_peers(result, metrics_path))
+    findings.extend(check_implausible_zeros(result))
     findings.extend(
         check_declared_unit(result, metrics_path, (result or {}).get(DECLARED_UNITS_KEY))
     )
@@ -933,4 +975,137 @@ def check_declared_unit(result: dict, metrics_path=None, declared_units=None
                         metrics=[name],
                     )
                 )
+    return findings
+
+
+def check_scale_against_peers(result: dict, metrics_path=None) -> list[Finding]:
+    """Belopp som ligger i en annan storleksordning än andra kassors.
+
+    De två andra enhetskontrollerna har var sin blinda fläck. Jämförelsen
+    inom en kassa ser bara en post som sticker ut mot kassans egna övriga,
+    och är därmed blind när hela redovisningen är skalad. Jämförelsen mellan
+    kassor omfattar bara bilaga 2:s fyra belopp.
+
+    Sekos årsredovisning passerade båda: varje belopp i räkningarna var
+    omkring tusen gånger de andra kassornas, dokumentet angav tusental, och
+    ingenting sa ifrån. `Summa tillgångar` stod som 138 914 000 mot en median
+    på 129 682.
+
+    Tröskeln är mätt. Största kassan genom medianen var tio gånger i median
+    och 48 vid nittionionde percentilen, så hundra har god marginal. På hela
+    materialet gav den 72 träffar: 71 från Seko och en från Småföretagarnas
+    finansieringsavgift, som var ett känt fel. Inga falska.
+    """
+    statistics_metrics = (
+        normalisation.amount_metrics(metrics_path) if metrics_path else set()
+    )
+
+    # Nyckeltal -> kassa -> belopp, per år.
+    columns: dict[str, dict[str, dict[str, float]]] = {}
+    for fund, years in (result or {}).items():
+        if fund.startswith("_") or not isinstance(years, dict):
+            continue
+        for year, metrics in years.items():
+            if not isinstance(metrics, dict):
+                continue
+            for name, entry in metrics.items():
+                if name in statistics_metrics:
+                    continue
+                value = _numeric(entry)
+                if value:
+                    columns.setdefault(str(year), {}).setdefault(name, {})[fund] = value
+
+    findings: list[Finding] = []
+    for year, by_metric in sorted(columns.items()):
+        # Kassa -> de nyckeltal där den ligger ur skala.
+        offenders: dict[str, list[tuple[str, float, float]]] = {}
+        seen: dict[str, int] = {}
+
+        for name, by_fund in sorted(by_metric.items()):
+            if len(by_fund) < MIN_PEERS_FOR_SCALE:
+                continue
+            magnitudes = sorted(abs(value) for value in by_fund.values())
+            median = magnitudes[len(magnitudes) // 2]
+            if not median:
+                continue
+            for fund, value in by_fund.items():
+                seen[fund] = seen.get(fund, 0) + 1
+                if abs(value) / median >= PEER_SCALE_FACTOR:
+                    offenders.setdefault(fund, []).append((name, value, median))
+
+        for fund, items in sorted(offenders.items()):
+            share = len(items) / seen.get(fund, 1)
+            if (len(items) >= MIN_METRICS_FOR_WHOLE_FUND
+                    and share >= WHOLE_FUND_SHARE):
+                typical = sorted(abs(v) / m for _, v, m in items)
+                findings.append(Finding(
+                    fund=fund,
+                    year=year,
+                    rule=PEER_SCALE_RULE,
+                    message=(
+                        f"{len(items)} av {seen[fund]} belopp ligger omkring "
+                        f"{_fmt(typical[len(typical) // 2])} gånger över "
+                        "övriga kassors. Hela årsredovisningen är sannolikt "
+                        "inläst i fel enhet, inte enskilda poster. "
+                        "Kontrollera mot källdokumentet innan siffrorna "
+                        "används eller jämförs."
+                    ),
+                    severity=SEVERITY_ERROR,
+                    metrics=[name for name, _, _ in items],
+                ))
+                continue
+
+            for name, value, median in items:
+                findings.append(Finding(
+                    fund=fund,
+                    year=year,
+                    rule=PEER_SCALE_RULE,
+                    message=(
+                        f"{name} är {_fmt(value)}, omkring "
+                        f"{_fmt(abs(value) / median)} gånger övriga kassors "
+                        f"median på {_fmt(median)}. Kontrollera enhet och "
+                        "avläsning mot källdokumentet."
+                    ),
+                    severity=SEVERITY_WARNING,
+                    metrics=[name],
+                ))
+    return findings
+
+
+def check_implausible_zeros(result: dict) -> list[Finding]:
+    """Noll där noll inte kan stämma.
+
+    En nolla ser ut som ett värde och behandlas som ett: den passerar
+    aritmetiken, färgas som explicit och räknas med i jämförelser. Men noll
+    anställda i en kassa som betalar löner är inte ett litet tal, det är en
+    uppgift som inte lästs in.
+
+    Villkoret gäller nyckeltal i par, eftersom en ensam nolla ofta är sann.
+    Säljarnas har två kvinnor och en man; en kassa med noll kvinnor vore inte
+    konstigt. Noll av båda, med löner i böckerna, är det.
+    """
+    findings: list[Finding] = []
+    for fund, years in (result or {}).items():
+        if fund.startswith("_") or not isinstance(years, dict):
+            continue
+        for year, metrics in years.items():
+            if not isinstance(metrics, dict):
+                continue
+            for rule in IMPLAUSIBLE_ZEROS:
+                condition = _numeric(metrics.get(rule["when"]))
+                if not condition:
+                    continue
+                values = [_numeric(metrics.get(name)) for name in rule["metrics"]]
+                if any(value is None for value in values):
+                    continue
+                if any(value for value in values):
+                    continue
+                findings.append(Finding(
+                    fund=fund,
+                    year=str(year),
+                    rule=ZERO_RULE,
+                    message=rule["message"].format(when=_fmt(condition)),
+                    severity=SEVERITY_WARNING,
+                    metrics=list(rule["metrics"]),
+                ))
     return findings

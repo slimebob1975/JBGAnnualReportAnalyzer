@@ -24,7 +24,12 @@ from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
 
-NOT_STATED = "Framgår inte av årsredovisningen"
+# Formuleringen påstod tidigare "Framgår inte av årsredovisningen", vilket
+# säger mer än vi vet. Granskaren satte fingret på det: tomma celler kan lika
+# gärna betyda att modellen inte hittade uppgiften som att den saknas. För
+# Pappersindustriarbetarnas stod cellen tom trots att berättelsen diskuterar
+# varsel, framtida arbetsbelastning och branschrisker.
+NOT_STATED = "Ingen uppgift hittad"
 
 # Hur citatet förhåller sig till texten det påstås komma ur.
 QUOTE_VERIFIED = "återfunnet"
@@ -47,7 +52,12 @@ TOPICS = (
         "heading": "Förväntad framtida utveckling och arbetslöshetsnivå",
         "question": (
             "Vad säger kassan om den förväntade framtida utvecklingen och om "
-            "arbetslöshetsnivån nästkommande år?"
+            "arbetslöshetsnivån nästkommande år? Räkna hit allt som berör "
+            "det: varsel och uppsägningar, läget i branschen eller på "
+            "arbetsmarknaden, konjunktur och sysselsättning, väntad "
+            "ärendemängd eller arbetsbelastning, och medlemsutvecklingen. "
+            "Kassan behöver inte använda orden \"framtida utveckling\" för "
+            "att det ska räknas."
         ),
     },
     {
@@ -71,6 +81,13 @@ Regler som gäller utan undantag:
    sammanhängande mening eller del av mening, kopierad exakt.
 3. Finns inget stöd i texten för en fråga: sätt sammanfattningen till
    "{not_stated}", lämna citatet tomt och sidan till 0. Hitta inte på.
+   Leta dock ordentligt först. Kassorna skriver sällan under de rubriker
+   frågan använder, och det som efterfrågas står ofta utspritt i
+   berättelsen snarare än samlat under en egen rubrik.
+6. Sammanfatta det kassan faktiskt skriver, inte vad den borde ha skrivit.
+   Att beskriva osäkerhet om framtiden är inte samma sak som att lämna en
+   prognos; återge det som står och lägg inte till en bedömning av om det
+   räcker.
 4. Skriv på svenska, i löpande text, tre till fem meningar per sammanfattning.
 5. Texten är maskerad: namn på personer är borttagna. Nämn inte detta och
    försök inte gissa vilka de var."""

@@ -253,7 +253,7 @@ SUMMARIES = {"Livsmedelsarbetarnas arbetslöshetskassa": {
                   "sida": 3},
     "utveckling": {"sammanfattning": "Fortsatt hög arbetslöshet väntas.",
                    "citat": "förhållandevis hög arbetslöshet", "sida": 3},
-    "medelsforvaltning": {"sammanfattning": "Framgår inte av årsredovisningen",
+    "medelsforvaltning": {"sammanfattning": "Ingen uppgift hittad",
                           "citat": "", "sida": 0}}}
 
 
@@ -281,16 +281,18 @@ def test_citatet_star_bredvid_den_sammanfattning_det_stoder(tmp_path):
     assert rubriker[0] == "Kassa"
     assert rubriker[2] == "Citat som stöder"
     assert rubriker[3] == "Sida"
-    assert ws.cell(2, 2).value.startswith("Nytt regelverk")
-    assert ws.cell(2, 3).value.startswith("Nytt regelverk gällande")
+    # Rad 2 bär förbehållet om vad en tom cell betyder; kassorna börjar på 3.
+    assert "Ingen uppgift hittad" in ws.cell(2, 1).value
+    assert ws.cell(3, 2).value.startswith("Nytt regelverk")
+    assert ws.cell(3, 3).value.startswith("Nytt regelverk gällande")
 
 
 def test_tom_uppgift_sager_att_den_saknas(tmp_path):
     """Kravet på medelsförvaltning väntas först nästa år. Tomma celler är rätt
     utfall — men de ska vara tomma av rätt skäl."""
     ws = _export_with_summaries(tmp_path, SUMMARIES)["Förvaltningsberättelse"]
-    assert ws.cell(2, 8).value == "Framgår inte av årsredovisningen"
-    assert not ws.cell(2, 9).value
+    assert ws.cell(3, 8).value == "Ingen uppgift hittad"
+    assert not ws.cell(3, 9).value
 
 
 def test_ingen_flik_nar_inga_sammanfattningar_finns(tmp_path):
@@ -300,7 +302,7 @@ def test_ingen_flik_nar_inga_sammanfattningar_finns(tmp_path):
 
 def test_texten_radbryts_sa_att_den_gar_att_lasa(tmp_path):
     ws = _export_with_summaries(tmp_path, SUMMARIES)["Förvaltningsberättelse"]
-    assert ws.cell(2, 2).alignment.wrap_text
+    assert ws.cell(3, 2).alignment.wrap_text
     assert ws.column_dimensions["B"].width > 40
 
 
@@ -315,12 +317,12 @@ def test_ett_ungefarligt_citat_markeras_i_stallet_for_att_strykas(tmp_path):
         "utveckling": {"sammanfattning": "Hög arbetslöshet väntas.",
                        "citat": "förhållandevis hög arbetslöshet", "sida": 3,
                        "citat_kontroll": "återfunnet", "citat_stod": 1.0},
-        "medelsforvaltning": {"sammanfattning": "Framgår inte av årsredovisningen",
+        "medelsforvaltning": {"sammanfattning": "Ingen uppgift hittad",
                               "citat": "", "sida": 0,
                               "citat_kontroll": "saknas", "citat_stod": 0.0}}}
     ws = _export_with_summaries(tmp_path, summaries)["Förvaltningsberättelse"]
 
-    ungefarligt, aterfunnet = ws.cell(2, 3), ws.cell(2, 6)
+    ungefarligt, aterfunnet = ws.cell(3, 3), ws.cell(3, 6)
     assert ungefarligt.value, "citatet ska finnas kvar, inte strykas"
     assert ungefarligt.fill.start_color.rgb[-6:] == JsonConverter.FLAGGED_FILL
     assert "72" in ungefarligt.comment.text

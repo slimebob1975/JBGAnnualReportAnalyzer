@@ -1101,3 +1101,98 @@ def test_fler_domar_an_overklaganden_ar_inget_fel():
     hade 75 domar mot 43 inkomna överklaganden 2025."""
     result = _fund(**{"Antal domar": 75, "Antal överklagan": 43})
     assert validation.validate(result, KEY_DEFS) == []
+
+
+# ------------------------- hela kassan i fel enhet, sedd mot de andra
+def _tjugofyra_kassor(seko_factor=1):
+    """Tjugofyra kassor med rimliga belopp, varav en kan skalas."""
+    skala = {"Liten": 0.2, "Mellan": 1.0, "Stor": 4.0}
+    poster = {"Summa tillgångar": 130000, "Medlemsavgifter": 167000,
+              "Personalkostnader": 30000, "Summa eget kapital": 72000,
+              "Finansieringsavgift": 109000, "Årets resultat": 4200,
+              "Kassa och bank": 22000, "Summa skulder": 23000,
+              "Övriga intäkter": 400, "Summa intäkter": 170000}
+    result = {}
+    for index in range(12):
+        for namn, faktor in skala.items():
+            fond = f"{namn} {index}"
+            result[fond] = {"2025": {
+                k: {"värde": round(v * faktor)} for k, v in poster.items()}}
+    result["Sekos"] = {"2025": {
+        k: {"värde": round(v * seko_factor)} for k, v in poster.items()}}
+    return result
+
+
+def test_en_kassa_i_fel_enhet_ger_en_anmarkning_inte_sjuttio():
+    """Sekos årsredovisning kom in i kronor fast dokumentet anger tusental.
+    71 av 78 belopp låg omkring tusen gånger över de andras. En anmärkning om
+    det är begriplig; sjuttioen är det inte."""
+    findings = validation.check_scale_against_peers(_tjugofyra_kassor(seko_factor=1000))
+
+    assert len(findings) == 1
+    assert findings[0].fund == "Sekos"
+    assert findings[0].severity == validation.SEVERITY_ERROR
+    assert "Hela årsredovisningen" in findings[0].message
+
+
+def test_en_ensam_post_i_fel_enhet_anmarks_for_sig():
+    """Småföretagarnas finansieringsavgift, 117 308 746 mot en median på
+    123 401."""
+    result = _tjugofyra_kassor()
+    result["Småföretagarnas"] = {"2025": {
+        "Finansieringsavgift": {"värde": 109000 * 1000},
+        "Summa tillgångar": {"värde": 130000},
+        "Medlemsavgifter": {"värde": 167000}}}
+    findings = validation.check_scale_against_peers(result)
+
+    assert [f.metrics for f in findings] == [["Finansieringsavgift"]]
+    assert findings[0].severity == validation.SEVERITY_WARNING
+
+
+def test_kassornas_verkliga_storleksskillnader_anmarks_inte():
+    """Största kassan genom medianen var tio gånger i median och 48 vid
+    nittionionde percentilen. Tröskeln vid hundra har marginal."""
+    assert validation.check_scale_against_peers(_tjugofyra_kassor()) == []
+
+
+def test_for_fa_kassor_ger_ingen_jamforelse():
+    result = {f"K{i}": {"2025": {"Summa tillgångar": {"värde": 100}}}
+              for i in range(4)}
+    result["Udda"] = {"2025": {"Summa tillgångar": {"värde": 100000}}}
+    assert validation.check_scale_against_peers(result) == []
+
+
+# ------------------------------------- noll där noll inte är rimligt
+def test_noll_anstallda_med_loner_anmarks():
+    """GS a-kassa redovisade noll anställda, både kvinnor och män, samtidigt
+    som personalkostnaden var 17 920 tkr."""
+    result = _fund(**{"Personalkostnader": 17920,
+                      "Not till Personalkostnader: Medelantal anställda kvinnor": 0,
+                      "Not till Personalkostnader: Medelantal anställda män": 0})
+    findings = validation.check_implausible_zeros(result)
+
+    assert len(findings) == 1
+    assert "noll anställda" in findings[0].message
+    assert "17\u00a0920" in findings[0].message
+
+
+def test_en_ensam_nolla_ar_inget_fel():
+    """En kassa med noll kvinnor vore inte konstigt. Noll av båda, med löner
+    i böckerna, är det."""
+    result = _fund(**{"Personalkostnader": 3436,
+                      "Not till Personalkostnader: Medelantal anställda kvinnor": 0,
+                      "Not till Personalkostnader: Medelantal anställda män": 3})
+    assert validation.check_implausible_zeros(result) == []
+
+
+def test_utan_personalkostnad_gors_ingen_kontroll():
+    result = _fund(**{"Not till Personalkostnader: Medelantal anställda kvinnor": 0,
+                      "Not till Personalkostnader: Medelantal anställda män": 0})
+    assert validation.check_implausible_zeros(result) == []
+
+
+def test_saknade_uppgifter_ar_inte_nollor():
+    """En uppgift som inte lästs in alls är redan synlig som saknad."""
+    result = _fund(**{"Personalkostnader": 17920,
+                      "Not till Personalkostnader: Medelantal anställda kvinnor": 0})
+    assert validation.check_implausible_zeros(result) == []

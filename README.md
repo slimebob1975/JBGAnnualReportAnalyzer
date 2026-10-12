@@ -485,6 +485,35 @@ Intervallen är vida med avsikt. Över 24 kassor löpte kostnadstäckningen frå
 0,02 till 8,5 månader och kassalikviditeten från 0,28 till 10,3. Kontrollen
 ska fånga omöjligheter, inte kassor som är ovanliga.
 
+### Storleksordning mot övriga kassor
+
+Varje belopp jämförs också med samma belopp hos de andra kassorna. De två
+andra enhetskontrollerna har var sin blinda fläck: jämförelsen inom en kassa
+ser bara en post som sticker ut mot kassans egna övriga, och är därmed blind
+när hela redovisningen är skalad, medan jämförelsen mellan kassor bara
+omfattade bilaga 2:s fyra belopp.
+
+Sekos årsredovisning passerade båda. Varje belopp i räkningarna var omkring
+tusen gånger de andra kassornas, dokumentet angav tusental, och ingenting sa
+ifrån — `Summa tillgångar` stod som 138 914 000 mot en median på 129 682.
+
+Tröskeln är mätt: största kassan genom medianen var tio gånger i median och 48
+vid nittionionde percentilen, så hundra har god marginal. Är merparten av en
+kassas belopp ur skala rapporteras det som *en* anmärkning om hela
+redovisningen, inte som en per post.
+
+### Noll där noll inte är rimligt
+
+En nolla ser ut som ett värde och behandlas som ett: den passerar aritmetiken,
+färgas som explicit och räknas med i jämförelser. Men noll anställda i en kassa
+som betalar löner är inte ett litet tal, det är en uppgift som inte lästs in.
+GS a-kassa redovisade noll anställda, både kvinnor och män, samtidigt som
+personalkostnaden var 17 920 tkr.
+
+Villkoret gäller nyckeltal i par, eftersom en ensam nolla ofta är sann: en
+kassa med noll kvinnor vore inte konstigt, noll av båda med löner i böckerna är
+det.
+
 ### Enheten dokumentet självt anger
 
 Årsredovisningslagen kräver att enheten framgår, och kassorna skriver den:

@@ -589,6 +589,13 @@ class JsonConverter:
             ws.cell(row=1, column=column).font = Font(bold=True)
         ws.freeze_panes = "B2"
 
+        ws.append([
+            "\"Ingen uppgift hittad\" betyder att ingen uppgift gick att "
+            "hitta — inte att kassan saknar den. Kontrollera mot "
+            "årsredovisningen innan frånvaron tolkas som ett påpekande."
+        ])
+        ws.cell(row=2, column=1).font = Font(italic=True)
+
         for fund in sorted(summaries, key=display_name):
             row = [display_name(fund)]
             for topic in management_report.TOPICS:
