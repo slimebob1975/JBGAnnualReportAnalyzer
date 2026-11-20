@@ -275,3 +275,101 @@ def test_excel_ar_forvalt_format(client):
         files={"file": ("a.pdf", b"%PDF-1.4", "application/pdf")},
     )
     assert svar.status_code != 422, "format borde ha ett förval på servern"
+
+
+# --------------------------------------- förvaltningsberättelse: placeringar
+def _summaries_payload(placement):
+    import json
+    from app.src import JBGManagementReport as mr
+
+    data = {
+        topic["key"]: {
+            "sammanfattning": mr.NOT_STATED,
+            "citat": "",
+            "sida": 0,
+        }
+        for topic in mr.TOPICS
+    }
+    data[mr.PLACEMENTS_KEY] = placement
+    return json.dumps(data, ensure_ascii=False)
+
+
+def test_placeringsuppgift_far_stodcitat_utan_extra_api_anrop():
+    from app.src import JBGManagementReport as mr
+
+    sentence = "Kassans kortfristiga placeringar består av räntefonder."
+    text = (
+        "[Sida 3]\nFörvaltningsberättelse\n" + sentence + "\n"
+        + "Kassan bedriver verksamheten som planerat. " * 70
+        + "\nResultaträkning\nAndra värdepapper\n"
+    )
+    analyzer = _analyzer()
+    calls = []
+
+    def reply(*args, **kwargs):
+        calls.append(kwargs)
+        return _summaries_payload({
+            "sammanfattning": "Kassan placerar kortfristigt i räntefonder.",
+            "citat": sentence,
+            "sida": 3,
+        })
+
+    analyzer._make_openai_api_call = reply
+    summaries = analyzer._summarise_management_report(text)
+
+    assert len(calls) == 1
+    assert mr.PLACEMENTS_KEY in calls[0]["response_schema"]["schema"]["required"]
+    assert summaries[mr.PLACEMENTS_KEY]["sammanfattning"].startswith("Kassan placerar")
+    assert summaries[mr.PLACEMENTS_KEY]["citat_kontroll"] == mr.QUOTE_VERIFIED
+
+
+def test_placeringsfragan_kan_svara_namns_inte():
+    from app.src import JBGManagementReport as mr
+
+    text = (
+        "Förvaltningsberättelse\n"
+        + "Kassans medlemsutveckling är stabil. " * 75
+        + "\nResultaträkning\n"
+    )
+    analyzer = _analyzer()
+    analyzer._make_openai_api_call = lambda *a, **k: _summaries_payload({
+        "sammanfattning": mr.NOT_MENTIONED, "citat": "", "sida": 0
+    })
+    entry = analyzer._summarise_management_report(text)[mr.PLACEMENTS_KEY]
+    assert entry["sammanfattning"] == mr.NOT_MENTIONED
+    assert entry["citat_kontroll"] == mr.QUOTE_MISSING
+
+
+def test_noterna_faar_inte_ge_placeringsuppgift_nar_rubrik_saknas():
+    from app.src import JBGManagementReport as mr
+
+    note_sentence = "Kortfristiga finansiella placeringar är 300 kronor."
+    text = "Noter till balansräkningen\n" + note_sentence * 70
+    analyzer = _analyzer()
+    analyzer._make_openai_api_call = lambda *a, **k: _summaries_payload({
+        "sammanfattning": "Kassan äger finansiella placeringar.",
+        "citat": note_sentence,
+        "sida": 7,
+    })
+    entry = analyzer._summarise_management_report(text)[mr.PLACEMENTS_KEY]
+    assert entry["sammanfattning"] == mr.NOT_ASSESSABLE
+    assert not entry["citat"]
+    assert entry["citat_kontroll"] == mr.QUOTE_MISSING
+
+
+def test_pahittat_placeringscitat_markeras_som_icke_verifierbart():
+    from app.src import JBGManagementReport as mr
+
+    text = (
+        "Förvaltningsberättelse\nVerksamheten fortgår. " * 110
+        + "\nResultaträkning\n"
+    )
+    analyzer = _analyzer()
+    analyzer._make_openai_api_call = lambda *a, **k: _summaries_payload({
+        "sammanfattning": "Kassan har 30 miljoner i värdepapper.",
+        "citat": "Värdepappersinnehavet uppgick till trettio miljoner kronor.",
+        "sida": 3,
+    })
+    entry = analyzer._summarise_management_report(text)[mr.PLACEMENTS_KEY]
+    assert entry["sammanfattning"] == mr.NOT_VERIFIED
+    assert entry["citat_kontroll"] == mr.QUOTE_UNSUPPORTED

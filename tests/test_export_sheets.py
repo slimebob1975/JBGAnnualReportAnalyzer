@@ -254,7 +254,10 @@ SUMMARIES = {"Livsmedelsarbetarnas arbetslöshetskassa": {
     "utveckling": {"sammanfattning": "Fortsatt hög arbetslöshet väntas.",
                    "citat": "förhållandevis hög arbetslöshet", "sida": 3},
     "medelsforvaltning": {"sammanfattning": "Ingen uppgift hittad",
-                          "citat": "", "sida": 0}}}
+                          "citat": "", "sida": 0},
+    "finansiella_placeringar": {
+        "sammanfattning": "Kassan har bankmedel på ett sparkonto.",
+        "citat": "Kassans medel förvaltas på sparkonto.", "sida": 4}}}
 
 
 def _export_with_summaries(tmp_path, summaries):
@@ -276,7 +279,7 @@ def test_citatet_star_bredvid_den_sammanfattning_det_stoder(tmp_path):
     """Inte samlat längst ut: den som läser en sammanfattning ska kunna
     kontrollera den utan att leta."""
     ws = _export_with_summaries(tmp_path, SUMMARIES)["Förvaltningsberättelse"]
-    rubriker = [ws.cell(1, c).value for c in range(1, 11)]
+    rubriker = [ws.cell(1, c).value for c in range(1, 14)]
 
     assert rubriker[0] == "Kassa"
     assert rubriker[2] == "Citat som stöder"
@@ -285,6 +288,23 @@ def test_citatet_star_bredvid_den_sammanfattning_det_stoder(tmp_path):
     assert "Ingen uppgift hittad" in ws.cell(2, 1).value
     assert ws.cell(3, 2).value.startswith("Nytt regelverk")
     assert ws.cell(3, 3).value.startswith("Nytt regelverk gällande")
+    assert rubriker[10] == "Finansiella placeringar"
+    assert rubriker[11:13] == ["Citat som stöder", "Sida"]
+    assert ws.cell(3, 11).value == "Kassan har bankmedel på ett sparkonto."
+    assert ws.cell(3, 12).value == "Kassans medel förvaltas på sparkonto."
+    assert ws.cell(3, 13).value == 4
+
+
+def test_placeringsuppgift_utan_omnamnande_visas_som_namns_inte(tmp_path):
+    summaries = json.loads(json.dumps(SUMMARIES, ensure_ascii=False))
+    fund = "Livsmedelsarbetarnas arbetslöshetskassa"
+    summaries[fund]["finansiella_placeringar"] = {
+        "sammanfattning": "Nämns inte", "citat": "", "sida": 0
+    }
+    ws = _export_with_summaries(tmp_path, summaries)["Förvaltningsberättelse"]
+    assert ws.cell(3, 11).value == "Nämns inte"
+    assert ws.cell(3, 12).value is None
+    assert "Kan inte bedömas" in ws.cell(2, 1).value
 
 
 def test_tom_uppgift_sager_att_den_saknas(tmp_path):

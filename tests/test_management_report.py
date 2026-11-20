@@ -200,7 +200,7 @@ def test_halvt_pahittat_raknas_inte_som_aterfunnet():
 
 
 # ----------------------------------------------------------------- schemat
-def test_schemat_kraver_alla_tre_fragorna():
+def test_schemat_kraver_alla_fyra_fragorna():
     required = mr.RESPONSE_SCHEMA["schema"]["required"]
     assert required == [topic["key"] for topic in mr.TOPICS]
     for topic in mr.TOPICS:
@@ -218,3 +218,94 @@ def test_fragorna_namns_i_anropet():
 @pytest.mark.parametrize("topic", mr.TOPICS)
 def test_varje_rubrik_har_en_fraga(topic):
     assert topic["heading"] and topic["question"]
+
+
+# --------------------------------------- finansiella placeringar
+PLACERINGSBERATTELSE = (
+    "[Sida 3]\nFÖRVALTNINGSBERÄTTELSE\n"
+    "Kassans bankmedel uppgick vid årets slut till 20 miljoner kronor.\n"
+    "Kassan saknar långfristiga värdepappersinnehav.\n"
+    + "Verksamheten följer årets plan. " * 90
+    + "\nRESULTATRÄKNING\nKassa och bank 20000\n"
+)
+
+
+def test_placeringar_ar_fjarde_fraga_utan_att_andra_kolumner_flyttas():
+    assert [topic["key"] for topic in mr.TOPICS] == [
+        "handelser", "utveckling", "medelsforvaltning", "finansiella_placeringar"
+    ]
+    assert mr.TOPICS[-1]["heading"] == "Finansiella placeringar"
+
+
+def test_placeringsfragan_omfattar_bankmedel_fonder_och_avsaknad():
+    question = mr.TOPICS[-1]["question"].lower()
+    for term in ("långfristiga", "kortfristiga", "värdepappersinnehav",
+                 "fonder", "likvida medel", "bankmedel"):
+        assert term in question
+    prompt = mr.SYSTEM_PROMPT.format(
+        not_stated=mr.NOT_STATED, not_mentioned=mr.NOT_MENTIONED
+    )
+    assert "banktillgodohavanden" in prompt
+    assert "INTE har placeringar" in prompt
+    assert "arbetsmarknadsinsatser" in prompt
+    assert "en till två korta meningar" in prompt
+
+
+def test_placeringar_utan_citat_markeras_som_icke_verifierbara():
+    parsed = mr.parse_response(_svar(
+        finansiella_placeringar={
+            "sammanfattning": "Inga placeringar finns.", "citat": "", "sida": 7,
+        }
+    ))
+    assert parsed["finansiella_placeringar"] == {
+        "sammanfattning": mr.NOT_VERIFIED, "citat": "", "sida": 0,
+    }
+
+
+def test_modellens_namns_inte_normaliseras_utan_citat():
+    parsed = mr.parse_response(_svar(
+        finansiella_placeringar={
+            "sammanfattning": mr.NOT_MENTIONED, "citat": "någon mening", "sida": 4,
+        }
+    ))
+    assert parsed["finansiella_placeringar"]["citat"] == ""
+    assert parsed["finansiella_placeringar"]["sida"] == 0
+
+
+def test_uttryckligt_saknat_vardepappersinnehav_ar_ett_omnamnande():
+    parsed = mr.parse_response(_svar(
+        finansiella_placeringar={
+            "sammanfattning": "Kassan saknar långfristiga värdepappersinnehav.",
+            "citat": "Kassan saknar långfristiga värdepappersinnehav.",
+            "sida": 3,
+        }
+    ))
+    entry = parsed["finansiella_placeringar"]
+    assert entry["sammanfattning"].startswith("Kassan saknar")
+    assert mr.classify_quotes(parsed, PLACERINGSBERATTELSE)[
+        "finansiella_placeringar"
+    ][0] == mr.QUOTE_VERIFIED
+
+
+def test_strikt_avgransning_nekar_fallback_till_noter():
+    text = (
+        "Årsredovisning\nFörvaltningsberättelse\nResultaträkning\n"
+        "Not 5. Kortfristiga finansiella placeringar: 300 kronor. " * 40
+    )
+    assert mr.extract_section(text, strict=True) == ""
+    assert "finansiella placeringar" in mr.extract_section(text)
+
+
+def test_strikt_avgransning_kraver_slutrubrik():
+    text = (
+        "[Sida 3]\nFörvaltningsberättelse\n"
+        + "Kassans verksamhet fortsätter. " * 100
+        + "\n[ Sida 5 ] Not 4: Fondinnehav och bankmedel 1 mkr."
+    )
+    assert mr.extract_section(text, strict=True) == ""
+
+
+def test_strikt_avgransning_kan_hitta_riktig_forvaltningsberattelse():
+    section = mr.extract_section(PLACERINGSBERATTELSE, strict=True)
+    assert "Kassans bankmedel" in section
+    assert "Kassa och bank 20000" not in section

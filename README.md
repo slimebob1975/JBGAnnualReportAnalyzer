@@ -341,10 +341,20 @@ summerar en rad får ett rimligt tal, bara räknat på färre kassor än hon tro
 
 ### Fliken Förvaltningsberättelse
 
-Kassorna på rader och tre frågor i kolumner: årets viktigaste händelser,
-förväntad framtida utveckling och arbetslöshetsnivå, samt hur kassan
-säkerställt kontroll av medelsförvaltningen. Bredvid varje sammanfattning står
-ett ordagrant citat ur dokumentet och sidan det står på.
+Kassorna på rader och fyra frågor i kolumner: årets viktigaste händelser,
+förväntad framtida utveckling och arbetslöshetsnivå, hur kassan säkerställt
+kontroll av medelsförvaltningen samt **finansiella placeringar**. Bredvid varje
+sammanfattning står ett ordagrant citat ur dokumentet och sidan det står på.
+
+Den fjärde frågan söker efter lång- och kortfristiga finansiella placeringar,
+värdepappersinnehav, fonder, bankmedel, likvida medel och närliggande uttryck
+**i förvaltningsberättelsen**. Ett omnämnande ger en kort sammanfattning med
+stödcitat; när inget hittas står **Nämns inte**. Det innebär inte att kassan
+saknar placeringar. Om förvaltningsberättelsen inte kan avgränsas från noterna
+står i stället **Kan inte bedömas**, så att notuppgifter inte förväxlas med
+uppgifter ur förvaltningsberättelsen. Om modellen hittar en uppgift men citatet
+inte går att verifiera står **Ingen verifierbar uppgift**. Uttryckliga uppgifter
+om att placeringar saknas räknas som omnämnanden.
 
 Det här är den enda del av verktyget som genererar text i stället för att
 hämta den. Ingen aritmetik fångar en sammanfattning som är flytande, rimlig och
@@ -366,8 +376,9 @@ stödet är. Att kasta uppgiften är inte försiktigt, det är bara tomt.
 Kravet på redovisning av medelsförvaltningen väntas först nästa år, så den
 kolumnen är tom för de flesta kassor i år.
 
-Kostar ett extra modellanrop per dokument, ungefär 3–4 USD per körning.
-`SUMMARISE_MANAGEMENT_REPORT = False` stänger av det.
+Samtliga fyra frågor behandlas i samma sammanfattningsanrop: den fjärde
+frågan medför inget ytterligare anrop per dokument, men kan öka antalet token.
+`SUMMARISE_MANAGEMENT_REPORT = False` stänger av sammanfattningarna.
 
 ### Flikar i resultatfilen
 

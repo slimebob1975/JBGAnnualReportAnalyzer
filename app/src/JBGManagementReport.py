@@ -11,9 +11,9 @@ ur dokumentet och sidan den står på. En cell med citat går att kontrollera p�
 tio sekunder; en cell utan går inte att kontrollera alls. Saknas stöd ska
 cellen läsa att uppgiften inte framgår, inte innehålla något rimligt.
 
-Den tredje frågan, om medelsförvaltningen, väntas bli ett krav först nästa år.
-Tomma celler är därför det väntade utfallet för 2025 — men de ska vara tomma
-av rätt skäl.
+Frågan om kontroll av medelsförvaltningen väntas bli ett krav först nästa
+år. En annan fråga gäller kassans finansiella placeringar, inklusive
+bankmedel. En uppgift ska alltid gå att kontrollera mot förvaltningsberättelsen.
 """
 
 import json
@@ -30,6 +30,12 @@ logger = logging.getLogger(__name__)
 # Pappersindustriarbetarnas stod cellen tom trots att berättelsen diskuterar
 # varsel, framtida arbetsbelastning och branschrisker.
 NOT_STATED = "Ingen uppgift hittad"
+# Den nya frågan skiljer mellan att inget nämns och att avsnittet inte gick
+# att avgränsa från noter och balansräkning.
+NOT_MENTIONED = "Nämns inte"
+NOT_ASSESSABLE = "Kan inte bedömas"
+NOT_VERIFIED = "Ingen verifierbar uppgift"
+PLACEMENTS_KEY = "finansiella_placeringar"
 
 # Hur citatet förhåller sig till texten det påstås komma ur.
 QUOTE_VERIFIED = "återfunnet"
@@ -68,6 +74,19 @@ TOPICS = (
             "kontroll av medelsförvaltningen?"
         ),
     },
+    {
+        "key": PLACEMENTS_KEY,
+        "heading": "Finansiella placeringar",
+        "question": (
+            "Nämner kassan något om sina finansiella tillgångar eller sin "
+            "förvaltning av finansiella medel? Sök även efter långfristiga "
+            "och kortfristiga finansiella placeringar, placeringar, "
+            "värdepappersinnehav, fonder, likvida medel, bankmedel, "
+            "banktillgodohavanden och närliggande formuleringar. "
+            "Vad säger kassan konkret om innehav, fördelning, förändringar "
+            "eller avsaknad av sådana tillgångar?"
+        ),
+    },
 )
 
 SYSTEM_PROMPT = """Du sammanfattar delar av en svensk a-kassas förvaltningsberättelse.
@@ -80,17 +99,27 @@ Regler som gäller utan undantag:
    stöder den, samt sidnumret citatet står på. Citatet ska vara en
    sammanhängande mening eller del av mening, kopierad exakt.
 3. Finns inget stöd i texten för en fråga: sätt sammanfattningen till
-   "{not_stated}", lämna citatet tomt och sidan till 0. Hitta inte på.
+   "{not_stated}" (utom för finansiella_placeringar, se punkt 7),
+   lämna citatet tomt och sidan till 0. Hitta inte på.
    Leta dock ordentligt först. Kassorna skriver sällan under de rubriker
    frågan använder, och det som efterfrågas står ofta utspritt i
    berättelsen snarare än samlat under en egen rubrik.
+4. Skriv på svenska, i löpande text, tre till fem meningar per sammanfattning,
+   utom för finansiella_placeringar där en till två korta meningar räcker.
+5. Texten är maskerad: namn på personer är borttagna. Nämn inte detta och
+   försök inte gissa vilka de var.
 6. Sammanfatta det kassan faktiskt skriver, inte vad den borde ha skrivit.
    Att beskriva osäkerhet om framtiden är inte samma sak som att lämna en
    prognos; återge det som står och lägg inte till en bedömning av om det
    räcker.
-4. Skriv på svenska, i löpande text, tre till fem meningar per sammanfattning.
-5. Texten är maskerad: namn på personer är borttagna. Nämn inte detta och
-   försök inte gissa vilka de var."""
+7. För finansiella_placeringar: räkna en uttrycklig uppgift om att kassan
+   INTE har placeringar som ett omnämnande, och återge den. Skilj på faktiska
+   värdepappersplaceringar/fonder och banktillgodohavanden/likvida medel:
+   att kassan har pengar på banken innebär inte att den äger värdepapper.
+   Ordet placeringar om exempelvis personal eller arbetsmarknadsinsatser
+   räknas inte. Hämta inte uppgifter från balansräkning eller noter.
+   Om inget relevant nämns, skriv "{not_mentioned}" utan citat och med sida 0.
+   Påstå aldrig att placeringar saknas bara för att de inte omnämns."""
 
 RESPONSE_SCHEMA = {
     "name": "forvaltningsberattelse",
@@ -129,12 +158,13 @@ MAX_SECTION_CHARS = 40000
 MIN_SECTION_CHARS = 2000
 
 
-def extract_section(text: str) -> str:
+def extract_section(text: str, *, strict: bool = False) -> str:
     """Förvaltningsberättelsen, om den går att hitta, annars hela dokumentet.
 
     Att skicka hela årsredovisningen vore både dyrare och sämre: modellen
-    skulle få resultaträkningen och noterna att sammanfatta också, och frågan
-    gäller inte dem.
+    skulle få resultaträkningen och noterna att sammanfatta också. Befintliga
+    frågor behåller sin fallback; strict=True ger tomt svar när avsnittet
+    inte kan avgränsas tillräckligt säkert (för placeringsfrågan).
 
     Rubriken förekommer oftast flera gånger - en gång i innehållsförteckningen
     och en gång där avsnittet faktiskt börjar - så varje förekomst prövas och
@@ -149,10 +179,15 @@ def extract_section(text: str) -> str:
     for start in SECTION_START.finditer(text):
         rest = text[start.start():]
         end = SECTION_END.search(rest, 1)
+        if strict and not end:
+            # Utan slutrubrik kan avsnittet innehålla noter och balansräkning.
+            continue
         candidates.append(rest[: end.start()] if end else rest)
 
     best = max(candidates, key=len) if candidates else ""
     if len(best) < MIN_SECTION_CHARS:
+        if strict:
+            return ""
         # Rubrikerna stod tätt, troligen i innehållsförteckningen. Hellre hela
         # dokumentet än nästan ingenting: en dyrare fråga är bättre än tre
         # tomma svar.
@@ -197,7 +232,13 @@ def parse_response(raw: str) -> dict:
         except (TypeError, ValueError):
             page = 0
 
-        if not quote or summary == NOT_STATED:
+        if topic["key"] == PLACEMENTS_KEY:
+            if summary in (NOT_STATED, NOT_MENTIONED, ""):
+                summary, quote, page = NOT_MENTIONED, "", 0
+            elif not quote:
+                # Modellen påstår sig ha hittat något men saknar belägg.
+                summary, quote, page = NOT_VERIFIED, "", 0
+        elif not quote or summary == NOT_STATED:
             summary, quote, page = NOT_STATED, "", 0
         result[topic["key"]] = {
             "sammanfattning": summary,

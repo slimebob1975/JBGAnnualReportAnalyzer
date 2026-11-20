@@ -1,0 +1,51 @@
+2026-10-07 15:16:45,894 [INFO] Loggnivå: INFO (styrs av miljövariabeln JBG_LOG_LEVEL)
+2026-10-07 15:16:45,903 [INFO] Jobbkatalog: C:\Users\Grro\AppData\Local\Temp\jbg-jobs (livslängd 3600s)
+2026-10-07 15:16:45,907 [INFO] Städning av gamla jobb var 300s.
+2026-10-07 15:19:19,176 [INFO] Rensade 1 utgångna jobbkatalog(er).
+2026-10-07 15:19:19,178 [INFO] Skapade jobb 711c500e71b84728bcbc30f6e025a76f
+2026-10-07 15:19:19,201 [INFO] Will use masking in each pdf to analyze...
+2026-10-07 15:19:19,202 [INFO] Will include sources in final output!
+2026-10-07 15:19:19,290 [INFO] Modell per roll: nyckeltalsextraktion=gpt-5.2, riktad omsökning=gpt-5.2, stabilitetskontroll=gpt-5.2. Övriga: gpt-5.2
+2026-10-07 15:19:19,798 [INFO] OCR tillgängligt: tesseract och ghostscript hittades
+2026-10-07 15:19:19,798 [INFO] Processar fil: C:\Users\Grro\AppData\Local\Temp\jbg-jobs\711c500e71b84728bcbc30f6e025a76f\Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf
+2026-10-07 15:19:20,244 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] 45/45 sidor har textlager.
+2026-10-07 15:19:20,244 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Textlager finns på 100% av sidorna. Hoppar över OCR.
+2026-10-07 15:19:30,416 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Starting masking on: C:\Users\Grro\AppData\Local\Temp\jbg-jobs\711c500e71b84728bcbc30f6e025a76f\Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf
+2026-10-07 15:19:34,651 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Sanitized PDF saved to: C:\Users\Grro\AppData\Local\Temp\tmpmy7at1yp\Alfa-kassans årsredovisning 2025 signed(173301) (0)_sanitized.pdf
+2026-10-07 15:19:39,873 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Ingen fil med extra namn att maskera (C:\Users\Grro\Documents\dev\jupyter\JBG\JBGAnnualReportAnalyzer\app\config\masking_extra_names.json). Endast NER-modellens träffar maskeras.
+2026-10-07 15:19:39,881 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Identified 60 sensitive term(s)
+2026-10-07 15:19:40,192 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Uteslot 2 termer kortare an 4 tecken och 0 termer som forekommer fler an 25 ganger (sannolikt felträffar, t.ex. leverantorsnamn i sidfoten).
+2026-10-07 15:19:59,403 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Tog bort 12 formularfalt/anteckningar vars text inte kan svartas (t.ex. signaturrutor).
+2026-10-07 15:19:59,573 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] 25 av 58 termer kunde inte lokaliseras av sokfunktionen och har darfor inte svartats.
+2026-10-07 15:20:01,005 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Maskering verifierad: inga av 58 termer återfinns i utdata.
+2026-10-07 15:20:01,293 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Masked file saved: C:\Users\Grro\AppData\Local\Temp\jbg-jobs\711c500e71b84728bcbc30f6e025a76f\Alfa-kassans årsredovisning 2025 signed(173301) (0)_masked.pdf
+2026-10-07 15:20:01,559 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Extraherar text från: Alfa-kassans årsredovisning 2025 signed(173301) (0)_masked.pdf
+2026-10-07 15:20:01,657 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Sidnummeroffset 0 härlett ur tryckta sidnummer.
+2026-10-07 15:20:01,885 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Extraherad textlängd: 47173 tecken
+2026-10-07 15:20:01,892 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Räkenskapsår 2025 härlett ur dokumentets text.
+2026-10-07 15:20:01,892 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Extraherade aktuellt år från: Alfa-kassans årsredovisning 2025 signed(173301) (0)_masked.pdf som: 2025
+2026-10-07 15:20:02,258 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] 1 chunk(s) genererade för Alfa-kassans årsredovisning 2025 signed(173301) (0)_masked.pdf
+2026-10-07 15:20:02,261 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Skickar chunk 1/1 till GPT...
+2026-10-07 15:22:09,082 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Chunk 1 gav 104 nyckeltal.
+2026-10-07 15:22:15,631 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Dokumentet anger att belopp redovisas i tkr.
+2026-10-07 15:22:15,639 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] 4 nyckeltal saknas efter första genomgången: Medlemsavgifter, Immateriella anläggningstillgångar, Andra kortfristiga placeringar, Not till Personalkostnader: Summa. Gör en riktad omsökning.
+2026-10-07 15:22:19,763 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Riktad omsökning hittade 1 ytterligare nyckeltal.
+2026-10-07 15:22:19,767 [INFO] [Alfa-kassans årsredovisning 2025 signed(173301) (0).pdf] Efter omsökning saknas fortfarande 3 nyckeltal: Immateriella anläggningstillgångar, Andra kortfristiga placeringar, Not till Personalkostnader: Summa. De finns sannolikt inte i dokumentet.
+2026-10-07 15:22:19,776 [INFO] Modellanvändning: 3 anrop  79 700 tokens
+2026-10-07 15:22:19,776 [INFO]   gpt-5.2: 3 anrop  67 298 prompt (46 336 cachade) + 12 402 svar = 0.22 USD
+2026-10-07 15:22:19,777 [INFO]   nyckeltalsextraktion: 1 anrop  48 794 tokens (61%)
+2026-10-07 15:22:19,778 [INFO]   riktad omsökning: 1 anrop  20 212 tokens (25%)
+2026-10-07 15:22:19,779 [INFO]   sammanfattning: 1 anrop  10 694 tokens (13%)
+2026-10-07 15:22:19,779 [INFO]   per fil: 3.0 anrop  79 700 tokens
+2026-10-07 15:22:19,780 [INFO]   varav 46 336 cachade prompt-tokens
+2026-10-07 15:22:19,780 [INFO]   uppskattad kostnad: 0.22 USD
+2026-10-07 15:22:19,787 [INFO] Normaliserade kassanamn 'Alfa-kassan' -> 'Arbetslöshetskassan Alfa' (via exakt (normaliserad), kassanummer 69)
+2026-10-07 15:22:19,803 [WARNING] Rimlighetskontrollerna gav 2 anmärkning(ar), varav 0 allvarliga och 2 upplysningar som inte är fel. Kontrollera övriga mot källdokumentet.
+2026-10-07 15:22:19,804 [WARNING] [Arbetslöshetskassan Alfa 2025] Delsummering: Summa intäkter: Summa intäkter 415 254 är 70 691 större än Medlemsavgifter + Övriga intäkter = 344 563. Kassan redovisar sannolikt en eller flera egna poster utöver dem föreskriften räknar upp. Kontrollera vilka; det är ingen räknefel.
+2026-10-07 15:22:19,804 [WARNING] [Arbetslöshetskassan Alfa 2025] Delsummering: Summa finansiella poster: Summa finansiella poster 7 184 är 4 826 större än Finansiella intäkter - Finansiella kostnader = 2 358. Kassan redovisar sannolikt en eller flera egna poster utöver dem föreskriften räknar upp. Kontrollera vilka; det är ingen räknefel.
+2026-10-07 15:22:19,808 [INFO] Anmärkningsregister: 54 unika anmärkningar totalt, varav 2 har återkommit.
+2026-10-07 15:22:19,809 [INFO] Fördelning av angiven säkerhet (108 nyckeltal): explicit: 93, härledd: 10, osäker: 2, saknas: 3
+2026-10-07 15:22:19,815 [INFO] Analysresultat sparat till: C:\Users\Grro\AppData\Local\Temp\jbg-jobs\711c500e71b84728bcbc30f6e025a76f\Alfa-kassans årsredovisning 2025 signed(173301) (0)_resultat.json
+2026-10-07 15:22:19,818 [INFO] Historik sparad: 2025_20261007T152219_1kassor.json (1 kassor, år 2025).
+2026-10-07 15:22:20,063 [INFO] Excel file saved to C:\Users\Grro\AppData\Local\Temp\jbg-jobs\711c500e71b84728bcbc30f6e025a76f\Alfa-kassans årsredovisning 2025 signed(173301) (0)_resultat_by_fund.xlsx
+2026-10-07 15:22:20,150 [INFO] Jobb 711c500e71b84728bcbc30f6e025a76f klart på 3:01 (1 fil(er)) -> Alfa-kassans årsredovisning 2025 signed(173301) (0)_resultat_by_fund.xlsx

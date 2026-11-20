@@ -2058,13 +2058,22 @@ class JBGAnnualReportAnalyzer:
         är ett tillägg; de ska inte kunna fälla en analys som i övrigt gick
         bra.
         """
-        section = management_report.extract_section(text)
+        # Använd ett säkert avgränsat avsnitt i första hand för alla frågor.
+        # För de äldre tre frågorna behålls fallback till hela årsredovisningen
+        # när avgränsningen misslyckas; placeringsfrågan märks då som osäker.
+        strict_section = management_report.extract_section(text, strict=True)
+        placements_assessable = (
+            bool(strict_section)
+            and len(strict_section) < management_report.MAX_SECTION_CHARS
+        )
+        section = strict_section or management_report.extract_section(text)
         if not section:
             return {}
         try:
             raw = self._make_openai_api_call(
                 management_report.SYSTEM_PROMPT.format(
-                    not_stated=management_report.NOT_STATED
+                    not_stated=management_report.NOT_STATED,
+                    not_mentioned=management_report.NOT_MENTIONED,
                 ),
                 management_report.build_request(section),
                 model=model,
@@ -2078,6 +2087,19 @@ class JBGAnnualReportAnalyzer:
         summaries = management_report.parse_response(raw)
         if not summaries:
             return {}
+
+        if not placements_assessable:
+            # "Nämns inte" förutsätter att vi faktiskt har kunnat granska
+            # förvaltningsberättelsen, inte ett utdrag ur hela dokumentet.
+            summaries[management_report.PLACEMENTS_KEY] = {
+                "sammanfattning": management_report.NOT_ASSESSABLE,
+                "citat": "",
+                "sida": 0,
+            }
+            logger.info(
+                "Finansiella placeringar: förvaltningsberättelsen kunde inte "
+                "avgränsas säkert; markerar som 'Kan inte bedömas'."
+            )
 
         # Varje citat bedöms mot texten det påstås komma ur. Ett citat helt
         # utan stöd är ett påhitt som ser ut som ett belägg, och stryks. Ett
@@ -2094,7 +2116,11 @@ class JBGAnnualReportAnalyzer:
             elif verdict == management_report.QUOTE_UNSUPPORTED:
                 unsupported += 1
                 summaries[key].update({
-                    "sammanfattning": management_report.NOT_STATED,
+                    "sammanfattning": (
+                        management_report.NOT_VERIFIED
+                        if key == management_report.PLACEMENTS_KEY
+                        else management_report.NOT_STATED
+                    ),
                     "citat": "",
                     "sida": 0,
                 })

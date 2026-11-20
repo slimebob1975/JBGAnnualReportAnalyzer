@@ -591,8 +591,12 @@ class JsonConverter:
 
         ws.append([
             "\"Ingen uppgift hittad\" betyder att ingen uppgift gick att "
-            "hitta — inte att kassan saknar den. Kontrollera mot "
-            "årsredovisningen innan frånvaron tolkas som ett påpekande."
+            "hitta — inte att kassan saknar den. För placeringar betyder "
+            "'Nämns inte' att inget omnämnande hittats i den identifierade "
+            "förvaltningsberättelsen; 'Kan inte bedömas' att avsnittet inte "
+            "kunde avgränsas säkert; 'Ingen verifierbar uppgift' att ett "
+            "omnämnande saknade tillförlitligt citat. Kontrollera mot årsredovisningen "
+            "innan frånvaron tolkas som ett påpekande."
         ])
         ws.cell(row=2, column=1).font = Font(italic=True)
 
