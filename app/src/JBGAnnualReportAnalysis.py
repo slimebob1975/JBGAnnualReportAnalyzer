@@ -2130,11 +2130,69 @@ class JBGAnnualReportAnalyzer:
                 "stöd i förvaltningsberättelsen och har strukits tillsammans "
                 "med sina sammanfattningar."
             )
+        if placements_assessable:
+            key = management_report.PLACEMENTS_KEY
+            # Ett verifierat citat i *hela* textutdraget räcker inte: sidan
+            # måste också gå att härleda till exakt en sida i berättelsen.
+            placement = management_report.verify_placement_page(
+                summaries[key], strict_section
+            )
+            if placement.get("sidnummer_korrigerat"):
+                logger.info(
+                    "Finansiella placeringar: återfann citatet på sida %s och "
+                    "korrigerade det angivna sidnumret.", placement["sida"]
+                )
+
+            if placement["sammanfattning"] in (
+                management_report.NOT_MENTIONED,
+                management_report.NOT_VERIFIED,
+            ):
+                # Sök lokalt i det verifierat avgränsade avsnittet. Inga
+                # träffar -> inga extra API-anrop. En ordträff är inte i sig
+                # ett omnämnande; den kontrolleras av modellen en gång till.
+                passages = management_report.placement_candidate_passages(strict_section)
+                if passages:
+                    logger.info(
+                        "Finansiella placeringar: %s textträff(ar) vid osäkert "
+                        "resultat; gör en riktad kontroll.", len(passages)
+                    )
+                    try:
+                        raw_retry = self._make_openai_api_call(
+                            management_report.PLACEMENT_RECHECK_PROMPT,
+                            management_report.build_placement_recheck_request(passages),
+                            model=model,
+                            response_schema=management_report.PLACEMENT_RECHECK_SCHEMA,
+                            purpose=usage.PURPOSE_SUMMARY,
+                        )
+                        retried = management_report.parse_placement_recheck(raw_retry)
+                        if retried:
+                            verified = management_report.verify_placement_page(
+                                retried, strict_section
+                            )
+                            if verified["sammanfattning"] != management_report.NOT_VERIFIED:
+                                placement = verified
+                                logger.info(
+                                    "Finansiella placeringar: riktad kontroll gav '%s'.",
+                                    verified["sammanfattning"][:80],
+                                )
+                            else:
+                                logger.warning(
+                                    "Finansiella placeringar: den riktade kontrollen "
+                                    "gav inget verifierbart stödcitat."
+                                )
+                    except Exception as ex:
+                        # Grundanalysen ska inte fällas av en extra kontroll.
+                        logger.warning(
+                            "Riktad kontroll av finansiella placeringar misslyckades: %s",
+                            ex,
+                        )
+            summaries[key] = placement
+
         if approximate:
             logger.info(
                 f"{approximate} av {len(management_report.TOPICS)} citat "
-                "återfanns inte ordagrant men har tillräckligt stöd. De är "
-                "märkta i utdata."
+                "återfanns inte ordagrant men har tillräckligt stöd i avsnittet. "
+                "De är märkta i utdata om de fortfarande används."
             )
         return summaries
 

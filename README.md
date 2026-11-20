@@ -356,6 +356,25 @@ uppgifter ur förvaltningsberättelsen. Om modellen hittar en uppgift men citate
 inte går att verifiera står **Ingen verifierbar uppgift**. Uttryckliga uppgifter
 om att placeringar saknas räknas som omnämnanden.
 
+Förvaltningsberättelsen hittas via rubriker på egna rader. Korta verkliga
+avsnitt godtas också, medan innehållsförteckningar försöks skiljas bort.
+Sidmarkören för avsnittets första sida behålls. För placeringsfrågan
+kontrolleras att citatet faktiskt finns på den angivna sidan **inom**
+förvaltningsberättelsen. Ett saknat/felaktigt sidnummer rättas när citatet
+entydigt kan lokaliseras på en annan sida; detta märks med en kommentar på
+sidcellen i Excel. Finns inte ett säkert sidstöd blir resultatet **Ingen
+verifierbar uppgift**, inte en obestyrkt sammanfattning.
+
+Om placeringsfrågan får **Nämns inte** eller **Ingen verifierbar uppgift**
+söker tjänsten en gång till efter närliggande finansiella begrepp i det
+**avgränsade** avsnittet. Bara om sökningen hittar kandidater görs ett extra,
+riktat AI-anrop. Det kan alltså tillkomma vissa AI-anrop och en mindre kostnad
+på dokument där första svaret är osäkert. Balansräkningen och noterna får inte
+användas som ersättning för uppgifter i förvaltningsberättelsen. Att ett
+citat finns på rätt sida bevisar inte automatiskt att varje omskrivning av
+citatet är korrekt; sammanfattningen ska därför begränsas till citatets
+faktiska innehåll och bör stickprovskontrolleras.
+
 Det här är den enda del av verktyget som genererar text i stället för att
 hämta den. Ingen aritmetik fångar en sammanfattning som är flytande, rimlig och
 fel, och sådana är svårare att upptäcka än ett felaktigt tal. Citatet är därför
@@ -376,8 +395,9 @@ stödet är. Att kasta uppgiften är inte försiktigt, det är bara tomt.
 Kravet på redovisning av medelsförvaltningen väntas först nästa år, så den
 kolumnen är tom för de flesta kassor i år.
 
-Samtliga fyra frågor behandlas i samma sammanfattningsanrop: den fjärde
-frågan medför inget ytterligare anrop per dokument, men kan öka antalet token.
+Samtliga fyra frågor behandlas i samma första sammanfattningsanrop.
+Den nya, riktade kontrollen kan vid osäkra placeringssvar lägga till högst
+ett anrop per dokument, och annars tillkommer inga ytterligare anrop.
 `SUMMARISE_MANAGEMENT_REPORT = False` stänger av sammanfattningarna.
 
 ### Flikar i resultatfilen

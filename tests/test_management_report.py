@@ -248,7 +248,7 @@ def test_placeringsfragan_omfattar_bankmedel_fonder_och_avsaknad():
     assert "banktillgodohavanden" in prompt
     assert "INTE har placeringar" in prompt
     assert "arbetsmarknadsinsatser" in prompt
-    assert "en till två korta meningar" in prompt
+    assert "en enda kort mening" in prompt
 
 
 def test_placeringar_utan_citat_markeras_som_icke_verifierbara():
@@ -309,3 +309,105 @@ def test_strikt_avgransning_kan_hitta_riktig_forvaltningsberattelse():
     section = mr.extract_section(PLACERINGSBERATTELSE, strict=True)
     assert "Kassans bankmedel" in section
     assert "Kassa och bank 20000" not in section
+
+# ----------------------------------------------------- kvalitetspatch 2
+
+def test_kort_men_verklig_forvaltningsberattelse_godkanns_strikt():
+    text = (
+        "[Sida 2]\nInnehåll\nFörvaltningsberättelse 3\nResultaträkning 8\n"
+        "[Sida 3]\nFÖRVALTNINGSBERÄTTELSE\n"
+        "Kassan har placerat medel i aktiefonder. "
+        + "Året präglades av god handläggning. " * 19
+        + "\n[Sida 4]\nRESULTATRÄKNING\nKassa och bank 9000\n"
+    )
+    section = mr.extract_section(text, strict=True)
+    assert 250 < len(section) < 2000
+    assert section.startswith("[Sida 3]")
+    assert "aktiefonder" in section
+    assert "Kassa och bank 9000" not in section
+
+
+def test_lang_innehallsforteckning_fortranger_inte_kort_berattelse():
+    toc = ("[Sida 1]\nINNEHÅLL\nFörvaltningsberättelse\n"
+           + "Viktiga händelser 2\nMedlemmar 3\nVerksamhet 4\n" * 12
+           + "Resultaträkning 14\n")
+    body = ("[Sida 2]\nFörvaltningsberättelse\n"
+            + "Kassan har bankmedel, men inga aktier. " * 15
+            + "\n[Sida 3]\nResultaträkning\n")
+    found = mr.extract_section(toc + body, strict=True)
+    assert "Kassan har bankmedel" in found
+    assert "Viktiga händelser 2" not in found
+
+
+def test_hanvisning_i_loptext_ar_inte_slutrubrik():
+    text = ("[Sida 2]\nFörvaltningsberättelse\n"
+            + "I resultaträkningen har ett överskott bokförts.\n"
+            + "Kassans placeringar redovisas enligt ett reglemente. " * 12
+            + "\n[Sida 3]\nResultaträkning\n")
+    section = mr.extract_section(text, strict=True)
+    assert "Kassans placeringar" in section
+
+
+def test_verifiering_reparerar_sidnummer_från_citat_pa_forsta_sidan():
+    section = ("[Sida 4]\nFörvaltningsberättelse\n"
+               "Kassan placerar kapital i räntefonder.\n"
+               + "Övrigt om verksamheten. " * 25
+               + "\n[Sida 5]\nResultaträkning\n")
+    entry = {"sammanfattning": "Kassan har räntefonder.",
+             "citat": "Kassan placerar kapital i räntefonder.", "sida": 0}
+    checked = mr.verify_placement_page(entry, mr.extract_section(section, strict=True))
+    assert checked["sida"] == 4
+    assert checked["sidnummer_korrigerat"] is True
+    assert checked["citat_kontroll"] == mr.QUOTE_VERIFIED
+
+
+def test_fel_sidnummer_rattas_men_citat_som_saknar_sidstod_stryks():
+    section = ("[Sida 3]\nFörvaltningsberättelse\n"
+               "Vi har bankmedel på sparkonto.\n"
+               "[Sida 4]\nKassans verksamhet utvecklas.\n")
+    entry = {"sammanfattning": "Bankmedel på sparkonto.",
+             "citat": "Vi har bankmedel på sparkonto.", "sida": 99}
+    assert mr.verify_placement_page(entry, section)["sida"] == 3
+    entry["citat"] = "Kassan köpte aktier för 50 miljoner kronor."
+    checked = mr.verify_placement_page(entry, section)
+    assert checked["sammanfattning"] == mr.NOT_VERIFIED
+    assert checked["sida"] == 0
+    assert not checked["citat"]
+
+
+def test_okant_sidnummer_och_samma_citat_pa_flera_sidor_ar_inte_verifierat():
+    quote = "Kassan har tillgångar på bankkonto."
+    section = ("[Sida 3]\nFörvaltningsberättelse\n" + quote + "\n"
+               "[Sida 4]\n" + quote + "\n")
+    entry = {"sammanfattning": quote, "citat": quote, "sida": 0}
+    assert mr.verify_placement_page(entry, section)["sammanfattning"] == mr.NOT_VERIFIED
+    entry["sida"] = 4
+    assert mr.verify_placement_page(entry, section)["sida"] == 4
+
+
+def test_utan_sidmarkorer_kan_placeringar_inte_bekraftas():
+    entry = {"sammanfattning": "Kassan har likvida medel.",
+             "citat": "Kassan har likvida medel.", "sida": 7}
+    assert mr.verify_placement_page(entry, "Kassan har likvida medel.")[
+        "sammanfattning"
+    ] == mr.NOT_VERIFIED
+
+
+def test_riktade_traf_far_bara_sidmarkta_relevanta_utdrag():
+    section = ("[Sida 2]\nFörvaltningsberättelse\n"
+               "Personalens placeringar i utbildningsgrupperna följs upp.\n"
+               "[Sida 3]\nKassans banktillgodohavanden har ökat.\n")
+    candidates = mr.placement_candidate_passages(section)
+    assert len(candidates) == 1
+    assert candidates[0].startswith("[Sida 3]")
+    assert "banktillgodohavanden" in candidates[0]
+
+
+def test_riktad_omkontroll_har_ett_fjarde_amne_utan_att_andra_schemas():
+    schema = mr.PLACEMENT_RECHECK_SCHEMA["schema"]
+    assert schema["required"] == ["sammanfattning", "citat", "sida"]
+    payload = json.dumps({"sammanfattning": mr.NOT_MENTIONED,
+                          "citat": "", "sida": 0})
+    parsed = mr.parse_placement_recheck(payload)
+    assert parsed["sammanfattning"] == mr.NOT_MENTIONED
+    assert mr.parse_placement_recheck("not json") == {}

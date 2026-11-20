@@ -373,3 +373,182 @@ def test_pahittat_placeringscitat_markeras_som_icke_verifierbart():
     entry = analyzer._summarise_management_report(text)[mr.PLACEMENTS_KEY]
     assert entry["sammanfattning"] == mr.NOT_VERIFIED
     assert entry["citat_kontroll"] == mr.QUOTE_UNSUPPORTED
+
+# ------------------------------------------------------- kvalitetspatch 2
+
+def _placements_story(sentence="Kassan har likvida medel på bankkonton."):
+    return (
+        "[Sida 3]\nFörvaltningsberättelse\n" + sentence + "\n"
+        + "Verksamheten har bedrivits som planerat. " * 15
+        + "\n[Sida 4]\nResultaträkning\nKassa och bank 3000\n"
+    )
+
+
+def test_riktad_omkontroll_aterhamtar_forbisett_bankmedel_med_sidbevis():
+    from app.src import JBGManagementReport as mr
+    import json
+
+    sentence = "Kassan har likvida medel på bankkonton."
+    analyzer = _analyzer()
+    calls = []
+
+    def reply(system_prompt, request, **kwargs):
+        calls.append((request, kwargs))
+        if len(calls) == 1:
+            return _summaries_payload({
+                "sammanfattning": mr.NOT_MENTIONED, "citat": "", "sida": 0
+            })
+        return json.dumps({
+            "sammanfattning": "Kassan beskriver likvida medel på bankkonton.",
+            "citat": sentence, "sida": 3,
+        }, ensure_ascii=False)
+
+    analyzer._make_openai_api_call = reply
+    found = analyzer._summarise_management_report(_placements_story(sentence))
+    placement = found[mr.PLACEMENTS_KEY]
+    assert len(calls) == 2
+    assert "bankkonton" in calls[1][0]
+    assert "Resultaträkning" not in calls[1][0]
+    assert calls[1][1]["response_schema"] == mr.PLACEMENT_RECHECK_SCHEMA
+    assert placement["sida"] == 3
+    assert placement["citat_kontroll"] == mr.QUOTE_VERIFIED
+    assert placement["sammanfattning"].startswith("Kassan beskriver")
+
+
+def test_bankmedel_som_bara_finns_i_not_skapar_ingen_riktad_kontroll():
+    from app.src import JBGManagementReport as mr
+    text = (
+        "[Sida 3]\nFörvaltningsberättelse\n"
+        + "Medlemmarnas service är verksamhetens kärna. " * 14
+        + "\n[Sida 4]\nResultaträkning\n"
+        + "[Sida 7]\nNoter till balansräkningen\n"
+        + "Bankmedel och värdepapper: 30 miljoner kronor.\n"
+    )
+    analyzer = _analyzer()
+    calls = []
+
+    def reply(*args, **kwargs):
+        calls.append(1)
+        return _summaries_payload({
+            "sammanfattning": mr.NOT_MENTIONED, "citat": "", "sida": 0,
+        })
+
+    analyzer._make_openai_api_call = reply
+    placement = analyzer._summarise_management_report(text)[mr.PLACEMENTS_KEY]
+    assert len(calls) == 1
+    assert placement["sammanfattning"] == mr.NOT_MENTIONED
+
+
+def test_omkontroll_sker_inte_for_personalplaceringar():
+    from app.src import JBGManagementReport as mr
+    analyzer = _analyzer()
+    calls = []
+    def reply(*args, **kwargs):
+        calls.append(1)
+        return _summaries_payload({
+            "sammanfattning": mr.NOT_MENTIONED, "citat": "", "sida": 0,
+        })
+    analyzer._make_openai_api_call = reply
+    entry = analyzer._summarise_management_report(
+        _placements_story("Personalens placeringar i grupperna har fungerat bra.")
+    )[mr.PLACEMENTS_KEY]
+    assert len(calls) == 1
+    assert entry["sammanfattning"] == mr.NOT_MENTIONED
+
+
+def test_sidnummer_korrigeras_utan_extra_modellanrop():
+    from app.src import JBGManagementReport as mr
+    sentence = "Kassan har likvida medel på bankkonton."
+    analyzer = _analyzer()
+    calls = []
+
+    def reply(*args, **kwargs):
+        calls.append(1)
+        return _summaries_payload({
+            "sammanfattning": "Likvida medel på bankkonton.",
+            "citat": sentence, "sida": 0,
+        })
+    analyzer._make_openai_api_call = reply
+    entry = analyzer._summarise_management_report(_placements_story(sentence))[
+        mr.PLACEMENTS_KEY
+    ]
+    assert len(calls) == 1
+    assert entry["sida"] == 3
+    assert entry["sidnummer_korrigerat"] is True
+    assert entry["citat_kontroll"] == mr.QUOTE_VERIFIED
+
+
+def test_omkontroll_med_pahittat_citat_godkanns_inte():
+    from app.src import JBGManagementReport as mr
+    import json
+    analyzer = _analyzer()
+    calls = []
+
+    def reply(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            return _summaries_payload({
+                "sammanfattning": "Kassan har värdepapper.",
+                "citat": "Kassan köpte statsobligationer för 15 miljoner.",
+                "sida": 3,
+            })
+        return json.dumps({
+            "sammanfattning": "Kassan köpte statsobligationer.",
+            "citat": "Kassan köpte obligationer i hela Europa.",
+            "sida": 3,
+        }, ensure_ascii=False)
+
+    analyzer._make_openai_api_call = reply
+    entry = analyzer._summarise_management_report(
+        _placements_story("Kassans bankmedel ökade under 2025.")
+    )[mr.PLACEMENTS_KEY]
+    assert len(calls) == 2
+    assert entry["sammanfattning"] == mr.NOT_VERIFIED
+    assert not entry["citat"]
+
+
+def test_omkontrollens_fel_kan_inte_avbryta_arsredovisningsanalys():
+    from app.src import JBGManagementReport as mr
+    analyzer = _analyzer()
+    calls = []
+
+    def reply(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            return _summaries_payload({
+                "sammanfattning": mr.NOT_MENTIONED, "citat": "", "sida": 0,
+            })
+        raise TimeoutError("Kontrollen tog för lång tid")
+
+    analyzer._make_openai_api_call = reply
+    entry = analyzer._summarise_management_report(
+        _placements_story("Kassans bankmedel ökade under 2025.")
+    )[mr.PLACEMENTS_KEY]
+    assert len(calls) == 2
+    assert entry["sammanfattning"] == mr.NOT_MENTIONED
+
+
+def test_citat_fran_not_far_inte_anvandas_for_placeringsfragan():
+    from app.src import JBGManagementReport as mr
+    note = "Kassan har köpt aktiefonder för 20 miljoner kronor."
+    text = (
+        "[Sida 3]\nFörvaltningsberättelse\n"
+        + "Verksamheten går enligt plan. " * 18
+        + "\n[Sida 4]\nResultaträkning\n"
+        + "[Sida 7]\nNoter till balansräkningen\n" + note
+    )
+    analyzer = _analyzer()
+    calls = []
+
+    def reply(*args, **kwargs):
+        calls.append(1)
+        return _summaries_payload({
+            "sammanfattning": "Kassan har aktiefonder för 20 miljoner kronor.",
+            "citat": note, "sida": 7,
+        })
+
+    analyzer._make_openai_api_call = reply
+    placement = analyzer._summarise_management_report(text)[mr.PLACEMENTS_KEY]
+    assert len(calls) == 1
+    assert placement["sammanfattning"] == mr.NOT_VERIFIED
+    assert not placement["citat"]

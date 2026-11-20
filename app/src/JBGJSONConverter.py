@@ -615,6 +615,14 @@ class JsonConverter:
             # bedöma det själv.
             for index, topic in enumerate(management_report.TOPICS):
                 entry = (summaries.get(fund) or {}).get(topic["key"]) or {}
+                if entry.get("sidnummer_korrigerat"):
+                    page_cell = ws.cell(row=ws.max_row, column=4 + index * 3)
+                    page_cell.comment = Comment(
+                        "Sidnumret har korrigerats automatiskt efter att "
+                        "stödcitatet lokaliserats på denna sida i "
+                        "förvaltningsberättelsen. Kontrollera gärna mot originalet.",
+                        "JBG nyckeltalsanalys",
+                    )
                 if entry.get("citat_kontroll") != management_report.QUOTE_APPROXIMATE:
                     continue
                 cell = ws.cell(row=ws.max_row, column=3 + index * 3)

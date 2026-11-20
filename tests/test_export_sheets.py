@@ -392,3 +392,21 @@ def test_en_kassa_som_tappats_pa_vagen_sags_ut(tmp_path):
         "kassa_ar_kombinationer": 22})
 
     assert "Antalet stämmer inte" in _lasanvisning_text(wb)
+
+
+def test_korrigerat_sidnummer_markeras_med_kallkommentar(tmp_path):
+    summaries = {"Livsmedelsarbetarnas arbetslöshetskassa": {
+        "finansiella_placeringar": {
+            "sammanfattning": "Kassan har likvida medel på bankkonton.",
+            "citat": "Kassan har likvida medel på bankkonton.",
+            "sida": 6,
+            "citat_kontroll": "återfunnet",
+            "citat_stod": 1.0,
+            "sidnummer_korrigerat": True,
+        }
+    }}
+    ws = _export_with_summaries(tmp_path, summaries)["Förvaltningsberättelse"]
+    page_cell = ws.cell(3, 13)
+    assert page_cell.value == 6
+    assert "korrigerats automatiskt" in page_cell.comment.text
+    assert ws.cell(3, 12).value.startswith("Kassan har")

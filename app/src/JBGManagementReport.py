@@ -105,7 +105,7 @@ Regler som gäller utan undantag:
    frågan använder, och det som efterfrågas står ofta utspritt i
    berättelsen snarare än samlat under en egen rubrik.
 4. Skriv på svenska, i löpande text, tre till fem meningar per sammanfattning,
-   utom för finansiella_placeringar där en till två korta meningar räcker.
+   utom för finansiella_placeringar där en enda kort mening helst räcker.
 5. Texten är maskerad: namn på personer är borttagna. Nämn inte detta och
    försök inte gissa vilka de var.
 6. Sammanfatta det kassan faktiskt skriver, inte vad den borde ha skrivit.
@@ -118,6 +118,10 @@ Regler som gäller utan undantag:
    att kassan har pengar på banken innebär inte att den äger värdepapper.
    Ordet placeringar om exempelvis personal eller arbetsmarknadsinsatser
    räknas inte. Hämta inte uppgifter från balansräkning eller noter.
+   Begränsa sammanfattningen till de fakta som framgår av just det angivna
+   stödcitatet. Om ett citat inte styrker flera olika uppgifter, ta bara med
+   en av dem i sammanfattningen. Skriv inga belopp eller innehav som inte
+   framgår av citatet. Kopiera sidnumret från en [Sida N]-markör.
    Om inget relevant nämns, skriv "{not_mentioned}" utan citat och med sida 0.
    Påstå aldrig att placeringar saknas bara för att de inte omnämns."""
 
@@ -144,60 +148,82 @@ RESPONSE_SCHEMA = {
     },
 }
 
-# Avsnittet börjar vid rubriken och slutar där räkningarna tar vid.
-SECTION_START = re.compile(r"\bf[öo]rvaltningsber[äa]ttelse\b", re.IGNORECASE)
-SECTION_END = re.compile(
-    r"\b(?:resultatr[äa]kning|balansr[äa]kning|noter\s+till)\b", re.IGNORECASE
+# Kräv en rubrik på egen rad. En hänvisning i löptexten till en
+# förvaltningsberättelse eller resultaträkning får inte avgränsa avsnittet.
+SECTION_START = re.compile(
+    r"(?im)^[ \t]*(?:styrelsens[ \t]+)?f[öo]rvaltningsber[äa]ttels(?:e|en)"
+    r"(?:[ \t]+(?:20\d{2}|\d{1,2}))?[ \t]*$"
 )
-# Nog för en förvaltningsberättelse, och ett tak mot att hela dokumentet
-# skickas när rubrikerna inte går att hitta.
+SECTION_END = re.compile(
+    r"(?im)^[ \t]*(?:(?:resultatr[äa]kning|balansr[äa]kning)\b|"
+    r"resultat[ \t]*-[ \t]*och[ \t]+balansr[äa]kning\b|"
+    r"noter[ \t]+till\b|till[äa]ggsupplysningar\b)"
+)
+PAGE_MARKER = re.compile(r"(?m)^\[Sida[ \t]+(-?\d+)\][ \t]*$")
 MAX_SECTION_CHARS = 40000
-# En förvaltningsberättelse är längre än så här. Kortare betyder att rubriken
-# hittades någon annanstans - oftast i innehållsförteckningen, där nästa rad
-# redan är "Resultaträkning".
-MIN_SECTION_CHARS = 2000
+# Kortare årsredovisningar kan ha under 2 000 tecken i berättelsen. Skydda
+# istället mot innehållsförteckningar genom att granska deras uppställning.
+MIN_SECTION_CHARS = 250
+
+
+def _is_contents_page(section: str) -> bool:
+    """Avfärda en rubrik i innehållsförteckningen, inte kort brödtext."""
+    lines = [
+        line.strip() for line in section.splitlines()
+        if line.strip() and not PAGE_MARKER.fullmatch(line.strip())
+    ][:24]
+    if len(lines) < 4:
+        return False
+    page_references = sum(
+        bool(re.search(r"(?:\.{2,}|[ \t])\d{1,3}$", line)) for line in lines
+    )
+    narrative = sum(bool(re.search(r"[.!?](?:[ \t]*$)", line)) for line in lines)
+    return page_references >= 3 and page_references >= len(lines) * 0.35 and narrative <= 1
 
 
 def extract_section(text: str, *, strict: bool = False) -> str:
-    """Förvaltningsberättelsen, om den går att hitta, annars hela dokumentet.
+    """Extrahera förvaltningsberättelsen mellan två verkliga rubriker.
 
-    Att skicka hela årsredovisningen vore både dyrare och sämre: modellen
-    skulle få resultaträkningen och noterna att sammanfatta också. Befintliga
-    frågor behåller sin fallback; strict=True ger tomt svar när avsnittet
-    inte kan avgränsas tillräckligt säkert (för placeringsfrågan).
-
-    Rubriken förekommer oftast flera gånger - en gång i innehållsförteckningen
-    och en gång där avsnittet faktiskt börjar - så varje förekomst prövas och
-    den längsta vinner. Att ta den första gav GS a-kassa ett avsnitt på drygt
-    tusen tecken hämtat ur innehållsförteckningen, och alla tre
-    sammanfattningarna kom tillbaka tomma.
+    strict=True kräver en slutrubrik och ett fullständigt, rimligt avsnitt.
+    De tre ursprungliga frågorna får oförändrat hela dokumentet som fallback.
+    Sidmarkören framför rubriken behålls så att citat på första sidan kan
+    kopplas till ett faktiskt sidnummer.
     """
     if not text:
         return ""
 
+    markers = list(PAGE_MARKER.finditer(text))
     candidates = []
     for start in SECTION_START.finditer(text):
-        rest = text[start.start():]
-        end = SECTION_END.search(rest, 1)
-        if strict and not end:
-            # Utan slutrubrik kan avsnittet innehålla noter och balansräkning.
+        end = SECTION_END.search(text, start.end())
+        if strict and end is None:
             continue
-        candidates.append(rest[: end.start()] if end else rest)
+        # Om slutrubrik saknas kan enbart legacy-frågorna använda utdraget.
+        body = text[start.start():end.start() if end else len(text)]
+        if len(body) < MIN_SECTION_CHARS or _is_contents_page(body):
+            continue
+        if strict and len(body) > MAX_SECTION_CHARS:
+            continue
 
-    best = max(candidates, key=len) if candidates else ""
-    if len(best) < MIN_SECTION_CHARS:
-        if strict:
-            return ""
-        # Rubrikerna stod tätt, troligen i innehållsförteckningen. Hellre hela
-        # dokumentet än nästan ingenting: en dyrare fråga är bättre än tre
-        # tomma svar.
-        logger.info(
-            f"Förvaltningsberättelsen gick inte att avgränsa ({len(best)} "
-            "tecken). Skickar hela dokumentet i stället."
-        )
-        best = text
-    return best[:MAX_SECTION_CHARS]
+        prefix = ""
+        for marker in reversed(markers):
+            if marker.start() < start.start():
+                prefix = marker.group(0) + "\n"
+                break
+        candidates.append(prefix + body)
 
+    if candidates:
+        # De faktiska berättelserna är vanligen längre än TOC-träffarna.
+        best = max(candidates, key=len)
+        return best[:MAX_SECTION_CHARS] if not strict else best
+
+    if strict:
+        return ""
+    logger.info(
+        "Förvaltningsberättelsen gick inte att avgränsa. "
+        "Skickar hela dokumentet i stället."
+    )
+    return text[:MAX_SECTION_CHARS]
 
 def build_request(section: str) -> str:
     questions = "\n".join(
@@ -319,3 +345,163 @@ def _normalise(text: str) -> str:
         if char.isalnum() and not unicodedata.combining(char)
     ]
     return "".join(letters)
+
+# En riktad andra kontroll görs endast om det finns ord som faktiskt kan
+# syfta på finansiella tillgångar i det strikt avgränsade avsnittet.
+PLACEMENT_TERMS = re.compile(
+    r"\b(?:kapital\s*-?\s*placering\w*|finansiell\w*\s+placering\w*|"
+    r"v[äa]rdepapper\w*|v[äa]rdepappersinnehav\w*|"
+    r"r[äa]ntefond\w*|aktiefond\w*|fonder\b|fondinnehav\w*|"
+    r"likvida\s+medel|bankmedel\w*|banktillgodohavand\w*|"
+    r"bankkonton?\b|kassa\s+och\s+bank|"
+    r"kapitalf[öo]rvaltning\w*|placeringspolicy\w*|"
+    r"placeringsreglemente\w*|placeringsportf[öo]lj\w*|"
+    r"placering\w*|r[äa]nteb[äa]rande\s+(?:tillg[åa]ngar|papper))\b",
+    re.IGNORECASE,
+)
+NON_FINANCIAL_PLACEMENT = re.compile(
+    r"\b(?:personal|anst[äa]ll|praktik|arbetsmarknad|arbetss[öo]kand|"
+    r"elever|studenter|jobbcoach|bemanning)\w*\b",
+    re.IGNORECASE,
+)
+
+PLACEMENT_RECHECK_SCHEMA = {
+    "name": "finansiella_placeringar_omkontroll",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["sammanfattning", "citat", "sida"],
+        "properties": RESPONSE_SCHEMA["schema"]["properties"][PLACEMENTS_KEY]["properties"],
+    },
+}
+
+PLACEMENT_RECHECK_PROMPT = """Du gör en oberoende kontroll av en enda fråga ur en
+svensk a-kassas förvaltningsberättelse. Underlaget består BARA av utdrag
+ur förvaltningsberättelsen. Varje utdrag har sidmarkören [Sida N].
+
+Fråga: Nämner texten finansiella placeringar, fonder, värdepapper,
+kapitalförvaltning, bankmedel, likvida medel eller liknande? Allmänna
+personalplaceringar och arbetsmarknadsinsatser är inte relevant.
+
+Om ja: ge en enda kort mening som endast återger vad ett valt, ordagrant
+stödcitat direkt säger, kopiera det exakta citatet och dess [Sida N].
+Om inga relevanta uppgifter finns: returnera "Nämns inte", citat "", sida 0.
+Hitta inte på uppgifter. Använd inte balansräkning eller noter."""
+
+
+def _numbered_pages(section: str) -> list[tuple[int, str]]:
+    markers = list(PAGE_MARKER.finditer(section or ""))
+    return [
+        (int(marker.group(1)), section[marker.end():
+                                        markers[i + 1].start() if i + 1 < len(markers)
+                                        else len(section)])
+        for i, marker in enumerate(markers)
+    ]
+
+
+def placement_candidate_passages(section: str, *, limit: int = 12) -> list[str]:
+    """Korta, sidsatta textrader för en eventuell andra AI-kontroll.
+
+    En träff är en anledning att kontrollera, inte ett bevis på placeringar.
+    Utan sidmarkörer görs ingen ny AI-kontroll: då kan resultatet ändå inte
+    verifieras mot rätt sida.
+    """
+    passages = []
+    seen = set()
+    for page, body in _numbered_pages(section):
+        page_hits = 0
+        # PDF-radbrytningar och avstavningar får inte förstöra sökorden.
+        compact = re.sub(r"(?<=\w)-\s+(?=\w)", "", body)
+        compact = re.sub(r"\s+", " ", compact)
+        for match in PLACEMENT_TERMS.finditer(compact):
+            left = max(0, match.start() - 180)
+            right = min(len(compact), match.end() + 250)
+            context = compact[left:right].strip()
+            if match.group().casefold().startswith("placering") and (
+                NON_FINANCIAL_PLACEMENT.search(context)
+                and not re.search(r"\b(?:kapital|finansiell|tillg[åa]ng|"
+                                  r"fond|bank|v[äa]rdepapper|r[äa]nte)\w*\b", context,
+                                  re.IGNORECASE)
+            ):
+                continue
+            token = (page, _normalise(context))
+            if token in seen:
+                continue
+            seen.add(token)
+            passages.append(f"[Sida {page}]\n{context}")
+            page_hits += 1
+            if len(passages) >= limit:
+                return passages
+            if page_hits >= 3:
+                break
+    return passages
+
+
+def build_placement_recheck_request(passages: list[str]) -> str:
+    return (
+        "Kontrollera enbart dessa träffar i förvaltningsberättelsen. "
+        "En ordträff behöver inte vara ett verkligt omnämnande.\n\n"
+        + "\n\n---\n\n".join(passages)
+    )
+
+
+def parse_placement_recheck(raw: str) -> dict:
+    try:
+        entry = json.loads(raw)
+        if not isinstance(entry, dict):
+            return {}
+        # Återanvänd samma normalisering och statusregler som första anropet.
+        result = parse_response(json.dumps({PLACEMENTS_KEY: entry}, ensure_ascii=False))
+        return result.get(PLACEMENTS_KEY, {})
+    except (ValueError, TypeError, AttributeError):
+        return {}
+
+
+def verify_placement_page(entry: dict, section: str) -> dict:
+    """Kräv att citatet återfinns på en bestämd sida i berättelsen.
+
+    Rätta modellens sidnummer när endast en sida ger stöd. Ett citat som
+    förekommer på flera sidor utan entydigt sidnummer godkänns inte.
+    Denna kontroll verifierar citatets existens, inte hela sammanfattningens
+    semantiska riktighet (därför begränsar prompten dess omfattning).
+    """
+    result = dict(entry)
+    summary = result.get("sammanfattning", "")
+    quote = result.get("citat") or ""
+    if summary in (NOT_MENTIONED, NOT_ASSESSABLE, NOT_VERIFIED):
+        result.update({"citat": "", "sida": 0})
+        return result
+    if not quote:
+        result.update({"sammanfattning": NOT_VERIFIED, "citat": "", "sida": 0,
+                       "citat_kontroll": QUOTE_MISSING, "citat_stod": 0.0})
+        return result
+
+    matches = []
+    for page, body in _numbered_pages(section):
+        if page <= 0:
+            continue
+        score = quote_support(quote, body)
+        if score >= QUOTE_UNSUPPORTED_RATIO:
+            matches.append((page, score))
+
+    # Citatet måste ha tillräckligt stöd på samma sida som anges. Om den
+    # angivna sidan inte stämmer kan en enda entydig träff rätta den.
+    given = result.get("sida") or 0
+    selected = next(((p, score) for p, score in matches if p == given), None)
+    if selected is None and len(matches) == 1:
+        selected = matches[0]
+    if selected is None:
+        result.update({"sammanfattning": NOT_VERIFIED, "citat": "", "sida": 0,
+                       "citat_kontroll": QUOTE_UNSUPPORTED, "citat_stod": 0.0})
+        return result
+
+    page, score = selected
+    if page != given:
+        result["sidnummer_korrigerat"] = True
+    result["sida"] = page
+    result["citat_kontroll"] = (
+        QUOTE_VERIFIED if score >= QUOTE_VERIFIED_RATIO else QUOTE_APPROXIMATE
+    )
+    result["citat_stod"] = round(score, 2)
+    return result
