@@ -623,6 +623,15 @@ class JsonConverter:
                         "förvaltningsberättelsen. Kontrollera gärna mot originalet.",
                         "JBG nyckeltalsanalys",
                     )
+                if entry.get("sammanfattning_korrigerad"):
+                    summary_cell = ws.cell(row=ws.max_row, column=2 + index * 3)
+                    summary_cell.comment = Comment(
+                        "Sammanfattningen har automatiskt begränsats till vad "
+                        "det angivna citatet faktiskt styrker. En mer specifik "
+                        "formulering saknade tillräckligt stöd i citatet. "
+                        "Kontrollera mot originalårsredovisningen.",
+                        "JBG nyckeltalsanalys",
+                    )
                 if entry.get("citat_kontroll") != management_report.QUOTE_APPROXIMATE:
                     continue
                 cell = ws.cell(row=ws.max_row, column=3 + index * 3)

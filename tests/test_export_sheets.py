@@ -410,3 +410,20 @@ def test_korrigerat_sidnummer_markeras_med_kallkommentar(tmp_path):
     assert page_cell.value == 6
     assert "korrigerats automatiskt" in page_cell.comment.text
     assert ws.cell(3, 12).value.startswith("Kassan har")
+
+
+def test_korrigerad_placeringssammanfattning_markeras_med_kallkommentar(tmp_path):
+    summaries = {"Livsmedelsarbetarnas arbetslöshetskassa": {
+        "finansiella_placeringar": {
+            "sammanfattning": "Kassan uppger att den har placerat kapital.",
+            "citat": "A-kassan har placerat sitt kapital enligt följande:",
+            "sida": 11,
+            "sammanfattning_korrigerad": True,
+            "sammanfattning_saknar_stod": ["räntefonder", "aktiefonder"],
+            "citat_kontroll": "återfunnet", "citat_stod": 1.0,
+        }
+    }}
+    ws = _export_with_summaries(tmp_path, summaries)["Förvaltningsberättelse"]
+    assert ws.cell(3, 11).comment is not None
+    assert "automatiskt begränsats" in ws.cell(3, 11).comment.text
+    assert ws.cell(3, 13).value == 11

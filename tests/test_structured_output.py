@@ -552,3 +552,92 @@ def test_citat_fran_not_far_inte_anvandas_for_placeringsfragan():
     assert len(calls) == 1
     assert placement["sammanfattning"] == mr.NOT_VERIFIED
     assert not placement["citat"]
+
+# ----------------------------------------------------- kvalitetspatch 3
+
+def test_forbisedd_placera_tillgangar_utloser_riktad_omkontroll():
+    from app.src import JBGManagementReport as mr
+    import json
+
+    sentence = "Det är viktigt för oss att placera våra tillgångar på ett hållbart sätt."
+    analyzer = _analyzer()
+    calls = []
+
+    def reply(*args, **kwargs):
+        calls.append(args[1])
+        if len(calls) == 1:
+            return _summaries_payload({
+                "sammanfattning": mr.NOT_MENTIONED, "citat": "", "sida": 0,
+            })
+        return json.dumps({
+            "sammanfattning": "Kassan vill placera sina tillgångar hållbart.",
+            "citat": sentence, "sida": 3,
+        }, ensure_ascii=False)
+
+    analyzer._make_openai_api_call = reply
+    entry = analyzer._summarise_management_report(_placements_story(sentence))[
+        mr.PLACEMENTS_KEY
+    ]
+    assert len(calls) == 2
+    assert "placera våra tillgångar" in calls[1]
+    assert entry["sida"] == 3
+    assert entry["citat"] == sentence
+
+
+def test_omkontroll_kan_ge_stod_for_fondtyper_som_forsta_citatet_saknar():
+    from app.src import JBGManagementReport as mr
+    import json
+
+    first = "A-kassan har placerat sitt kapital enligt följande:"
+    detail = "Kapitalet är fördelat mellan räntefonder och aktiefonder."
+    analyzer = _analyzer()
+    calls = []
+
+    def reply(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            return _summaries_payload({
+                "sammanfattning": "Kassan har räntefonder och aktiefonder.",
+                "citat": first, "sida": 3,
+            })
+        return json.dumps({
+            "sammanfattning": "Kassans kapital är fördelat mellan räntefonder och aktiefonder.",
+            "citat": detail, "sida": 3,
+        }, ensure_ascii=False)
+
+    analyzer._make_openai_api_call = reply
+    entry = analyzer._summarise_management_report(
+        _placements_story(first + "\n" + detail)
+    )[mr.PLACEMENTS_KEY]
+    assert len(calls) == 2
+    assert entry["sammanfattning"] == "Kassans kapital är fördelat mellan räntefonder och aktiefonder."
+    assert not entry.get("sammanfattning_korrigerad")
+
+
+def test_omkontroll_utan_battre_bevis_behalter_kallstodd_minimisammanfattning():
+    from app.src import JBGManagementReport as mr
+    import json
+
+    first = "A-kassan har placerat sitt kapital enligt följande:"
+    analyzer = _analyzer()
+    calls = []
+
+    def reply(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            return _summaries_payload({
+                "sammanfattning": "Kassan har aktiefonder och räntefonder.",
+                "citat": first, "sida": 3,
+            })
+        return json.dumps({
+            "sammanfattning": mr.NOT_MENTIONED, "citat": "", "sida": 0,
+        }, ensure_ascii=False)
+
+    analyzer._make_openai_api_call = reply
+    entry = analyzer._summarise_management_report(_placements_story(first))[
+        mr.PLACEMENTS_KEY
+    ]
+    assert len(calls) == 2
+    assert entry["sammanfattning"] == "Kassan uppger att den har placerat kapital."
+    assert entry["citat"] == first
+    assert entry["sammanfattning_korrigerad"] is True

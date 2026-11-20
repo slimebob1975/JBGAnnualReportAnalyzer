@@ -152,11 +152,14 @@ RESPONSE_SCHEMA = {
 # förvaltningsberättelse eller resultaträkning får inte avgränsa avsnittet.
 SECTION_START = re.compile(
     r"(?im)^[ \t]*(?:styrelsens[ \t]+)?f[öo]rvaltningsber[äa]ttels(?:e|en)"
-    r"(?:[ \t]+(?:20\d{2}|\d{1,2}))?[ \t]*$"
+    r"(?:[ \t]+(?:(?:f[öo]r|avseende)[ \t]+)?"
+    r"(?:(?:verksamhets|r[äa]kenskaps)[åa]ret[ \t]+)?20\d{2})?"
+    r"[ \t]*[:.\-]?[ \t]*$"
 )
 SECTION_END = re.compile(
     r"(?im)^[ \t]*(?:(?:resultatr[äa]kning|balansr[äa]kning)\b|"
-    r"resultat[ \t]*-[ \t]*och[ \t]+balansr[äa]kning\b|"
+    r"(?:resultat[ \t]*-?[ \t]*och[ \t]+balans|"
+    r"balans[ \t]*-?[ \t]*och[ \t]+resultat)r[äa]kning(?:ar)?\b|"
     r"noter[ \t]+till\b|till[äa]ggsupplysningar\b)"
 )
 PAGE_MARKER = re.compile(r"(?m)^\[Sida[ \t]+(-?\d+)\][ \t]*$")
@@ -164,6 +167,52 @@ MAX_SECTION_CHARS = 40000
 # Kortare årsredovisningar kan ha under 2 000 tecken i berättelsen. Skydda
 # istället mot innehållsförteckningar genom att granska deras uppställning.
 MIN_SECTION_CHARS = 250
+
+# Vissa PDF:er har läslig brödtext men trasig teckenkodning just i rubrikerna.
+# En tydlig innehållsförteckning med sidnummer kan då ge en säkrare gräns än
+# att behandla hela årsredovisningen som förvaltningsberättelse.
+TOC_START = re.compile(
+    r"(?im)^[ \t]*(?:styrelsens[ \t]+)?f[öo]rvaltningsber[äa]ttels(?:e|en)"
+    r"[ \t]*\.{2,}[ \t]*(\d{1,3})[ \t]*$"
+)
+TOC_END = re.compile(
+    r"(?im)^[ \t]*(?:resultatr[äa]kning|"
+    r"(?:resultat[ \t]*-?[ \t]*och[ \t]+balans)r[äa]kning(?:ar)?)"
+    r"[ \t]*\.{2,}[ \t]*(\d{1,3})[ \t]*$"
+)
+
+
+def _section_from_contents(text: str) -> str:
+    """Reservavgränsning med innehållsförteckningens **tryckta** sidnummer.
+
+    Kräv två numrerade rubriker med punktledare och båda sidmarkörerna i
+    brödtexten. Avgränsa aldrig på bara en förvaltningsrubrik: då riskerar
+    modellsvaret att hämtas från balansräkningen och noterna.
+    """
+    starts = list(TOC_START.finditer(text[:12000]))
+    ends = list(TOC_END.finditer(text[:12000]))
+    pages = list(PAGE_MARKER.finditer(text))
+    for toc_start in starts:
+        first = int(toc_start.group(1))
+        for toc_end in ends:
+            last = int(toc_end.group(1))
+            if not (toc_end.start() > toc_start.start() and 1 <= first < last
+                    and last - first <= 50):
+                continue
+            start = next((m for m in pages if m.start() > toc_end.end()
+                          and int(m.group(1)) == first), None)
+            end = next((m for m in pages if start and m.start() > start.start()
+                        and int(m.group(1)) == last), None)
+            if start is None or end is None:
+                continue
+            body = text[start.start():end.start()]
+            first_page_end = PAGE_MARKER.search(body, len(start.group(0)))
+            first_page = body[:first_page_end.start()] if first_page_end else body
+            if (MIN_SECTION_CHARS <= len(body) <= MAX_SECTION_CHARS
+                    and len(first_page.strip()) >= 120
+                    and not _is_contents_page(first_page)):
+                return body
+    return ""
 
 
 def _is_contents_page(section: str) -> bool:
@@ -217,7 +266,23 @@ def extract_section(text: str, *, strict: bool = False) -> str:
         best = max(candidates, key=len)
         return best[:MAX_SECTION_CHARS] if not strict else best
 
+    recovered = _section_from_contents(text)
+    if recovered:
+        logger.info(
+            "Förvaltningsberättelsen avgränsad med innehållsförteckningens "
+            "sidnummer (rubriker i textlagret kunde inte följas)."
+        )
+        return recovered
+
     if strict:
+        # Logga bara förekomst av rubrikmönster, inte dokumenttext. Det gör
+        # nästa avgränsningsproblem diagnostiserbart utan att röja innehåll.
+        logger.info(
+            "Kunde inte avgränsa förvaltningsberättelsen strikt "
+            "(startrubriker=%s, slutrubriker=%s, sidmarkörer=%s).",
+            len(list(SECTION_START.finditer(text))),
+            len(list(SECTION_END.finditer(text))), len(markers),
+        )
         return ""
     logger.info(
         "Förvaltningsberättelsen gick inte att avgränsa. "
@@ -356,7 +421,8 @@ PLACEMENT_TERMS = re.compile(
     r"bankkonton?\b|kassa\s+och\s+bank|"
     r"kapitalf[öo]rvaltning\w*|placeringspolicy\w*|"
     r"placeringsreglemente\w*|placeringsportf[öo]lj\w*|"
-    r"placering\w*|r[äa]nteb[äa]rande\s+(?:tillg[åa]ngar|papper))\b",
+    r"(?:om)?placer(?:a\w*|ing\w*)|"
+    r"r[äa]nteb[äa]rande\s+(?:tillg[åa]ngar|papper))\b",
     re.IGNORECASE,
 )
 NON_FINANCIAL_PLACEMENT = re.compile(
@@ -387,6 +453,8 @@ personalplaceringar och arbetsmarknadsinsatser är inte relevant.
 Om ja: ge en enda kort mening som endast återger vad ett valt, ordagrant
 stödcitat direkt säger, kopiera det exakta citatet och dess [Sida N].
 Om inga relevanta uppgifter finns: returnera "Nämns inte", citat "", sida 0.
+Om ett citat slutar med "enligt följande" men efterföljande uppställning
+inte ingår i citatet får sammanfattningen inte ange uppställningens fondtyper.
 Hitta inte på uppgifter. Använd inte balansräkning eller noter."""
 
 
@@ -418,11 +486,19 @@ def placement_candidate_passages(section: str, *, limit: int = 12) -> list[str]:
             left = max(0, match.start() - 180)
             right = min(len(compact), match.end() + 250)
             context = compact[left:right].strip()
-            if match.group().casefold().startswith("placering") and (
-                NON_FINANCIAL_PLACEMENT.search(context)
-                and not re.search(r"\b(?:kapital|finansiell|tillg[åa]ng|"
-                                  r"fond|bank|v[äa]rdepapper|r[äa]nte)\w*\b", context,
-                                  re.IGNORECASE)
+            # Böjningsformer som placera, placerat och omplacerade är
+            # relevanta. De är dock tvetydiga när texten gäller människor.
+            # Kontrollera bara närliggande ord, inte en annan mening längre
+            # bort på sidan som råkar nämna banken eller ett kapitalbelopp.
+            generic = re.fullmatch(
+                r"(?:om)?placer(?:a\w*|ing\w*)", match.group(), re.IGNORECASE
+            ) is not None
+            nearby = compact[max(0, match.start() - 85):
+                             min(len(compact), match.end() + 85)]
+            if generic and NON_FINANCIAL_PLACEMENT.search(nearby) and not re.search(
+                r"\b(?:kapital|finansiell|tillg[åa]ng|fond|bank|"
+                r"v[äa]rdepapper|r[äa]nte|aktie|portf[öo]lj)\w*\b",
+                nearby, re.IGNORECASE,
             ):
                 continue
             token = (page, _normalise(context))
@@ -458,13 +534,95 @@ def parse_placement_recheck(raw: str) -> dict:
         return {}
 
 
+# Avgränsad sakgranskning: en verifierad citatsträng innebär inte att
+# specifika belopp eller tillgångsslag i modellens sammanfattning är belagda.
+# Reglerna är medvetet snäva. Okända begrepp och rena omformuleringar kräver
+# fortfarande manuell granskning.
+PLACEMENT_FACTS = (
+    (r"\br[äa]ntefond\w*\b", r"\br[äa]ntefond\w*\b", "räntefonder"),
+    (r"\baktiefond\w*\b", r"\baktiefond\w*\b", "aktiefonder"),
+    (r"\b(?:stats)?obligation\w*\b", r"\b(?:stats)?obligation\w*\b", "obligationer"),
+    (r"\bfonder?\b", r"\b\w*fond\w*\b", "fonder"),
+    (r"\bkortfristig\w*\b", r"\bkortfristig\w*\b", "kortfristig"),
+    (r"\bl[åa]ngfristig\w*\b", r"\bl[åa]ngfristig\w*\b", "långfristig"),
+    (r"\baktie(?:r|innehav)\b", r"\baktie(?:r|innehav)\b", "aktier"),
+    (r"\bv[äa]rdepapper\w*\b", r"\bv[äa]rdepapper\w*\b", "värdepapper"),
+    (r"\b(?:bankmedel|banktillgodohavand\w*|bankkonto\w*)\b",
+     r"\b(?:bankmedel|banktillgodohavand\w*|bankkonto\w*)\b", "bankmedel"),
+    (r"\blikvida\s+medel\b", r"\blikvida\s+medel\b", "likvida medel"),
+    (r"\b(?:extern\w*\s+f[öo]rvaltare|extern\w*\s+kapitalf[öo]rvaltare)\b",
+     r"\b(?:extern\w*\s+f[öo]rvaltare|extern\w*\s+kapitalf[öo]rvaltare)\b",
+     "extern förvaltare"),
+    (r"\b(?:placeringspolicy|placeringsreglemente)\b",
+     r"\b(?:placeringspolicy|placeringsreglemente|policy|reglemente)\b",
+     "placeringspolicy"),
+    (r"\b(?:riktlinj|placeringsreglemente|placeringspolicy)\w*\b",
+     r"\b(?:riktlinj|reglemente|policy|placeringsreglemente|placeringspolicy)\w*\b",
+     "placeringsriktlinjer"),
+    (r"\b(?:h[åa]llbar|etisk)\w*\b",
+     r"\b(?:h[åa]llbar|etisk|ansvarsfull|esg)\w*\b",
+     "hållbarhet/etik"),
+    (r"\b(?:l[åa]gt?\s+risktagande|l[åa]g\s+risk)\b",
+     r"\b(?:risk|risktagande)\w*\b", "risktagande"),
+    (r"\bportf[öo]lj\w*\b", r"\bportf[öo]lj\w*\b", "portfölj"),
+    (r"\bfn:s?\b", r"\bfn:s?\b", "FN"),
+    (r"\b(?:nordea|swedbank|handelsbanken|seb|avanza|nordnet)\b",
+     r"\b(?:nordea|swedbank|handelsbanken|seb|avanza|nordnet)\b",
+     "namngiven förvaltare/bank"),
+)
+
+
+def unsupported_placement_details(summary: str, quote: str) -> list[str]:
+    """Avvisa konkreta påståenden som inte kan utläsas ur det valda citatet.
+
+    Räknar inte allmän språklig likhet som verifiering: ordet kapital i
+    citatet styrker t.ex. inte ett påstående om ränte- *och* aktiefonder.
+    """
+    details = []
+    # Slå ihop avstavade OCR-ord innan konkret fakta matchas.
+    summary_text = re.sub(r"(?<=\w)-\s+(?=\w)", "", summary)
+    quote_text = re.sub(r"(?<=\w)-\s+(?=\w)", "", quote)
+    for claim, evidence, label in PLACEMENT_FACTS:
+        if re.search(claim, summary_text, re.IGNORECASE) and not re.search(
+            evidence, quote_text, re.IGNORECASE
+        ):
+            details.append(label)
+
+    # Numeriska fakta kräver motsvarande siffra i stödcitatet. En procentsats
+    # eller ett belopp får inte tillföras enbart från modellens övriga kunskap.
+    def numbers(text: str) -> set[str]:
+        without_grouping = re.sub(r"(?<=\d)[ \u00a0](?=\d{3}\b)", "", text)
+        return {n.replace(",", ".") for n in re.findall(
+            r"\d+(?:[.,]\d+)?", without_grouping
+        )}
+
+    quoted_numbers = numbers(quote)
+    for number in sorted(numbers(summary)):
+        if number not in quoted_numbers:
+            details.append("belopp/årtal " + number)
+    return details
+
+
+def conservative_placement_summary(quote: str) -> str:
+    """Behåll en källstödd minimiuppgift om en detaljerad text överdriver.
+
+    Inga tillgångsslag eller belopp får läggas till genom omskrivningen.
+    """
+    if re.search(
+        r"\b(?:a-kassan|kassan)\s+har\s+placerat\s+(?:sitt|dess)?\s*kapital\b",
+        quote, re.IGNORECASE,
+    ):
+        return "Kassan uppger att den har placerat kapital."
+    return ""
+
+
 def verify_placement_page(entry: dict, section: str) -> dict:
     """Kräv att citatet återfinns på en bestämd sida i berättelsen.
 
     Rätta modellens sidnummer när endast en sida ger stöd. Ett citat som
     förekommer på flera sidor utan entydigt sidnummer godkänns inte.
-    Denna kontroll verifierar citatets existens, inte hela sammanfattningens
-    semantiska riktighet (därför begränsar prompten dess omfattning).
+    Dessutom kontrolleras några tydliga sakuppgifter och sifferpåståenden.
+    Kontrollen bevisar inte all semantisk riktighet; därför krävs stickprov.
     """
     result = dict(entry)
     summary = result.get("sammanfattning", "")
@@ -504,4 +662,14 @@ def verify_placement_page(entry: dict, section: str) -> dict:
         QUOTE_VERIFIED if score >= QUOTE_VERIFIED_RATIO else QUOTE_APPROXIMATE
     )
     result["citat_stod"] = round(score, 2)
+    details = unsupported_placement_details(summary, quote)
+    if details:
+        result["sammanfattning_saknar_stod"] = details
+        fallback = conservative_placement_summary(quote)
+        if fallback:
+            result["sammanfattning"] = fallback
+            result["sammanfattning_korrigerad"] = True
+        else:
+            result.update({"sammanfattning": NOT_VERIFIED, "citat": "", "sida": 0,
+                           "citat_kontroll": QUOTE_UNSUPPORTED, "citat_stod": 0.0})
     return result

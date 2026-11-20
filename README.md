@@ -375,6 +375,31 @@ citat finns på rätt sida bevisar inte automatiskt att varje omskrivning av
 citatet är korrekt; sammanfattningen ska därför begränsas till citatets
 faktiska innehåll och bör stickprovskontrolleras.
 
+### Kompletterande kvalitetskontroll för finansiella placeringar (v3)
+
+Sökningen känner även igen böjningar som *placera*, *placerat*, *placerade*
+och *omplacering*, samtidigt som uttryck om personalplaceringar filtreras.
+Detta kan ge ett extra sammanfattningsanrop för dokument där ett omnämnande
+annars hade förbisetts. Sökningen görs bara i den avgränsade
+förvaltningsberättelsen, aldrig i balansräkning eller noter.
+
+Några PDF:er har läsbar brödtext men förstörda rubriker i textlagret. Om
+rubrikavgränsningen misslyckas får tjänsten använda en **innehållsförteckning
+med tydliga punktledare och sidnummer** för att identifiera berättelsens
+första och sista sida. Båda sidgränserna måste stämma med sidmarkörerna.
+Annars fortsätter den försiktigt att visa **Kan inte bedömas**. Loggen anger
+hur många rubriker som hittades om avgränsningen misslyckades.
+
+Utöver citat- och sidkontroll görs en enkel kontroll av specifika tillgångsslag,
+banknamn och siffror i placeringssammanfattningen. Ett citat som bara säger
+"placerat kapital" kan därmed inte ensamt styrka "räntefonder och aktiefonder".
+Vid sådana avvikelser kan en riktad omsökning ge ett bättre citat. Om inget
+bättre citat hittas behålls endast en mycket snäv, källstödd formulering när
+det är möjligt; Excel-cellen får då en kommentar om den automatiska
+begränsningen. Om inte ens en snäv formulering stöds blir resultatet
+**Ingen verifierbar uppgift**. Kontrollen ersätter inte manuell semantisk
+granskning och ska testas mot original-PDF:erna innan den tas i full drift.
+
 Det här är den enda del av verktyget som genererar text i stället för att
 hämta den. Ingen aritmetik fångar en sammanfattning som är flytande, rimlig och
 fel, och sådana är svårare att upptäcka än ett felaktigt tal. Citatet är därför

@@ -411,3 +411,142 @@ def test_riktad_omkontroll_har_ett_fjarde_amne_utan_att_andra_schemas():
     parsed = mr.parse_placement_recheck(payload)
     assert parsed["sammanfattning"] == mr.NOT_MENTIONED
     assert mr.parse_placement_recheck("not json") == {}
+
+# ----------------------------------------------------- kvalitetspatch 3
+
+def test_flera_rubrikvarianter_kan_avgransas_ut_an_att_lasa_noter():
+    text = (
+        "[Sida 1]\nINNEHÅLL\nFörvaltningsberättelse 3\nResultaträkning 9\n"
+        "[Sida 3]\nStyrelsens förvaltningsberättelse för räkenskapsåret 2025\n"
+        "Kassan placerar sina tillgångar med hänsyn till hållbarhet.\n"
+        + "Året har i övrigt präglats av verksamhetsutveckling. " * 11
+        + "\n[Sida 5]\nResultat- och balansräkningar\n"
+        "[Sida 11]\nNoter till balansräkningen\nAktiefonder: 300 000 kronor."
+    )
+    section = mr.extract_section(text, strict=True)
+    assert "Kassan placerar sina tillgångar" in section
+    assert section.startswith("[Sida 3]")
+    assert "Aktiefonder: 300" not in section
+    assert "Resultat- och balansräkningar" not in section
+
+
+@pytest.mark.parametrize("verb", [
+    "placera", "placerat", "placerar", "placerats", "placerade", "placeras",
+    "omplacerade", "omplaceringar",
+])
+def test_placeringsverb_soker_en_gang_till(verb):
+    section = f"[Sida 4]\nFörvaltningsberättelse\nVi har {verb} våra tillgångar hållbart."
+    passages = mr.placement_candidate_passages(section)
+    assert len(passages) == 1
+    assert passages[0].startswith("[Sida 4]")
+
+
+def test_personalplacering_med_bankuppgift_i_annan_del_inte_falsktraf():
+    section = (
+        "[Sida 2]\nFörvaltningsberättelse\nPersonalens placeringar i grupperna. "
+        + "Verksamhetsplanen följdes. " * 14
+        + "Kassan har bankmedel på konto."
+    )
+    passages = mr.placement_candidate_passages(section)
+    assert any("bankmedel" in p for p in passages)
+    assert all("[Sida 2]" in p for p in passages)
+    # Personalplaceringen i sig ska inte bli en egen omkontrollträff.
+    assert len(passages) == 1
+
+
+def test_sammanfattning_saknar_fondtyper_i_sts_citat():
+    quote = "A-kassan har placerat sitt kapital enligt följande:"
+    summary = "Kassan har placerat sitt kapital i räntefonder och aktiefonder."
+    assert mr.unsupported_placement_details(summary, quote) == [
+        "räntefonder", "aktiefonder"
+    ]
+    section = "[Sida 11]\nFörvaltningsberättelse\n" + quote
+    entry = {"sammanfattning": summary, "citat": quote, "sida": 11}
+    checked = mr.verify_placement_page(entry, section)
+    assert checked["sammanfattning"] == "Kassan uppger att den har placerat kapital."
+    assert checked["sammanfattning_korrigerad"] is True
+    assert checked["sida"] == 11
+    assert checked["citat"] == quote
+
+
+def test_pahittade_belopp_banknamn_och_policy_stryks():
+    quote = "Kapitalet har under året placerats i räntefonder."
+    summary = "Kassan har 20 miljoner i räntefonder hos Nordea enligt policy."
+    issues = mr.unsupported_placement_details(summary, quote)
+    assert "belopp/årtal 20" in issues
+    assert "namngiven förvaltare/bank" in issues
+    assert "placeringsriktlinjer" not in issues  # "policy" är inte ett eget regeluttryck.
+    entry = mr.verify_placement_page(
+        {"sammanfattning": summary, "citat": quote, "sida": 5},
+        "[Sida 5]\n" + quote,
+    )
+    assert entry["sammanfattning"] == mr.NOT_VERIFIED
+    assert entry["sida"] == 0
+
+
+def test_fondnamn_i_citat_kan_vara_avstavat():
+    quote = "Kassan har investerat i ränte-\nfonder."
+    summary = "Kassan har räntefonder."
+    assert mr.unsupported_placement_details(summary, quote) == []
+
+
+def test_samma_belopp_med_olika_tusentalsavgransare():
+    assert mr.unsupported_placement_details(
+        "Värdepapper uppgår till 3 000 kronor.",
+        "Värdepapper uppgår till 3000 kronor.",
+    ) == []
+
+
+def test_omfattande_placeringssammanfattning_utan_tillrackligt_citat():
+    summary = (
+        "Kassan följer riktlinjer och ett lågt risktagande för hållbara "
+        "placeringar i aktiefonder hos Swedbank."
+    )
+    quote = "Vid årsskiftet var kassans kapital placerat hos Swedbank."
+    issues = mr.unsupported_placement_details(summary, quote)
+    assert "aktiefonder" in issues
+    assert "placeringsriktlinjer" in issues
+    assert "risktagande" in issues
+    assert "hållbarhet/etik" in issues
+
+
+def test_felaktigt_kodad_pdf_rubrik_kan_avgransas_med_innehallssidnummer():
+    # Motsvarar en PDF där stora rubriker blir symboler i textlagret trots
+    # att innehållsförteckningen och löptexten går att läsa.
+    text = (
+        "[Sida 1]\nInnehåll\nFörvaltningsberättelse............................ 3\n"
+        "Resultaträkning................................... 10\n"
+        "[Sida 2]\nOrdföranden har ordet\n"
+        "[Sida 3]\n&ƂƌǀĂůƚŶŝŶŐƐďĞƌćƚƚĞůƐĞ\n"
+        "Kassan skriver om verksamhetens förvaltning och utveckling. " * 15
+        + "\n[Sida 4]\nKassan har placerat sitt kapital hållbart.\n"
+        + "Samarbetet fungerar väl. " * 20
+        + "\n[Sida 9]\nKassans medlemmar har fått service.\n"
+        + "[Sida 10]\nZĞƐƵůƚĂƚƌćŬŶŝŶŐ\n"
+        + "[Sida 13]\nNoter till resultat- och balansräkning\n"
+        + "Aktiefonder 300000 kronor"
+    )
+    section = mr.extract_section(text, strict=True)
+    assert section.startswith("[Sida 3]")
+    assert "placerat sitt kapital" in section
+    assert "Aktiefonder 300000" not in section
+    assert "[Sida 10]" not in section
+
+
+def test_enbart_innehall_utan_tillforlitliga_sidgransser_racker_inte():
+    text = (
+        "[Sida 1]\nInnehåll\nFörvaltningsberättelse................ 3\n"
+        "Resultaträkning....................... 10\n"
+        "[Sida 4]\nHär finns en annan text. " * 45
+        + "[Sida 12]\nNoter\nAktiefonder 100 kronor."
+    )
+    assert mr.extract_section(text, strict=True) == ""
+
+
+def test_reservmetod_kraver_punktledare_sa_det_inte_blir_en_fri_gissning():
+    text = (
+        "[Sida 1]\nFörvaltningsberättelse 3\nResultaträkning 7\n"
+        "[Sida 3]\n&ƂƌǀĂůƚŶŝŶŐƐďĞƌćƚƚĞůƐĞ\n" + "Verksamhet. " * 50
+        + "[Sida 7]\nRäkenskaper\n"
+    )
+    assert mr.extract_section(text, strict=True) == ""

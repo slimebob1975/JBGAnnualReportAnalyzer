@@ -2142,11 +2142,17 @@ class JBGAnnualReportAnalyzer:
                     "Finansiella placeringar: återfann citatet på sida %s och "
                     "korrigerade det angivna sidnumret.", placement["sida"]
                 )
+            if placement.get("sammanfattning_saknar_stod"):
+                logger.warning(
+                    "Finansiella placeringar: detaljer utan stöd i citatet (%s); "
+                    "försöker hitta bättre stöd eller behåller en snävare formulering.",
+                    ", ".join(placement["sammanfattning_saknar_stod"]),
+                )
 
             if placement["sammanfattning"] in (
                 management_report.NOT_MENTIONED,
                 management_report.NOT_VERIFIED,
-            ):
+            ) or placement.get("sammanfattning_korrigerad"):
                 # Sök lokalt i det verifierat avgränsade avsnittet. Inga
                 # träffar -> inga extra API-anrop. En ordträff är inte i sig
                 # ett omnämnande; den kontrolleras av modellen en gång till.
@@ -2169,12 +2175,23 @@ class JBGAnnualReportAnalyzer:
                             verified = management_report.verify_placement_page(
                                 retried, strict_section
                             )
-                            if verified["sammanfattning"] != management_report.NOT_VERIFIED:
-                                placement = verified
-                                logger.info(
-                                    "Finansiella placeringar: riktad kontroll gav '%s'.",
-                                    verified["sammanfattning"][:80],
-                                )
+                            if (verified["sammanfattning"] != management_report.NOT_VERIFIED
+                                    and not verified.get("sammanfattning_saknar_stod")):
+                                # En omsökning får bara ersätta ett säkrare
+                                # svar om även dess sakuppgifter har citatstöd.
+                                if (verified["sammanfattning"] == management_report.NOT_MENTIONED
+                                        and placement.get("sammanfattning_korrigerad")):
+                                    logger.info(
+                                        "Finansiella placeringar: omsökningen hittade "
+                                        "inget mer; behåller den snävare, verifierade "
+                                        "sammanfattningen."
+                                    )
+                                else:
+                                    placement = verified
+                                    logger.info(
+                                        "Finansiella placeringar: riktad kontroll gav '%s'.",
+                                        verified["sammanfattning"][:80],
+                                    )
                             else:
                                 logger.warning(
                                     "Finansiella placeringar: den riktade kontrollen "
